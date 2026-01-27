@@ -22,3 +22,10 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+nano .gitignore
+/database/*.sqlite
+/database/database.sqlite
+/storage/*
+!/storage/app
+!/storage/framework
+!/storage/logs
