@@ -350,12 +350,23 @@ main,
 
 .card-top{display:flex; justify-content:space-between; align-items:center}
 
+.bank-logo {
+  position:absolute;
+  top:34px;
+  right:14px;
+  height:3rem;
+  width:auto;
+  opacity:.85;
+  filter: drop-shadow(0 0 6px rgba(0,0,0,.5));
+}
+
+
 /* ===== Currency icons ===== */
 
 .currency-icon {
-  width: 3rem;
-  height: 3rem;
-  border-radius: 50%;
+  width: 2.8rem;
+  height: 2.8rem;
+  border-radius: 10px;
   margin-left: auto;
   margin-top: 0.5rem;
 
@@ -1450,19 +1461,23 @@ function canWriteWallet(walletOwner){
   // ⬇️ банк вантажимо ТІЛЬКИ 1 раз
   if (!state.bankAccounts.length) {
     try {
-      const [r1, r2] = await Promise.all([
+      const [r1, r2, r3] = await Promise.all([
         fetch('/api/bank/accounts'),
-        fetch('/api/bank/accounts-sggroup')
+        fetch('/api/bank/accounts-sggroup'),
+        fetch('/api/bank/accounts-monobank')
       ]);
 
       const a1 = r1.ok ? await r1.json() : [];
       const a2 = r2.ok ? await r2.json() : [];
+      const a3 = r3.ok ? await r3.json() : [];
 
-      state.bankAccounts = [...a1, ...a2];
+      state.bankAccounts = [...a1, ...a2, ...a3];
+
     } catch (e) {
       console.error('Bank accounts load failed', e);
       state.bankAccounts = [];
     }
+
   }
 
 
@@ -1697,7 +1712,6 @@ function renderWallets() {
     card.className = 'card' + (writable ? '' : ' ro');
     card.addEventListener('click', () => loadEntries(w.id));
 
-
     const bal = Number(w.balance || 0);
     const balCls = bal >= 0 ? 'pos' : 'neg';
 
@@ -1721,24 +1735,31 @@ function renderWallets() {
       </div>
     `;
 
-
     elWallets.appendChild(card);
-
   });
 
   // ================= BANK =================
-  const visibleBanks = state.bankAccounts.filter(
-    b => Math.abs(Number(b.balance)) > 0.01
-  );
-  
+  const visibleBanks = state.bankAccounts;
+
   visibleBanks.forEach(bank => {
     const card = document.createElement('div');
     card.className = 'card ro';
+    card.style.position = 'relative';
+
+    let logo = '';
+    if (bank.bankCode === 'monobank') {
+      logo = `<img src="/img/monoLogo.png" class="bank-logo">`;
+    }
+    if (bank.bankCode?.includes('ukrgasbank')) {
+      logo = `<img src="/img/ukrgasLogo.png" class="bank-logo">`;
+    }
 
     card.innerHTML = `
+      ${logo}
       <div class="card-top">
         <div class="muted">${bank.currency}</div>
       </div>
+
       <div style="margin-top:6px;font-weight:800;">${bank.name}</div>
       <div class="big ${bank.balance >= 0 ? 'pos' : 'neg'}">
         ${fmt(bank.balance)} ${bank.currency}
@@ -1755,9 +1776,10 @@ function renderWallets() {
   }
 
   isRenderingWallets = false;
-      initPirateDelete();
-      hideSplash();
+  initPirateDelete();
+  hideSplash();
 }
+
 
 
 function hideSplash(){
@@ -2321,6 +2343,7 @@ async function submitEntry(entry_type, amount, comment){
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+
 // ================= BANK ACCOUNT OPEN =================
 window.openBankAccount = async function (bank) {
 
@@ -2344,12 +2367,31 @@ window.openBankAccount = async function (bank) {
 
   showOps();
 
-const url =
-  bank.bankCode === 'ukrgasbank_sggroup'
-    ? `/api/bank/transactions-sggroup?iban=${encodeURIComponent(bank.iban)}`
-    : `/api/bank/transactions-engineering?iban=${encodeURIComponent(bank.iban)}`;
+  // 🟢 MONOBANK
+  if (bank.bankCode === 'monobank') {
+    try {
+      const res = await fetch(`/api/bank/transactions-monobank?id=${bank.id.replace('mono_','')}`);
+      const rows = res.ok ? await res.json() : [];
 
+      state.entries = rows.map(r => ({
+        posting_date: r.date,
+        signed_amount: r.amount,
+        comment: r.comment,
+      }));
 
+      renderEntries();
+      renderEntriesSummary();
+    } catch (e) {
+      elEntries.innerHTML = '<tr><td class="muted">Помилка завантаження</td></tr>';
+    }
+    return;
+  }
+
+  // 🟡 UKRGAS
+  const url =
+    bank.bankCode === 'ukrgasbank_sggroup'
+      ? `/api/bank/transactions-sggroup?iban=${encodeURIComponent(bank.iban)}`
+      : `/api/bank/transactions-engineering?iban=${encodeURIComponent(bank.iban)}`;
 
   try {
     const res = await fetch(url);
@@ -2368,6 +2410,7 @@ const url =
     elEntries.innerHTML = '<tr><td class="muted">Помилка завантаження</td></tr>';
   }
 };
+
 
 
 function isToday(dateStr) {

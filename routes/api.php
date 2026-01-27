@@ -21,34 +21,37 @@ Route::post('/entries', function (Request $request) {
         'comment'    => 'nullable|string',
     ]);
 
-    // 🧠 УНІКАЛЬНИЙ ВІДБИТОК ОПЕРАЦІЇ
-    $hash = sha1(
-        $data['wallet_id'].'|'.
-        $data['entry_type'].'|'.
-        $data['amount'].'|'.
-        trim($data['comment']).'|'.
-        date('Y-m-d')
-    );
 
-    // 🔥 ЯКЩО ВЖЕ Є — НЕ ДОДАЄМО
-    if (DB::table('entries')->where('hash', $hash)->exists()) {
-        return response()->json(['ok' => true, 'duplicate' => true]);
-    }
-
-    DB::table('entries')->insert([
+    $id = DB::table('entries')->insertGetId([
         'wallet_id'    => $data['wallet_id'],
         'entry_type'   => $data['entry_type'],
         'amount'       => $data['amount'],
-        'comment'      => $data['comment'],
+        'comment'      => $data['comment'] ?? null,
         'posting_date' => date('Y-m-d'),
-        'hash'         => $hash,
+        'erp_sync_date'=> date('Y-m-d'),
+        'erp_synced_at'=> null,
         'created_at'   => now(),
         'updated_at'   => now(),
     ]);
 
-    return ['ok' => true];
-});
 
+    // ⬅️ ОЦЕГО РАНІШЕ НЕ БУЛО
+    try {
+        app(\App\Services\ErpNextService::class)->syncEntry($id);
+    } catch (\Throwable $e) {
+        \Log::error('ERP sync failed', [
+            'entry_id' => $id,
+            'error' => $e->getMessage(),
+        ]);
+    }
+
+
+
+    return response()->json([
+        'id' => $id,
+        'ok' => true,
+    ]);
+});
 
 
 

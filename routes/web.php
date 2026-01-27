@@ -393,6 +393,7 @@ $accounts = collect($rows)
             'name'     => $a['name'],
             'currency' => $a['currency'],
             'balance'  => (float)$balance,
+            'bankCode' => 'ukrgasbank_engineering',
         ];
     })
     // ✅ ЛИШЕ НЕНУЛЬОВІ
@@ -442,6 +443,48 @@ Route::get('/api/bank/accounts-sggroup', function () {
 
     return response()->json($accounts);
 });
+
+//////////////////////////////////////////////////////////////////////////////////////
+//.               Баланс монобанк
+//////////////////////////////////////////////////////////////////////////////////////
+
+
+Route::get('/api/bank/accounts-monobank', function () {
+
+    $token = env('MONOBANK_TOKEN');
+
+    if (!$token) {
+        return response()->json([]);
+    }
+
+    $res = Http::withHeaders([
+        'X-Token' => $token,
+    ])->get('https://api.monobank.ua/personal/client-info');
+
+    if (!$res->ok()) {
+        return response()->json([]);
+    }
+
+        $mainIban = 'UA253220010000026005310038535'; // ← ТУТ ТВОЙ ГОЛОВНИЙ
+
+        $accounts = collect($res->json()['accounts'] ?? [])
+            ->filter(fn ($a) => ($a['iban'] ?? null) === $mainIban)
+            ->map(function ($a) {
+
+                return [
+                    'id'       => 'mono_' . $a['id'],
+                    'iban'     => $a['iban'],
+                    'name'     => 'ФОП Колісник • Monobank',
+                    'currency' => 'UAH',
+                    'balance'  => $a['balance'] / 100,
+                    'bankCode' => 'monobank',
+                ];
+            })
+            ->values();
+
+    return response()->json($accounts);
+});
+
 
 //////////////////////////////////////////////////////////////////////////////////////
 //.                транзакції укргазбанк ГРУП
@@ -534,6 +577,45 @@ Route::get('/api/bank/transactions-engineering', function (Request $request) {
 
     return response()->json($tx);
 });
+
+//////////////////////////////////////////////////////////////////////////////////////
+//.                транзакції Монобанк ФОП Колісник
+//////////////////////////////////////////////////////////////////////////////////////
+
+Route::get('/api/bank/transactions-monobank', function (Request $request) {
+
+$accountId = $request->query('id');
+if (!$accountId) return response()->json([]);
+
+$token = env('MONOBANK_TOKEN');
+
+$from = now()->subDays(30)->timestamp;
+$to   = now()->timestamp;
+
+$res = Http::withHeaders([
+    'X-Token' => $token,
+])->get("https://api.monobank.ua/personal/statement/{$accountId}/{$from}/{$to}");
+
+if (!$res->ok()) return response()->json([]);
+
+$rows = collect($res->json())
+    ->map(function ($r) {
+        return [
+            'date'    => date('Y-m-d', $r['time']),
+            'amount'  => $r['amount'] / 100,
+            'comment' => $r['description'] ?? '',
+            'counterparty' => $r['mcc'] ?? '',
+        ];
+    })
+    ->sortByDesc('date')
+    ->values();
+
+return response()->json($rows);
+
+});
+
+
+
 
 
 
