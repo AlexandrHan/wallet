@@ -1028,10 +1028,13 @@ img{display:block; max-height:48px}
         <span class="tag" id="actorTag" style="display:none"></span>
 
 
-      <div class="segmented">
-        <button type="button" id="view-h" data-owner="hlushchenko">Глущенко</button>
-        <button type="button" id="view-k" data-owner="kolisnyk">Колісник</button>
-      </div>
+        @if(auth()->user()->role !== 'accountant')
+        <div class="segmented">
+          <button type="button" id="view-h" data-owner="hlushchenko">Глущенко</button>
+          <button type="button" id="view-k" data-owner="kolisnyk">Колісник</button>
+        </div>
+        @endif
+
 
     </div>
   </div>
@@ -1048,7 +1051,10 @@ img{display:block; max-height:48px}
       <button type="button" class="btn " id="addWallet">+</button>
       <button type="button" class="btn" id="refresh">Оновити</button>
 
-      <span class="tag right rejym" id="viewHint"></span>
+      @if(auth()->user()->role !== 'accountant')
+        <span class="tag right rejym" id="viewHint"></span>
+      @endif
+
     </div>
     <div id="wallets" class="grid"></div>
   </div> <!-- END walletsView -->
@@ -1218,10 +1224,13 @@ img{display:block; max-height:48px}
   // ===== BANK TRANSACTIONS (temporary, test data) =====
 
 
-  const AUTH_ACTOR = @json(auth()->user()->actor);
-  if (!AUTH_ACTOR) {
-    alert('Не задано actor для користувача. Потрібно встановити users.actor = hlushchenko або kolisnyk');
-  }
+const AUTH_USER  = @json(auth()->user());
+const AUTH_ACTOR = AUTH_USER.actor; // ← ПОВЕРНУЛИ
+
+if (AUTH_USER.role !== 'accountant' && !AUTH_ACTOR) {
+    alert('Не задано actor для користувача...');
+}
+
   document.getElementById('actorTag').textContent = AUTH_ACTOR;
 
   const state = {
@@ -1318,6 +1327,8 @@ function checkOnline() {
 
   const btnViewK = document.getElementById('view-k');
   const btnViewH = document.getElementById('view-h');
+  const IS_ACCOUNTANT = AUTH_USER.role === 'accountant';
+
 
   const btnAddWallet = document.getElementById('addWallet');
 
@@ -1424,6 +1435,8 @@ function canWriteWallet(walletOwner){
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
   function setViewOwner(owner){
+    if (IS_ACCOUNTANT) return;
+
     state.viewOwner = owner;
 
     btnViewK.classList.toggle('active', owner === 'kolisnyk');
@@ -2277,12 +2290,21 @@ async function submitEntry(entry_type, amount, comment){
 
   btnAddWallet.onclick = (e) => { e.preventDefault(); openWalletSheet(); };
 
-  btnViewK.onclick = (e) => { e.preventDefault(); setViewOwner('kolisnyk'); };
-  btnViewH.onclick = (e) => { e.preventDefault(); setViewOwner('hlushchenko'); };
+  if (btnViewK) {
+    btnViewK.onclick = (e) => { e.preventDefault(); setViewOwner('kolisnyk'); };
+  }
+
+  if (btnViewH) {
+    btnViewH.onclick = (e) => { e.preventDefault(); setViewOwner('hlushchenko'); };
+  }
+
 
   // init
-  setViewOwner(state.viewOwner);
+  if (!IS_ACCOUNTANT) {
+    setViewOwner(state.viewOwner);
+  }
   loadWallets();
+
 
     const burgerBtn = document.getElementById('burgerBtn');
     const burgerMenu = document.getElementById('burgerMenu');
