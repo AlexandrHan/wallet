@@ -506,19 +506,22 @@ function canWriteWallet(walletOwner){
     try {
 
 
-    const [r1, r2, r3, r4] = await Promise.all([
+    const [r1, r2, r3, r4, r5] = await Promise.all([
       fetch('/api/bank/accounts'),
       fetch('/api/bank/accounts-sggroup'),
+      fetch('/api/bank/accounts-solarglass'),
       fetch('/api/bank/accounts-monobank'),
-      fetch('/api/bank/accounts-privat')   // 🔥 ДОДАЛИ
+      fetch('/api/bank/accounts-privat'),
     ]);
 
     const a1 = r1.ok ? await r1.json() : [];
     const a2 = r2.ok ? await r2.json() : [];
     const a3 = r3.ok ? await r3.json() : [];
     const a4 = r4.ok ? await r4.json() : [];
+    const a5 = r5.ok ? await r5.json() : [];
 
-    state.bankAccounts = [...a1, ...a2, ...a3, ...a4];
+    state.bankAccounts = [...a1, ...a2, ...a3, ...a4, ...a5];
+
 
 
 
@@ -1461,6 +1464,22 @@ window.openBankAccount = async function (bank) {
     return;
   }
 
+    if (bank.bankCode === 'ukrgasbank_solarglass') {
+    const res = await fetch(`/api/bank/transactions-solarglass?iban=${encodeURIComponent(bank.iban)}`);
+    const rows = res.ok ? await res.json() : [];
+
+    state.entries = rows.map(r => ({
+      posting_date: r.date,
+      signed_amount: r.amount,
+      comment: r.comment || r.counterparty || '',
+    }));
+
+    renderEntries();
+    renderEntriesSummary();
+    return;
+  }
+
+
 
   // 🟡 UKRGAS
   const url =
@@ -1954,15 +1973,7 @@ function updateExchange(source = 'from'){
 
 
 
-<script>
-  window.AUTH_ACTOR = @json(auth()->user()->actor);
-</script>
 
-<script src="{{ asset('js/state.js') }}"></script>
-<script src="{{ asset('js/api.js') }}"></script>
-<script src="{{ asset('js/ui.js') }}"></script>
-<script src="{{ asset('js/stats.js') }}"></script>
-<script src="{{ asset('js/wallet.js') }}"></script>
 
 </body>
 </html>

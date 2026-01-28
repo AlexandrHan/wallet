@@ -445,6 +445,42 @@ Route::get('/api/bank/accounts-sggroup', function () {
 });
 
 
+Route::get('/api/bank/accounts-solarglass', function () {
+
+    $response = Http::withToken(config('services.ukrgasbank_solarglass.token'))
+        ->get('https://my.ukrgasbank.com/api/v3/accounts');
+
+    if (!$response->ok()) {
+        return response()->json([], 500);
+    }
+
+    $rows = $response->json()['rows'] ?? [];
+
+    $accounts = collect($rows)
+        ->filter(fn($a) => ($a['iban'] ?? '') === 'UA413204780000026004924944262')
+        ->map(function ($a) {
+
+            $balance =
+                $a['balance']['closingBalance']
+                ?? $a['balance']['balance']
+                ?? 0;
+
+            return [
+                'id'       => 'solarglass_' . $a['id'],
+                'iban'     => $a['iban'],
+                'name'     => 'ТОВ "СОЛАР ГЛАСС"',
+                'currency' => $a['currency'],
+                'balance'  => (float)$balance,
+                'bankCode' => 'ukrgasbank_solarglass',
+            ];
+        })
+        ->values();
+
+    return response()->json($accounts);
+});
+
+
+
 //////////////////////////////////////////////////////////////////////////////////////
 //.               Баланс Приват
 //////////////////////////////////////////////////////////////////////////////////////
@@ -620,6 +656,47 @@ Route::get('/api/bank/transactions-engineering', function (Request $request) {
 });
 
 
+
+//////////////////////////////////////////////////////////////////////////////////////
+//.                транзакції УКРГАЗ СОЛАР ГЛАСС
+//////////////////////////////////////////////////////////////////////////////////////
+
+
+Route::get('/api/bank/transactions-solarglass', function (Request $request) {
+
+    $iban = $request->query('iban');
+    if (!$iban) return response()->json([], 400);
+
+    $response = Http::withToken(config('services.ukrgasbank_solarglass.token'))
+        ->get('https://my.ukrgasbank.com/api/v1/ugb/external/transaction-history');
+
+    if (!$response->ok()) return response()->json([], 500);
+
+    $rows = $response->json()['rows'] ?? [];
+
+    $tx = collect($rows)
+        ->filter(fn ($r) =>
+            ($r['DB_IBAN'] ?? null) === $iban ||
+            ($r['CR_IBAN'] ?? null) === $iban
+        )
+        ->map(function ($r) {
+
+            $isIncome = ($r['DK'] ?? null) == 1;
+
+            return [
+                'date'    => $r['DATA_D'] ?? $r['DATA_VYP'] ?? null,
+                'amount'  => (float) ($r['SUM_PD_NOM'] ?? 0) * ($isIncome ? 1 : -1),
+                'comment' => trim($r['PURPOSE'] ?? ''),
+                'counterparty' => $isIncome
+                    ? ($r['NAME_F'] ?? $r['NAME_KOR'] ?? '')
+                    : ($r['NAME_KOR'] ?? $r['NAME_F'] ?? ''),
+            ];
+        })
+        ->sortByDesc('date')
+        ->values();
+
+    return response()->json($tx);
+});
 
 
 //////////////////////////////////////////////////////////////////////////////////////

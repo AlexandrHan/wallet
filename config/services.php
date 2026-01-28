@@ -27,6 +27,10 @@ return [
         'token' => env('UKRGASBANK_TOKEN'),
         'base_url' => 'https://my.ukrgasbank.com',
     ],
+        'ukrgasbank_solarglass' => [
+        'token' => env('UKRGASBANK_SOLARGLASS_TOKEN'),
+    ],
+
 
     'privatbank' => [
         'token' => env('PRIVATBANK_TOKEN'),
