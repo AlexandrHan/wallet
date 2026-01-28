@@ -5,6 +5,8 @@
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <link rel="manifest" href="/manifest.webmanifest">
   <meta name="theme-color" content="#0b0d10">
+  <link rel="stylesheet" href="{{ asset('css/wallet.css') }}">
+
 
   <!-- iOS home screen -->
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -20,966 +22,7 @@
   <title>SolarGlass</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-<style>
-/* ================== THEME ================== */
-:root{
-  --bg:#0b0d10;
-  --panel:rgba(28,32,45,.65);
-  --stroke:rgba(255,255,255,.08);
-  --text:#e9eef6;
-  --muted:#9aa6bc;
 
-  --blue:#4c7dff;
-  --green:#66f2a8;
-  --red:#ff6b6b;
-
-  --blur:20px;
-  --radius-xl:22px;
-  --radius-lg:18px;
-  --radius-pill:999px;
-}
-
-#appSplash {
-  position: fixed;
-  width: 100%;
-  inset: 0;
-  background: radial-gradient(1400px 700px at 20% -20%, #1b2450 0%, transparent 60%),
-    radial-gradient(1200px 600px at 90% 10%, #0f3a2a 0%, transparent 55%),
-    linear-gradient(180deg, #0b0d10 0%, #07080c 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 99999;
-  transition: opacity .35s ease, visibility .35s ease;
-}
-
-
-
-#appSplash.hide {
-  opacity: 0;
-  visibility: hidden;
-}
-
-.splash-logo {
-  width: 320px;
-  max-width: 40vw;
-  
-
-  aspect-ratio: 1 / 1; /* ⬅️ АБО інше, див. нижче */
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-top: -7rem;
-  animation: splashPulse 1.8s ease-in-out infinite;
-}
-
-
-.splash-logo img {
-  max-width: 100%;
-  max-height: 100%;
-  width: auto;
-  height: auto;
-  object-fit: contain;
-  display: block;
-}
-
-
-/* ===== Entry Sheet Color Modes ===== */
-
-.sheet.entry-income {
-  --accent: #3bd671; /* iOS green */
-}
-
-.sheet.entry-expense {
-  --accent: #ff5a5f; /* iOS red */
-}
-
-/* header / title */
-.sheet.entry-income .sheet-title,
-.sheet.entry-expense .sheet-title {
-  color: var(--accent);
-}
-
-/* confirm button */
-.sheet.entry-income .sheet-confirm {
-  background: var(--accent);
-}
-
-.sheet.entry-expense .sheet-confirm {
-  background: var(--accent);
-}
-
-/* input focus */
-.sheet.entry-income input:focus,
-.sheet.entry-income textarea:focus {
-  border-color: var(--accent);
-}
-
-.sheet.entry-expense input:focus,
-.sheet.entry-expense textarea:focus {
-  border-color: var(--accent);
-}
-
-/* ===== Sheet title coloring ===== */
-/* ✅ Sheet entry title coloring (точно попаде) */
-#sheetEntry.entry-income #sheetEntryTitle { color: var(--accent) !important; }
-#sheetEntry.entry-expense #sheetEntryTitle { color: var(--accent) !important; }
-
-
-
-/* ================== BASE ================== */
-*{box-sizing:border-box}
-body{height:110%}
-html{
-  height:100%;
-  background:#0b0d10; /* ⬅️ КЛЮЧОВЕ */
-}
-#opsView{
-  background-color: transparent;
-}
-
-body{
-  margin:0;
-  padding:0; /* ВАЖЛИВО: без padding */
-  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display",system-ui;
-
-  /* ОДНА простиня фону */
-  background:
-    radial-gradient(1400px 700px at 20% -20%, #1b2450 0%, transparent 60%),
-    radial-gradient(1200px 600px at 90% 10%, #0f3a2a 0%, transparent 55%),
-    linear-gradient(180deg, #0b0d10 0%, #07080c 100%);
-  background-attachment: fixed;
-  background-repeat:no-repeat;
-  background-size: cover;
-
-  color:var(--text);
-  overscroll-behavior:none;
-  -webkit-overflow-scrolling:touch;
-}
-
-/* ================== HEADER (FULL SCREEN + SAFE AREA) ================== */
-header{
-  position:fixed;
-  top:0;
-  left:0;
-  right:0;
-  z-index:1000;
-
-  /* Прозорий верх → плавний перехід */
-  background:
-    linear-gradient(
-      to bottom,
-      rgba(11,13,16,0) 0%,
-      rgba(11,13,16,0) 15%,
-      rgba(11,13,16,.55) 40%,
-      rgba(11,13,16,.75) 100%
-    );
-
-  backdrop-filter: blur(var(--blur)) saturate(140%);
-  -webkit-backdrop-filter: blur(var(--blur)) saturate(140%);
-  border-bottom:1px solid var(--stroke);
-
-  padding-top: env(safe-area-inset-top);
-}
-.top-area{  
-    width: 100%;
-    display: flex;
-    justify-content: space-between;
-}
-.logo img{
-  height:48px;
-  width:auto;
-  display:block;
-}
-.logo{
-  display:flex;
-  align-items:center;
-  padding:6px;
-  border-radius:12px;
-}
-.logo{
-  -webkit-tap-highlight-color: transparent;
-}
-
-
-/* ================== CONTENT OFFSET ================== */
-main,
-.content,
-.app{
-  padding-top: calc(8rem + env(safe-area-inset-top));
-}
-
-/* ================== LAYOUT ================== */
-.wrap{max-width:980px; margin:0 auto; padding:18px;}
-.row{display:flex; gap:14px; align-items:center; flex-wrap:wrap;}
-.right{margin-left:auto}
-
-/* ================== BURGER ================== */
-.burger-wrap{position:relative}
-
-
-.burger-btn{
-  width:40px;
-  height:40px;
-  border-radius:999px;
-  border:1px solid var(--stroke);
-  background:rgba(255,255,255,.08);
-  color:var(--text);
-  font-size:20px;
-  cursor:pointer;
-  transition:.2s ease;
-}
-.burger-btn:hover{background:rgba(255,255,255,.14)}
-
-.burger-menu{
-  position:absolute;
-  right:0;
-  top:52px;
-  min-width:220px;
-  background:linear-gradient(180deg, rgba(28,32,45,.9), rgba(0,0,0,1));
-  backdrop-filter: blur(24px);
-  border:1px solid var(--stroke);
-  border-radius:16px;
-  padding:8px;
-  display:flex;
-  flex-direction:column;
-  gap:4px;
-  z-index:2000;
-}
-.burger-menu.hidden{display:none}
-
-.burger-item{
-  padding:12px 14px;
-  border-radius:12px;
-  text-decoration:none;
-  color:var(--text);
-  background:transparent;
-  border:none;
-  text-align:left;
-  cursor:pointer;
-  font-size:14px;
-  font-weight:600;
-}
-.burger-menu{
-  display:flex;
-  flex-direction:column;
-}
-
-/* щоб form поводилась як пункт меню */
-.burger-menu form{
-  display:contents;
-}
-
-/* універсальний стиль пункту */
-.burger-item{
-  position:relative;
-  padding:14px 16px;
-}
-
-/* світлова лінія після кожного пункту крім останнього */
-.burger-menu .burger-item:not(:last-child)::after{
-  content:'';
-  position:absolute;
-  left:16px;
-  right:16px;
-  bottom:0;
-  height:1px;
-  background:linear-gradient(
-    to right,
-    transparent,
-    rgba(255,255,255,.12),
-    transparent
-  );
-}
-
-.burger-item:hover{background:rgba(255,255,255,.1)}
-.burger-item.danger{color:var(--red)}
-
-.userName{color:var(--green)}
-
-/* ================== BUTTONS ================== */
-.btn{
-  padding:10px 16px;
-  border-radius:var(--radius-lg);
-  background:rgba(255,255,255,.08);
-  border:1px solid var(--stroke);
-  color:var(--text);
-  cursor:pointer;
-  transition:.2s ease;
-}
-.btn:hover{background:rgba(255,255,255,.14)}
-.btn.primary{background:rgba(76,125,255,.22); border-color:rgba(76,125,255,.6);}
-.btn.danger{background:rgba(255,107,107,.22); border-color:rgba(255,107,107,.55);}
-.btn.mini{padding:6px 10px; font-size:16px; border-radius:19px;}
-.btn:disabled{opacity:.4}
-.tag{
-  padding:10px 12px;
-  border-radius:var(--radius-pill);
-  background:rgba(255,255,255,.06);
-  border:1px solid var(--stroke);
-  font-size:12px;
-  color:#fff;
-  font-weight:600;
-}
-
-/* ================== TEXT ================== */
-.muted{color:#fff; font-size:14px; font-weight:600}
-.big{font-size:26px; font-weight:700}
-.pos{color:var(--green)}
-.neg{color:var(--red)}
-
-/* ================== CARDS ================== */
-.grid{
-  display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
-  gap:16px;
-  margin-top:16px;
-}
-
-.card{
-  background:linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,.02));
-  backdrop-filter: blur(var(--blur));
-  border:1px solid var(--stroke);
-  border-radius:var(--radius-xl);
-  padding:18px;
-  transition:.25s ease;
-}
-.card:hover{transform:translateY(-2px)}
-.card.ro{opacity:.65}
-
-.card-top{display:flex; justify-content:space-between; align-items:center}
-
-.bank-logo {
-  position:absolute;
-  top:34px;
-  right:14px;
-  height:3rem;
-  width:auto;
-  opacity:.85;
-  filter: drop-shadow(0 0 6px rgba(0,0,0,.5));
-}
-
-
-/* ===== Currency icons ===== */
-
-.currency-icon {
-  width: 2.8rem;
-  height: 2.8rem;
-  border-radius: 10px;
-  margin-left: auto;
-  margin-top: 0.5rem;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  font-size: 32px;
-  font-weight: 700;
-
-  backdrop-filter: blur(8px);
-  background: rgba(255,255,255,.08);
-  border: 1px solid var(--stroke);
-}
-
-/* UAH */
-.currency-UAH {
-  color: #fffb00ff;
-  background: transparent;
-}
-
-/* EUR */
-.currency-EUR {
-  color: #ff0000ff;
-  background: transparent;
-}
-
-/* USD */
-.currency-USD {
-  color: rgba(40, 180, 47, 1);
-  background: transparent;
-}
-
-
-/* ================== TABLE ================== */
-table{width:100%; border-collapse:separate; border-spacing:0 10px;table-layout:fixed;}
-thead{display:none}
-tbody tr{
-  background:var(--panel);
-  backdrop-filter: blur(var(--blur));
-  border:1px solid var(--stroke);
-}
-tbody td{padding:14px; font-size:14px;}
-table{
-  width:100%;
-  table-layout: fixed; /* ⬅️ КЛЮЧОВЕ */
-}
-
-tbody td{
-  word-break: break-word;      /* ріже довгі слова */
-  overflow-wrap: anywhere;     /* iOS / modern */
-  white-space: normal;
-}
-
-table{
-  width:100%;
-  table-layout:fixed;
-}
-
-tbody td:first-child{border-radius:14px 0 0 14px;}
-
-/* сума — компактна */
-tbody td:last-child{
-  width:30%;
-  white-space:nowrap;
-  text-align:right;
-  border-radius:0 14px 14px 0;
-
-}
-
-/* коментар — максимально широкий */
-.entry-comment{
-  word-break: break-word;
-  overflow-wrap: anywhere;
-  white-space: normal;
-}
-.comment-cell{
-  padding-right: 0;
-  padding-left:0;
-}
-
-
-
-/* ================== SEGMENTED ================== */
-.segmented{
-  display:flex;
-  background:rgba(255,255,255,.08);
-  border-radius:999px;
-  padding:4px;
-  border:1px solid var(--stroke);
-}
-.segmented button{
-  flex:1;
-  padding:8px 14px;
-  border-radius:999px;
-  background:none;
-  border:none;
-  color:var(--muted);
-  font-weight:600;
-}
-.segmented button.active{
-  background:rgba(102,242,167,.6);
-  color:#000;
-}
-
-/* ================== SHEET ================== */
-.sheet.hidden{display:none}
-.sheet-backdrop{position:fixed; inset:0; background:rgba(0,0,0,.4)}
-.sheet-panel{
-  position:fixed; left:0; right:0; bottom:0;
-  background:rgba(28,32,45,.9);
-  backdrop-filter: blur(30px);
-  border-radius:24px 24px 0 0;
-  padding:20px;
-}
-.sheet-handle{
-  width:40px; height:4px;
-  background:rgba(255,255,255,.3);
-  border-radius:999px;
-  margin:0 auto 14px;
-}
-.sheet-panel h3{margin:0 0 12px; text-align:center;}
-.sheet-panel input, .sheet-panel select{
-  width:100%;
-  padding:14px;
-  border-radius:14px;
-  border:1px solid var(--stroke);
-  background:rgba(255,255,255,.08);
-  color:var(--text);
-  margin-bottom:10px;
-  font-size:16px;
-  outline:none;
-}
-
-
-.date-cell{
-  width:64px;
-  text-align:center;
-  white-space:nowrap;
-}
-
-.date-main{
-  font-size:14px;
-  font-weight:700;
-}
-
-.date-year{
-  font-size:11px;
-  opacity:.6;
-}
-
-.amount-cell{
-  text-align:right;
-  white-space:nowrap;
-  padding-right:10px;
-  padding-left: 0;
-}
-
-.amount-value{
-  font-weight:700;
-  font-size:15px;
-}
-
-.amount-currency{
-  font-size:12px;
-  opacity:.7;
-  margin-left:4px;
-}
-
-
-.rejym{
-    background:rgba(102, 242, 167, 0.53);
-    color: #000;
-}
-img{display:block; max-height:48px}
-
-
-
-/* ===== Entry cell ===== */
-/* .entry-type {
-  width:36px;
-  text-align:center;
-  position:relative;
-}
-
-.entry-icon {
-  font-size:18px;
-  cursor:pointer;
-  user-select:none;
-} */
-
-/* .entry-icon.income { color: var(--green); }
-.entry-icon.expense { color: var(--red); }*/
-
-
-/* ===== SUMMARY ===== */
-.summary{
-  display:flex;
-  gap:14px;
-  margin:18px 0 10px;
-}
-
-.summary.hidden{
-  display:none;
-}
-
-.summary-item{
-  flex:1;
-  background:rgba(255,255,255,.06);
-  border:1px solid var(--stroke);
-  border-radius:14px;
-  padding:12px 14px;
-  text-align:center;
-}
-
-.summary-label{
-  font-size:12px;
-  color:var(--muted);
-}
-
-.summary-value{
-  margin-top:4px;
-  font-size:18px;
-  font-weight:700;
-  font-variant-numeric: tabular-nums;
-}
-
-/* ===== CATEGORY STATS ===== */
-.cat{
-  margin:10px 0 18px;
-}
-
-.cat.hidden{
-  display:none;
-}
-
-.cat-title{
-  font-size:13px;
-  color:var(--muted);
-  margin-bottom:8px;
-}
-
-.cat-row{
-  display:flex;
-  align-items:center;
-  gap:10px;
-  margin-bottom:6px;
-}
-
-.cat-name{
-  min-width:90px;
-  font-size:12px;
-  white-space:nowrap;
-}
-
-.cat-bar{
-  flex:1;
-  height:8px;
-  background:rgba(255,255,255,.08);
-  border-radius:999px;
-  overflow:hidden;
-}
-
-.cat-bar > div{
-  height:100%;
-  background:var(--red);
-}
-
-.cat-pct{
-  width:38px;
-  text-align:right;
-  font-size:12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.hidden{ display:none }
-
-.chart-wrap{
-  margin:16px 0 10px;
-  padding:10px;
-  background:rgba(255,255,255,.04);
-  border:1px solid var(--stroke);
-  border-radius:16px;
-}
-
-#statsBox {
-  padding: 16px;
-}
-
-#statsBox canvas {
-  width: 100% !important;
-  max-height: 260px;
-}
-
-.selector-vytraty-dohody{
-  margin-bottom: 1rem;
-}
-
-
-.entry-row {
-  cursor: pointer;
-}
-
-.entry-actions {
-  margin-top: 4px;
-  display: none;
-}
-
-.entry-row.active .entry-actions {
-  display: flex;
-  gap: 8px;
-}
-
-
-
-
-/* ===== iOS-style actions ===== */
-
-.entry-actions button {
-  all: unset;
-  width: 5rem;
-  height: 34px;
-  border-radius: 999px;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  font-size: 16px;
-  line-height: 1;
-
-  background: rgba(255,255,255,0.06);
-  backdrop-filter: blur(8px);
-
-  cursor: pointer;
-  transition: 
-    background .15s ease,
-    transform .1s ease,
-    opacity .1s ease;
-}
-
-/* tap effect */
-.entry-actions button:active {
-  transform: scale(0.92);
-  background: rgba(255,255,255,0.12);
-}
-
-/* ✏️ edit */
-.entry-actions button:first-child {
-  color: #4c7dff;
-}
-
-/* 🗑 delete */
-.entry-actions button:last-child {
-  color: #ff6b6b;
-}
-
-/* hover (desktop only) */
-@media (hover:hover) {
-  .entry-actions button:hover {
-    background: rgba(255,255,255,0.12);
-  }
-}
-
-
-/*******************************************  Видалення рахунку    ********************************************/
-.account-card{
-  position:relative;
-  user-select:none;
-}
-
-.pirate-overlay{
-  position:absolute;
-  inset:0;
-  display:flex;
-  flex-direction:column;
-  justify-content:center;
-  align-items:center;
-  background:rgba(0,0,0,.55);
-  opacity:0;
-  pointer-events:none;
-  transition:.2s ease;
-  border-radius:14px;
-}
-
-.account-card.stage-1 .pirate-overlay,
-.account-card.stage-2 .pirate-overlay{
-  opacity:1;
-  pointer-events:auto;
-}
-
-.account-card.stage-2 .pirate-overlay{
-  background:rgba(120,0,0,.85);
-}
-
-.pirate-skull{
-  font-size:42px;
-  animation: skullPulse 1.2s infinite;
-  cursor:pointer;
-}
-
-.account-card.stage-2 .pirate-skull{
-  animation: skullShake .6s infinite;
-}
-
-.pirate-text{
-  margin-top:10px;
-  font-size:14px;
-  color:#ffd6d6;
-  text-align:center;
-  max-width:80%;
-}
-
-@keyframes skullPulse{
-  0%{transform:scale(1)}
-  50%{transform:scale(1.15)}
-  100%{transform:scale(1)}
-}
-
-@keyframes skullShake{
-  0%{transform:rotate(0)}
-  25%{transform:rotate(-8deg)}
-  50%{transform:rotate(8deg)}
-  75%{transform:rotate(-8deg)}
-  100%{transform:rotate(0)}
-}
-
-@keyframes splashPulse {
-  0%   { transform: scale(1); }
-  50%  { transform: scale(1.08); }
-  100% { transform: scale(1); }
-}
-
-
-/* ===== Modal ===== */
-.modal.hidden { display:none }
-
-.modal-backdrop{
-  position:fixed;
-  inset:0;
-  background:rgba(0,0,0,.45);
-  backdrop-filter:blur(4px);
-  z-index:3000;
-}
-
-.modal-panel{
-  position:fixed;
-  left:0;
-  right:0;
-  bottom:0;
-  background:radial-gradient(1400px 700px at 20% -20%, #1b2450 0%, transparent 60%),
-    radial-gradient(1200px 600px at 90% 10%, #0f3a2a 0%, transparent 55%),
-    linear-gradient(180deg, #0b0d10 0%, #07080c 100%);
-  backdrop-filter:blur(30px);
-  border-radius:24px 24px 0 0;
-  padding:16px 18px 24px;
-  z-index:3001;
-  animation:sheetUp .25s ease;
-}
-
-@keyframes sheetUp{
-  from{transform:translateY(100%)}
-  to{transform:translateY(0)}
-}
-
-.modal-handle{
-  width:42px;
-  height:4px;
-  border-radius:999px;
-  background:rgba(255,255,255,.3);
-  margin:0 auto 14px;
-}
-
-.modal-header{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  margin-bottom:12px;
-}
-
-.modal-title{
-  text-align:center;
-  font-weight:700;
-  font-size:18px;
-}
-
-.modal-close{
-  all:unset;
-  width:34px;
-  height:34px;
-  border-radius:999px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  background:rgba(255,255,255,.08);
-  cursor:pointer;
-}
-
-.modal-body{
-  font-size:15px;
-  line-height:1.5;
-}
-
-.rate-card{
-  background:rgba(255,255,255,.05);
-  border:1px solid var(--stroke);
-  border-radius:14px;
-  padding:12px;
-  margin-bottom:10px;
-}
-
-
-.rate-title{
-  font-weight:700;
-  margin-bottom:6px;
-}
-
-/* 💵 USD */
-.rate-title-usd{
-  color:rgb(28, 231, 62);
-  text-shadow:0 0 8px rgba(102,242,168,.4);
-}
-
-/* 💶 EUR */
-.rate-title-eur{
-  color:rgb(231, 28, 28);
-  text-shadow:0 0 8px rgba(76,125,255,.4);
-}
-
-
-.burger-actions{
-  display:flex;
-  flex-direction:column;
-  gap:4px;
-}
-
-.exchange{
-  margin-top:14px;
-  padding-top:12px;
-  border-top:1px solid var(--stroke);
-  animation:fadeIn .25s ease;
-}
-
-@keyframes fadeIn{
-  from{opacity:0; transform:translateY(10px)}
-  to{opacity:1; transform:translateY(0)}
-}
-
-.exchange-row{
-  display:flex;
-  align-items:center;
-  gap:10px;
-  margin-bottom:10px;
-}
-
-.exchange-row input{
-  flex:1;
-  padding:12px;
-  border-radius:12px;
-  border:1px solid var(--stroke);
-  background:rgba(255,255,255,.08);
-  color:#fff;
-  font-size:16px;
-}
-
-.exchange-currency{
-  min-width:52px;
-  text-align:center;
-  font-weight:700;
-}
-
-.exchange-mode{
-  margin-bottom:10px;
-}
-.modal-panel.expanded{
-  max-height:85vh;
-  overflow:auto;
-}
-
-.rate-card{
-  transition:.2s;
-  margin-top:1rem;
-}
-
-.rate-card.active{
-  border:1px solid #6dff4c;
-  background:rgba(76,125,255,.12);
-  box-shadow:0 0 18px rgba(207, 255, 76, 0.35);
-  transform:translateY(-2px);
-}
-
-/* прибираємо системний колхозний фокус */
-.exchange-row input{
-  outline:none;
-  transition:.2s;
-  margin-top:1rem;
-}
-
-/* кастомний фокус */
-.exchange-row input:focus{
-  border:1px solid #6dff4c;
-  background:rgba(76,125,255,.12);
-  box-shadow:0 0 9px rgba(207, 255, 76, 0.35);
-  transform:translateY(-2px);
-}
-
-/* коли поле заповнене — легкий активний стан */
-.exchange-row input:not(:placeholder-shown){
-  border:1px solid rgba(109,255,76,.4);
-}
-
-
-</style>
 
 </head>
 
@@ -1461,17 +504,24 @@ function canWriteWallet(walletOwner){
   // ⬇️ банк вантажимо ТІЛЬКИ 1 раз
   if (!state.bankAccounts.length) {
     try {
-      const [r1, r2, r3] = await Promise.all([
-        fetch('/api/bank/accounts'),
-        fetch('/api/bank/accounts-sggroup'),
-        fetch('/api/bank/accounts-monobank')
-      ]);
 
-      const a1 = r1.ok ? await r1.json() : [];
-      const a2 = r2.ok ? await r2.json() : [];
-      const a3 = r3.ok ? await r3.json() : [];
 
-      state.bankAccounts = [...a1, ...a2, ...a3];
+    const [r1, r2, r3, r4] = await Promise.all([
+      fetch('/api/bank/accounts'),
+      fetch('/api/bank/accounts-sggroup'),
+      fetch('/api/bank/accounts-monobank'),
+      fetch('/api/bank/accounts-privat')   // 🔥 ДОДАЛИ
+    ]);
+
+    const a1 = r1.ok ? await r1.json() : [];
+    const a2 = r2.ok ? await r2.json() : [];
+    const a3 = r3.ok ? await r3.json() : [];
+    const a4 = r4.ok ? await r4.json() : [];
+
+    state.bankAccounts = [...a1, ...a2, ...a3, ...a4];
+
+
+
 
     } catch (e) {
       console.error('Bank accounts load failed', e);
@@ -1753,6 +803,10 @@ function renderWallets() {
     if (bank.bankCode?.includes('ukrgasbank')) {
       logo = `<img src="/img/ukrgasLogo.png" class="bank-logo">`;
     }
+    if (bank.bankCode === 'privatbank') {
+      logo = `<img src="/img/privatLogo.png" class="bank-logo">`;
+    }
+
 
     card.innerHTML = `
       ${logo}
@@ -2387,6 +1441,27 @@ window.openBankAccount = async function (bank) {
     return;
   }
 
+  // 🟣 PRIVAT
+  if (bank.bankCode === 'privatbank') {
+    try {
+      const res = await fetch(`/api/bank/transactions-privat?id=${bank.id.replace('privat_','')}`);
+      const rows = res.ok ? await res.json() : [];
+
+      state.entries = rows.map(r => ({
+        posting_date: r.date,
+        signed_amount: r.amount,
+        comment: r.comment,
+      }));
+
+      renderEntries();
+      renderEntriesSummary();
+    } catch {
+      elEntries.innerHTML = '<tr><td class="muted">Помилка завантаження</td></tr>';
+    }
+    return;
+  }
+
+
   // 🟡 UKRGAS
   const url =
     bank.bankCode === 'ukrgasbank_sggroup'
@@ -2866,6 +1941,28 @@ function updateExchange(source = 'from'){
   </div>
 </div>
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+<script>
+  window.AUTH_ACTOR = @json(auth()->user()->actor);
+</script>
+
+<script src="{{ asset('js/state.js') }}"></script>
+<script src="{{ asset('js/api.js') }}"></script>
+<script src="{{ asset('js/ui.js') }}"></script>
+<script src="{{ asset('js/stats.js') }}"></script>
+<script src="{{ asset('js/wallet.js') }}"></script>
 
 </body>
 </html>

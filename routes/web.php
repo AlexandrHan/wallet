@@ -390,7 +390,7 @@ $accounts = collect($rows)
         return [
             'id'       => $a['id'],
             'iban'     => $a['iban'],
-            'name'     => $a['name'],
+            'name'     => 'ТОВ "СОЛАР ІНЖЕНІРІНГ"',
             'currency' => $a['currency'],
             'balance'  => (float)$balance,
             'bankCode' => 'ukrgasbank_engineering',
@@ -432,7 +432,7 @@ Route::get('/api/bank/accounts-sggroup', function () {
             return [
                 'id'       => 'sggroup_' . $a['id'], // ⬅️ унікально
                 'iban'     => $a['iban'],
-                'name'     => 'SG Group • ' . $a['name'],
+                'name'     => 'ТОВ "СГ ГРУП"',
                 'currency' => $a['currency'],
                 'balance'  => (float)$balance,
                 'bankCode' => 'ukrgasbank_sggroup',
@@ -443,6 +443,47 @@ Route::get('/api/bank/accounts-sggroup', function () {
 
     return response()->json($accounts);
 });
+
+
+//////////////////////////////////////////////////////////////////////////////////////
+//.               Баланс Приват
+//////////////////////////////////////////////////////////////////////////////////////
+
+Route::get('/api/bank/accounts-privat', function () {
+
+    $token = config('services.privatbank.token');
+    if (!$token) return response()->json([]);
+
+    $response = Http::withToken($token)
+        ->get('https://api.privatbank.ua/p24api/rest_fiz', [
+            'json' => '',
+            'action' => 'balance'
+        ]);
+
+    if (!$response->ok()) {
+        return response()->json([]);
+    }
+
+    $cards = $response->json()['accounts'] ?? [];
+
+    $accounts = collect($cards)
+        ->map(function ($c) {
+
+            return [
+                'id'       => 'privat_' . $c['acc'],
+                'iban'     => null,
+                'name'     => 'ТОВ "СОЛАР ГЛАСС"', // ← твоя компанія
+                'currency' => $c['currency'],
+                'balance'  => (float) $c['balance'],
+                'bankCode' => 'privatbank',
+            ];
+        })
+        ->filter(fn ($a) => abs($a['balance']) > 1)
+        ->values();
+
+    return response()->json($accounts);
+});
+
 
 //////////////////////////////////////////////////////////////////////////////////////
 //.               Баланс монобанк
@@ -474,7 +515,7 @@ Route::get('/api/bank/accounts-monobank', function () {
                 return [
                     'id'       => 'mono_' . $a['id'],
                     'iban'     => $a['iban'],
-                    'name'     => 'ФОП Колісник • Monobank',
+                    'name'     => 'ФОП КОЛІСНИК',
                     'currency' => 'UAH',
                     'balance'  => $a['balance'] / 100,
                     'bankCode' => 'monobank',
@@ -577,6 +618,46 @@ Route::get('/api/bank/transactions-engineering', function (Request $request) {
 
     return response()->json($tx);
 });
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////////////
+//.                транзакції ПРИВАТБАНК СОЛАР ГЛАСС
+//////////////////////////////////////////////////////////////////////////////////////
+
+Route::get('/api/bank/transactions-privat', function (Request $request) {
+
+    $id = $request->query('id');
+    if (!$id) return response()->json([]);
+
+    $token = config('services.privatbank.token');
+
+    $response = Http::withToken($token)
+        ->get('https://api.privatbank.ua/p24api/rest_fiz', [
+            'json' => '',
+            'action' => 'transactions',
+            'card' => $id,
+            'date_from' => now()->subDays(30)->format('d.m.Y'),
+            'date_to' => now()->format('d.m.Y'),
+        ]);
+
+    if (!$response->ok()) return response()->json([]);
+
+    $rows = $response->json()['transactions'] ?? [];
+
+    $tx = collect($rows)->map(function ($r) {
+        return [
+            'date'    => \Carbon\Carbon::createFromFormat('d.m.Y H:i:s', $r['date'])->format('Y-m-d'),
+            'amount'  => (float)$r['amount'],
+            'comment' => $r['description'] ?? '',
+        ];
+    })->sortByDesc('date')->values();
+
+    return response()->json($tx);
+});
+
+
 
 //////////////////////////////////////////////////////////////////////////////////////
 //.                транзакції Монобанк ФОП Колісник

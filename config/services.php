@@ -28,6 +28,11 @@ return [
         'base_url' => 'https://my.ukrgasbank.com',
     ],
 
+    'privatbank' => [
+        'token' => env('PRIVATBANK_TOKEN'),
+    ],
+
+
 
 
     // ✅ ERPNext — ОДИН раз і всередині return
