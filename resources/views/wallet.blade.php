@@ -5,7 +5,8 @@
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <link rel="manifest" href="/manifest.webmanifest">
   <meta name="theme-color" content="#0b0d10">
-  <link rel="stylesheet" href="{{ asset('css/wallet.css') }}">
+  <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+
 
 
   <!-- iOS home screen -->
