@@ -478,6 +478,7 @@ tbody td:last-child{
 .segmented{
   display:flex;
   margin-top:2rem;
+  margin-left: 1rem;
   background:rgba(255,255,255,.08);
   border-radius:999px;
   padding:4px;
