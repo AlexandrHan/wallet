@@ -185,6 +185,26 @@ header{
 
   padding-top: env(safe-area-inset-top);
 }
+header .wrap{
+  display:flex;
+  align-items:center;
+  position:relative;
+}
+
+/* ліва зона вже є — .top-area */
+
+.header-right{
+  margin-left:auto;
+  display:flex;
+  align-items:center;
+}
+
+/* центр поверх layout */
+.header-center{
+  position:absolute;
+  left:50%;
+  transform:translateX(-50%);
+}
 .top-area{  
     width: 100%;
     display: flex;
@@ -210,13 +230,13 @@ header{
 main,
 .content,
 .app{
-  padding-top: calc(8rem + env(safe-area-inset-top));
+  padding-top: calc(6rem + env(safe-area-inset-top));
 }
 
 /* ================== LAYOUT ================== */
 .wrap{max-width:980px; margin:0 auto; padding:18px;}
 .row{display:flex; gap:14px; align-items:center; flex-wrap:wrap;}
-.right{margin-left:auto}
+
 
 /* ================== BURGER ================== */
 .burger-wrap{position:relative}
@@ -225,6 +245,7 @@ main,
 .burger-btn{
   width:40px;
   height:40px;
+  margin-top:1rem;
   border-radius:999px;
   border:1px solid var(--stroke);
   background:rgba(255,255,255,.08);
@@ -456,10 +477,12 @@ tbody td:last-child{
 /* ================== SEGMENTED ================== */
 .segmented{
   display:flex;
+  margin-top:2rem;
   background:rgba(255,255,255,.08);
   border-radius:999px;
   padding:4px;
   border:1px solid var(--stroke);
+  width: 1,5rem;
 }
 .segmented button{
   flex:1;
@@ -1023,20 +1046,19 @@ img{display:block; max-height:48px}
 
     </div>
 
-    <div class="right row">
+<div class="header-right">
+  <span class="tag" id="actorTag" style="display:none"></span>
+</div>
 
-        <span class="tag" id="actorTag" style="display:none"></span>
+@if(auth()->user()->role !== 'accountant')
+<div class="header-center">
+  <div class="segmented">
+    <button type="button" id="view-h" data-owner="hlushchenko">Глущенко</button>
+    <button type="button" id="view-k" data-owner="kolisnyk">Колісник</button>
+  </div>
+</div>
+@endif
 
-
-        @if(auth()->user()->role !== 'accountant')
-        <div class="segmented">
-          <button type="button" id="view-h" data-owner="hlushchenko">Глущенко</button>
-          <button type="button" id="view-k" data-owner="kolisnyk">Колісник</button>
-        </div>
-        @endif
-
-
-    </div>
   </div>
 </header>
 
@@ -1051,9 +1073,9 @@ img{display:block; max-height:48px}
       <button type="button" class="btn " id="addWallet">+</button>
       <button type="button" class="btn" id="refresh">Оновити</button>
 
-      @if(auth()->user()->role !== 'accountant')
-        <span class="tag right rejym" id="viewHint"></span>
-      @endif
+    @if(auth()->user()->role !== 'accountant')
+      <span class="tag right rejym" id="viewHint"></span>
+    @endif
 
     </div>
     <div id="wallets" class="grid"></div>
