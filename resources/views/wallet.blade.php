@@ -276,7 +276,7 @@ main,
 .burger-menu{
   position:absolute;
   right:0;
-  top:62px;
+  top:90px;
   z-index:2000;
 
   min-width:220px;
@@ -294,7 +294,7 @@ main,
   rgba(255,255,255,.08),
   rgba(255,255,255,.02)
   ),
-  rgba(18,18,20,.65);
+  rgba(0, 0, 0, 0.65);
 
   backdrop-filter:blur(12px) saturate(200%);
 
@@ -1042,7 +1042,7 @@ img{display:block; max-height:48px}
 .rate-card.active{
   border:1px solid rgba(102, 242, 167, 0.53);
   background:#4e876900;;
-  box-shadow:0 0 18px rgba(102, 242, 167, 0.53);
+  box-shadow:0 0 8px rgba(102, 242, 167, 0.25);
   transform:translateY(-2px);
 }
 
