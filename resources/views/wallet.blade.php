@@ -269,21 +269,44 @@ main,
 }
 .burger-btn:hover{background:rgba(255,255,255,.14)}
 
+/* =========================================================
+🧊 iOS GLASS POPOVER MENU
+Плаваюче скляне меню як в iOS / Telegram
+========================================================= */
 .burger-menu{
   position:absolute;
   right:0;
-  top:52px;
+  top:62px;
+  z-index:2000;
+
   min-width:220px;
-  background:linear-gradient(180deg, rgba(28,32,45,.9), rgba(0,0,0,1));
-  backdrop-filter: blur(24px);
-  border:1px solid var(--stroke);
-  border-radius:16px;
   padding:8px;
   display:flex;
   flex-direction:column;
   gap:4px;
-  z-index:2000;
+
+  border-radius:16px;
+
+  /* 🔮 Скляна поверхня */
+  background:
+  linear-gradient(
+  to bottom,
+  rgba(255,255,255,.08),
+  rgba(255,255,255,.02)
+  ),
+  rgba(18,18,20,.65);
+
+  backdrop-filter:blur(12px) saturate(200%);
+
+
+  border:1px solid rgba(255,255,255,.14);
+
+  /* Обʼєм */
+  box-shadow:
+  inset 0 1px 0 rgba(255,255,255,.18),
+  0 12px 32px rgba(0,0,0,.45);
 }
+
 .burger-menu.hidden{display:none}
 
 .burger-item{
