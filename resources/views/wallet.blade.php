@@ -170,18 +170,15 @@ header{
   z-index:1000;
 
   /* Прозорий верх → плавний перехід */
-  background:
-    linear-gradient(
-      to bottom,
-      rgba(11,13,16,0) 0%,
-      rgba(11,13,16,0) 15%,
-      rgba(11,13,16,.55) 40%,
-      rgba(11,13,16,.75) 100%
-    );
+background: linear-gradient(
+  to bottom,
+  rgba(11, 16, 12, 0.66) 0%,    /* Верх — найтемніший */
+  rgba(11, 16, 12, 0.49) 35%,   /* Поступове просвітлення */
+  rgba(11, 16, 12, 0.36) 65%,   /* Ще прозоріший */
+  rgba(11, 16, 12, 0) 100%      /* Низ — повністю прозорий */
+);
 
-  backdrop-filter: blur(var(--blur)) saturate(140%);
-  -webkit-backdrop-filter: blur(var(--blur)) saturate(140%);
-  border-bottom:1px solid var(--stroke);
+
 
   padding-top: env(safe-area-inset-top);
 }
@@ -212,8 +209,13 @@ header .wrap{
 }
 .logo img{
   height:48px;
-  width:auto;
-  display:block;
+  width;
+  display;
+
+  /* 🔥 Контурна тінь навколо логотипа */
+  filter:
+  drop-shadow(0 0 6px rgba(0, 0, 0, 0.58))
+  drop-shadow(0 2px 8px rgba(0, 0, 0, 0.7));
 }
 .logo{
   display:flex;
@@ -248,7 +250,18 @@ main,
   margin-top:1rem;
   border-radius:999px;
   border:1px solid var(--stroke);
-  background:rgba(255,255,255,.08);
+  background: rgba(31, 30, 30, 0);
+
+  /* Саме скло */
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+
+  border: 1px solid rgba(255,255,255,.12);
+
+  /* Легкий внутрішній світловий об’єм */
+  box-shadow:
+  inset 0 1px 1px rgba(255,255,255,.12),
+  0 4px 14px rgba(0,0,0,.25);
   color:var(--text);
   font-size:20px;
   cursor:pointer;
@@ -479,12 +492,24 @@ tbody td:last-child{
   display:flex;
   margin-top:2rem;
   margin-left: 1rem;
-  background:rgba(255,255,255,.08);
   border-radius:999px;
   padding:4px;
   border:1px solid var(--stroke);
-  width: 1,5rem;
-}
+
+  /* 🧊 iOS GLASS SURFACE */
+  background: rgba(31, 30, 30, 0);
+
+  /* Саме скло */
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+
+  border: 1px solid rgba(255,255,255,.12);
+
+  /* Легкий внутрішній світловий об’єм */
+  box-shadow:
+  inset 0 1px 1px rgba(255,255,255,.12),
+  0 4px 14px rgba(0,0,0,.25);
+  }
 .segmented button{
   flex:1;
   padding:8px 14px;
@@ -495,7 +520,7 @@ tbody td:last-child{
   font-weight:600;
 }
 .segmented button.active{
-  background:rgba(102,242,167,.6);
+  background:rgba(84, 192, 134, 0.93);
   color:#000;
 }
 
@@ -1005,11 +1030,47 @@ img{display:block; max-height:48px}
   border:1px solid rgba(109,255,76,.4);
 }
 
+/* =========================================================
+   🔧 BACKGROUND FIX (НЕ ЛАМАЄ ІСНУЮЧІ СТИЛІ)
+   Стабілізує фон на iOS / Chrome / WebView
+========================================================= */
+
+/* 1. Окремий шар фону замість body */
+.app-bg{
+  position:fixed;
+  inset:0;
+  z-index:-1;
+
+  background:
+    radial-gradient(1400px 700px at 20% -20%, #1b2450 0%, transparent 60%),
+    radial-gradient(1200px 600px at 90% 10%, #0f3a2a 0%, transparent 55%),
+    linear-gradient(180deg, #0b0d10 0%, #07080c 100%);
+
+  background-repeat:no-repeat;
+  background-size:cover;
+
+  transform:translateZ(0); /* iOS repaint fix */
+}
+
+/* 2. Відключаємо старий глючний механізм */
+body{
+  background:none !important;
+  height:auto !important;
+}
+
+/* 3. html більше не перебиває фон */
+html{
+  background:#0b0d10;
+}
+
+
 </style>
 
 </head>
 
 <body>
+  <div class="app-bg"></div>
+
   <div id="appSplash">
     <div class="splash-logo">
       <img src="/img/holding.png" alt="SolarGlass">
@@ -1751,15 +1812,7 @@ function renderWallets() {
   elWallets.innerHTML = '';
 
   // ================= CASH =================
-  const visible = state.wallets.filter(w => {
-  if (AUTH_USER.role === 'accountant') {
-    return w.owner === 'accountant';
-  }
-
-  // партнери бачать свої + бухгалтера
-  return w.owner === state.viewOwner || w.owner === 'accountant';
-});
-
+  const visible = state.wallets.filter(w => w.owner === state.viewOwner);
 
   visible.forEach(w => {
     const writable = canWriteWallet(w.owner);
