@@ -1677,8 +1677,9 @@ const CURRENCY_SYMBOLS = {
       const cls = signed >= 0 ? 'pos' : 'neg';
       const sign = signed >= 0 ? '+' : '';
 
-const editable = canWriteWallet(state.selectedWallet.owner);
-
+      const editable =
+        isToday(e.posting_date) &&
+        canWriteWallet(state.selectedWallet.owner);
 
       const isActive = state.activeEntryId === e.id;
 
@@ -1750,7 +1751,15 @@ function renderWallets() {
   elWallets.innerHTML = '';
 
   // ================= CASH =================
-  const visible = state.wallets.filter(w => w.owner === state.viewOwner);
+  const visible = state.wallets.filter(w => {
+  if (AUTH_USER.role === 'accountant') {
+    return w.owner === 'accountant';
+  }
+
+  // партнери бачать свої + бухгалтера
+  return w.owner === state.viewOwner || w.owner === 'accountant';
+});
+
 
   visible.forEach(w => {
     const writable = canWriteWallet(w.owner);
@@ -2540,10 +2549,10 @@ async function editEntry(id){
   const entry = state.entries.find(e => e.id === id);
   if (!entry) return;
 
-  // if (!isToday(entry.posting_date)) {
-  //   alert('Можна редагувати лише сьогоднішні операції');
-  //   return;
-  // }
+  if (!isToday(entry.posting_date)) {
+    alert('Можна редагувати лише сьогоднішні операції');
+    return;
+  }
 
   sheetType = entry.signed_amount >= 0 ? 'income' : 'expense';
   applyEntrySheetColor(sheetType);

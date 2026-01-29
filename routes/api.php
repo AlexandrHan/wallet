@@ -237,9 +237,9 @@ Route::put('/entries/{id}', function (Request $request, int $id) {
     }
 
     // ❌ НЕ МОЖНА редагувати не сьогоднішні
-    // if ($entry->posting_date !== date('Y-m-d')) {
-    //     return response('Редагування заборонено', 403);
-    // }
+    if ($entry->posting_date !== date('Y-m-d')) {
+        return response('Редагування заборонено', 403);
+    }
 
     DB::table('entries')->where('id', $id)->update([
         'amount'        => $request->amount,
@@ -259,9 +259,9 @@ Route::delete('/entries/{id}', function (int $id) {
         return response('Not found', 404);
     }
 
-    // if ($entry->posting_date !== date('Y-m-d')) {
-    //     return response('Видалення заборонено', 403);
-    // }
+    if ($entry->posting_date !== date('Y-m-d')) {
+        return response('Видалення заборонено', 403);
+    }
 
     DB::table('entries')->where('id', $id)->delete();
 
