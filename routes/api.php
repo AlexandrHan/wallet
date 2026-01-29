@@ -216,7 +216,7 @@ Route::delete('/entries/{id}', function (int $id) {
         return response()->json(['message' => 'Entry not found'], 404);
     }
 
-    // ❌ Заборона видалення не сьогоднішніх
+    // /////❌ Заборона видалення не сьогоднішніх
     if ($entry->posting_date !== now()->toDateString()) {
         return response()->json([
             'message' => 'Видалення дозволено тільки в день створення'
@@ -237,9 +237,9 @@ Route::put('/entries/{id}', function (Request $request, int $id) {
     }
 
     // ❌ НЕ МОЖНА редагувати не сьогоднішні
-    if ($entry->posting_date !== date('Y-m-d')) {
-        return response('Редагування заборонено', 403);
-    }
+    // if ($entry->posting_date !== date('Y-m-d')) {
+    //     return response('Редагування заборонено', 403);
+    // }
 
     DB::table('entries')->where('id', $id)->update([
         'amount'        => $request->amount,
@@ -249,7 +249,8 @@ Route::put('/entries/{id}', function (Request $request, int $id) {
     ]);
 
     return ['ok' => true];
-});
+}); 
+
 
 Route::delete('/entries/{id}', function (int $id) {
 
@@ -258,9 +259,9 @@ Route::delete('/entries/{id}', function (int $id) {
         return response('Not found', 404);
     }
 
-    if ($entry->posting_date !== date('Y-m-d')) {
-        return response('Видалення заборонено', 403);
-    }
+    // if ($entry->posting_date !== date('Y-m-d')) {
+    //     return response('Видалення заборонено', 403);
+    // }
 
     DB::table('entries')->where('id', $id)->delete();
 

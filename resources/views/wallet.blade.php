@@ -1677,9 +1677,8 @@ const CURRENCY_SYMBOLS = {
       const cls = signed >= 0 ? 'pos' : 'neg';
       const sign = signed >= 0 ? '+' : '';
 
-      const editable =
-        isToday(e.posting_date) &&
-        canWriteWallet(state.selectedWallet.owner);
+const editable = canWriteWallet(state.selectedWallet.owner);
+
 
       const isActive = state.activeEntryId === e.id;
 
@@ -2541,10 +2540,10 @@ async function editEntry(id){
   const entry = state.entries.find(e => e.id === id);
   if (!entry) return;
 
-  if (!isToday(entry.posting_date)) {
-    alert('Можна редагувати лише сьогоднішні операції');
-    return;
-  }
+  // if (!isToday(entry.posting_date)) {
+  //   alert('Можна редагувати лише сьогоднішні операції');
+  //   return;
+  // }
 
   sheetType = entry.signed_amount >= 0 ? 'income' : 'expense';
   applyEntrySheetColor(sheetType);
