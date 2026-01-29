@@ -436,7 +436,7 @@ main,
 
   font-size: 32px;
   font-weight: 700;
-
+  box-shadow:0 0 6px rgba(25, 151, 0, 0.5);
   backdrop-filter: blur(8px);
   background: rgba(255,255,255,.08);
   border: 1px solid var(--stroke);
@@ -465,9 +465,17 @@ main,
 table{width:100%; border-collapse:separate; border-spacing:0 10px;table-layout:fixed;}
 thead{display:none}
 tbody tr{
-  background:var(--panel);
-  backdrop-filter: blur(var(--blur));
-  border:1px solid var(--stroke);
+/* 🔮 Скляна поверхня */
+  background:
+  linear-gradient(
+  to bottom,
+  rgba(255,255,255,.08),
+  rgba(255,255,255,.02)
+  ),
+  rgba(18,18,20,.65);
+  backdrop-filter(22px) saturate(160%);
+  -webkit-backdrop-filter(22px) saturate(160%);
+  border:1px solid rgba(255,255,255,.14);
 }
 tbody td{padding:14px; font-size:14px;}
 table{
@@ -514,7 +522,7 @@ tbody td:last-child{
 .segmented{
   display:flex;
   margin-top:2rem;
-  margin-left: 1rem;
+  margin-left: 1.5rem;
   border-radius:999px;
   padding:4px;
   border:1px solid var(--stroke);
