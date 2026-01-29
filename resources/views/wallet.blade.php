@@ -172,7 +172,7 @@ header{
   /* Прозорий верх → плавний перехід */
 background: linear-gradient(
   to bottom,
-  rgba(11, 16, 12, 0.66) 0%,    /* Верх — найтемніший */
+  rgba(11, 16, 12, 0.88) 0%,    /* Верх — найтемніший */
   rgba(11, 16, 12, 0.49) 35%,   /* Поступове просвітлення */
   rgba(11, 16, 12, 0.36) 65%,   /* Ще прозоріший */
   rgba(11, 16, 12, 0) 100%      /* Низ — повністю прозорий */
@@ -333,7 +333,7 @@ main,
 .burger-item:hover{background:rgba(255,255,255,.1)}
 .burger-item.danger{color:var(--red)}
 
-.userName{color:var(--green)}
+.userName{color:#fff}
 
 /* ================== BUTTONS ================== */
 .btn{
@@ -864,18 +864,33 @@ img{display:block; max-height:48px}
   z-index:3000;
 }
 
+/* =========================================================
+🧊 iOS GLASS MODAL SHEET
+Живе скло, не окремий темний екран
+========================================================= */
 .modal-panel{
   position:fixed;
   left:0;
   right:0;
   bottom:0;
-  background:radial-gradient(1400px 700px at 20% -20%, #1b2450 0%, transparent 60%),
-    radial-gradient(1200px 600px at 90% 10%, #0f3a2a 0%, transparent 55%),
-    linear-gradient(180deg, #0b0d10 0%, #07080c 100%);
-  backdrop-filter:blur(30px);
-  border-radius:24px 24px 0 0;
-  padding:16px 18px 24px;
   z-index:3001;
+
+  padding:16px 18px 24px;
+  border-radius:24px 24px 0 0;
+
+  /* 🔮 Скляна поверхня */
+
+
+  backdrop-filter:blur(24px) saturate(160%);
+  -webkit-backdrop-filter:blur(24px) saturate(160%);
+
+  border:1px solid rgba(255,255,255,.12);
+
+  /* Світло зверху + глибина знизу */
+  box-shadow:
+  inset 0 1px 0 rgba(255,255,255,.15),
+  0 -8px 30px rgba(0,0,0,.45);
+
   animation:sheetUp .25s ease;
 }
 
@@ -922,12 +937,15 @@ img{display:block; max-height:48px}
   line-height:1.5;
 }
 
-.rate-card{
-  background:rgba(255,255,255,.05);
+.rate-card{  
+  background: linear-gradient(180deg, rgba(255, 255, 255, .12), rgba(255, 255, 255, .02));
+  backdrop-filter: blur(var(--blur));
   border:1px solid var(--stroke);
   border-radius:14px;
   padding:12px;
   margin-bottom:10px;
+  margin-top:1rem;
+  transition:.2s;
 }
 
 
@@ -998,15 +1016,10 @@ img{display:block; max-height:48px}
   overflow:auto;
 }
 
-.rate-card{
-  transition:.2s;
-  margin-top:1rem;
-}
-
 .rate-card.active{
-  border:1px solid #6dff4c;
-  background:rgba(76,125,255,.12);
-  box-shadow:0 0 18px rgba(207, 255, 76, 0.35);
+  border:1px solid rgba(102, 242, 167, 0.53);
+  background:#4e876900;;
+  box-shadow:0 0 18px rgba(102, 242, 167, 0.53);
   transform:translateY(-2px);
 }
 
