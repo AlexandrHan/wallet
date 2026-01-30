@@ -369,8 +369,8 @@ main,
   transition:.2s ease;
 }
 .btn:hover{background:rgba(255,255,255,.14)}
-.btn.primary{background:rgba(76,125,255,.22); border-color:rgba(76,125,255,.6);}
-.btn.danger{background:rgba(255,107,107,.22); border-color:rgba(255,107,107,.55);}
+.btn.primary{background:rgba(84, 192, 134, 0.71); border-color:rgba(158, 158, 158, 0.6);}
+.btn.danger{background:#ff001aad; border-color:rgba(158, 158, 158, 0.6);}
 .btn.mini{padding:6px 10px; font-size:16px; border-radius:19px;}
 .btn:disabled{opacity:.4}
 .tag{
@@ -387,7 +387,7 @@ main,
 .muted{color:#fff; font-size:14px; font-weight:600}
 .big{font-size:26px; font-weight:700}
 .pos{color:var(--green)}
-.neg{color:var(--red)}
+.neg{color:#ff001aad}
 
 /* ================== CARDS ================== */
 .grid{
