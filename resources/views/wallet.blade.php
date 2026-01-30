@@ -427,23 +427,27 @@ main,
 /* ===== Currency icons ===== */
 
 .currency-icon {
-  width: 2.8rem;
-  height: 2.8rem;
-  border-radius: 10px;
-  margin-left: auto;
-  margin-top: 0.5rem;
+  position:absolute;
+  top:34px;
+  right:14px;
 
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width:2.8rem;
+  height:2.8rem;
 
-  font-size: 32px;
-  font-weight: 700;
-  box-shadow:0 0 6px rgba(25, 151, 0, 0.5);
-  backdrop-filter: blur(8px);
-  background: rgba(255,255,255,.08);
-  border: 1px solid var(--stroke);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+
+  font-size:32px;
+  font-weight:700;
+
+  border-radius:10px;
+  box-shadow:0 0 6px rgba(25,151,0,.5);
+  backdrop-filter:blur(8px);
+  background:rgba(255,255,255,.08);
+  border:1px solid var(--stroke);
 }
+
 
 /* UAH */
 .currency-UAH {
@@ -628,24 +632,6 @@ tbody td:last-child{
     color: #000;
 }
 img{display:block; max-height:48px}
-
-
-
-/* ===== Entry cell ===== */
-/* .entry-type {
-  width:36px;
-  text-align:center;
-  position:relative;
-}
-
-.entry-icon {
-  font-size:18px;
-  cursor:pointer;
-  user-select:none;
-} */
-
-/* .entry-icon.income { color: var(--green); }
-.entry-icon.expense { color: var(--red); }*/
 
 
 /* ===== SUMMARY ===== */
@@ -1126,6 +1112,83 @@ html{
   font-weight:700;
   letter-spacing:.3px;
 }
+
+/* ================= ACCOUNT CARDS (MOBILE FIRST) ================= */
+
+/* 📱 MOBILE */
+.account-card-ui{
+  padding:14px 16px;
+  border-radius:18px;
+  min-height:120px;
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+  position:relative;
+}
+
+.account-name{
+  font-size:15px;
+  font-weight:700;
+}
+
+.account-balance{
+  font-size:20px;
+  font-weight:800;
+}
+
+.account-type{
+  font-size:11px;
+  opacity:.6;
+}
+
+/* 💻 DESKTOP UPGRADE */
+@media (min-width:1100px){
+
+  .grid{
+    grid-template-columns:repeat(auto-fill,minmax(380px,1fr));
+    gap:26px;
+  }
+
+  .account-card-ui{
+    padding:24px 26px;
+    border-radius:22px;
+    min-height:250px;
+  }
+
+  .account-name{
+    font-size:20px;
+  }
+
+  .account-balance{
+    font-size:30px;
+  }
+}
+
+/* ===== HIDE SCROLLBAR (MOBILE APP STYLE) ===== */
+@media (max-width: 768px){
+
+  html, body {
+    scrollbar-width: none;        /* Firefox */
+    -ms-overflow-style: none;     /* IE/Edge */
+  }
+
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar {
+    display: none;                /* Chrome / Safari / iOS */
+  }
+
+}
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1881,48 +1944,52 @@ function renderWallets() {
 
   elWallets.innerHTML = '';
 
-  // ================= CASH =================
-  const visible = state.wallets.filter(w => w.owner === state.viewOwner);
+// ================= CASH =================
+const visible = state.wallets.filter(w => w.owner === state.viewOwner);
 
-  visible.forEach(w => {
-    const writable = canWriteWallet(w.owner);
+visible.forEach(w => {
+  const writable = canWriteWallet(w.owner);
+  const bal = Number(w.balance || 0);
+  const balCls = bal >= 0 ? 'pos' : 'neg';
 
-    const card = document.createElement('div');
-    card.className = 'card' + (writable ? '' : ' ro');
-    card.addEventListener('click', () => loadEntries(w.id));
+  const card = document.createElement('div');
+  card.className = `card account-card account-card-ui account-cash ${writable ? '' : 'ro'}`;
+  card.dataset.accountId = w.id;
+  card.onclick = () => loadEntries(w.id);
 
-    const bal = Number(w.balance || 0);
-    const balCls = bal >= 0 ? 'pos' : 'neg';
+  card.innerHTML = `
+    <div class="account-top">
+      <div class="account-currency">${w.currency}</div>
+      ${renderCurrencyIcon(w.currency)}
+    </div>
 
-    card.classList.add('account-card', 'cash-account');
-    card.dataset.accountId = w.id;
+    <div class="account-name">${w.name}</div>
 
-    card.innerHTML = `
-      <div class="card-top">
-        ${renderCurrencyIcon(w.currency)}
-      </div>
+    <div class="account-balance ${balCls}">
+      ${fmt(bal)} ${w.currency}
+    </div>
 
-      <div style="margin-top:-4rem;font-weight:800;">${w.name}</div>
-      <div class="big ${balCls}" style="margin-top:10px;">
-        ${fmt(bal)} ${w.currency}
-      </div>
-      <div class="muted">Cash account</div>
+    <div class="account-type">Cash account</div>
 
-      <div class="pirate-overlay">
-        <div class="pirate-skull">☠️</div>
-        <div class="pirate-text"></div>
-      </div>
-    `;
+    <div class="pirate-overlay">
+      <div class="pirate-skull">☠️</div>
+      <div class="pirate-text"></div>
+    </div>
+  `;
 
-    elWallets.appendChild(card);
-  });
+  elWallets.appendChild(card);
+});
+
+
 
   // ================= BANK =================
   const visibleBanks = state.bankAccounts;
 
   visibleBanks.forEach(bank => {
     const card = document.createElement('div');
-    card.className = 'card ro';
+    card.className = 'card account-card-ui account-bank ro';
+
+
     card.style.position = 'relative';
 
     let logo = '';
@@ -1937,18 +2004,21 @@ function renderWallets() {
     }
 
 
-    card.innerHTML = `
-      ${logo}
-      <div class="card-top">
-        <div class="muted">${bank.currency}</div>
-      </div>
+card.innerHTML = `
+  <div class="account-top">
+    <div class="account-currency">${bank.currency}</div>
+    ${logo}
+  </div>
 
-      <div style="margin-top:6px;font-weight:800;">${bank.name}</div>
-      <div class="big ${bank.balance >= 0 ? 'pos' : 'neg'}">
-        ${fmt(bank.balance)} ${bank.currency}
-      </div>
-      <div class="muted">Bank account</div>
-    `;
+  <div class="account-name">${bank.name}</div>
+
+  <div class="account-balance ${bank.balance >= 0 ? 'pos' : 'neg'}">
+    ${fmt(bank.balance)} ${bank.currency}
+  </div>
+
+  <div class="account-type">Bank account</div>
+`;
+
 
     card.onclick = () => openBankAccount(bank);
     elWallets.appendChild(card);
