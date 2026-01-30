@@ -1180,6 +1180,53 @@ html{
 }
 
 
+/* ================= DESKTOP MODAL ================= */
+@media (min-width: 900px){
+
+  .modal-panel{
+    top:50%;
+    left:50%;
+    right:auto;
+    bottom:auto;
+
+    transform:translate(-50%, -50%);
+    width:520px;
+    max-height:80vh;
+
+    border-radius:22px;
+    padding:22px 26px;
+
+    backdrop-filter:blur(32px) saturate(160%);
+    -webkit-backdrop-filter:blur(32px) saturate(160%);
+
+    box-shadow:
+      0 30px 80px rgba(0,0,0,.6),
+      inset 0 1px 0 rgba(255,255,255,.15);
+
+    animation:fadeScale .25s ease;
+  }
+
+  .modal-body{
+    max-height:55vh;
+    overflow:auto;
+    padding-right:6px;
+  }
+
+  .modal-title{
+    margin-top:0;
+    font-size:20px;
+  }
+
+  .modal-handle{
+    display:none;
+  }
+}
+
+/* плавна поява */
+@keyframes fadeScale{
+  from{opacity:0; transform:translate(-50%,-45%) scale(.96)}
+  to{opacity:1; transform:translate(-50%,-50%) scale(1)}
+}
 
 
 
@@ -1222,9 +1269,9 @@ html{
 
         <div id="burgerMenu" class="burger-menu hidden">
             <a href="/profile" class="burger-item">🔐 Адмінка / пароль</a>
-            <div class="menu-item burger-item" onclick="openStaffCash()">
-              👥 КЕШ співробітників
-            </div>
+        <div id="staffCashBtn" class="menu-item burger-item hidden" onclick="openStaffCash()">
+          👥 КЕШ співробітників
+        </div>
 
 
         <div class="burger-actions">
@@ -1442,6 +1489,12 @@ html{
 
 
 const AUTH_USER  = @json(auth()->user());
+document.addEventListener('DOMContentLoaded', () => {
+  if (AUTH_USER.role === 'owner') {
+    document.getElementById('staffCashBtn')?.classList.remove('hidden');
+  }
+});
+
 const AUTH_ACTOR = AUTH_USER.actor; // ← ПОВЕРНУЛИ
 
 if (AUTH_USER.role !== 'accountant' && !AUTH_ACTOR) {
@@ -1544,6 +1597,11 @@ function checkOnline() {
 
   const btnViewK = document.getElementById('view-k');
   const btnViewH = document.getElementById('view-h');
+  if (AUTH_USER.role !== 'owner') {
+  btnViewK?.classList.add('hidden');
+  btnViewH?.classList.add('hidden');
+}
+
   const IS_ACCOUNTANT = AUTH_USER.role === 'accountant';
 
 
@@ -1945,7 +2003,21 @@ function renderWallets() {
   elWallets.innerHTML = '';
 
 // ================= CASH =================
-const visible = state.wallets.filter(w => w.owner === state.viewOwner);
+let visible;
+
+if (AUTH_USER.role === 'accountant') {
+  // бухгалтер НЕ тут, його кеші у модалці
+  visible = state.wallets.filter(w => w.owner === state.viewOwner);
+
+} else if (AUTH_USER.role === 'worker') {
+  // прораб бачить ТІЛЬКИ свій кеш
+  visible = state.wallets.filter(w => w.owner === AUTH_USER.actor);
+
+} else {
+  // owner / партнер — як було
+  visible = state.wallets.filter(w => w.owner === state.viewOwner);
+}
+
 
 visible.forEach(w => {
   const writable = canWriteWallet(w.owner);
@@ -1983,7 +2055,9 @@ visible.forEach(w => {
 
 
   // ================= BANK =================
-  const visibleBanks = state.bankAccounts;
+  const visibleBanks = (AUTH_USER.role === 'worker') ? [] : state.bankAccounts;
+
+
 
   visibleBanks.forEach(bank => {
     const card = document.createElement('div');
@@ -2787,8 +2861,11 @@ document.addEventListener('click', () => {
 
 <script>
   function initPirateDelete(){
-  document.querySelectorAll('.cash-account').forEach(card => {
+  document.querySelectorAll('.account-card.account-cash').forEach(card => {
+
     if (card._pirateBound) return;
+    if (card.classList.contains('ro')) return;
+
     card._pirateBound = true;
 
     let pressTimer = null;
@@ -2860,32 +2937,52 @@ document.addEventListener('click', () => {
 
 
 
-    skull.onclick = (e) => {
-      e.stopPropagation();
+skull.onclick = (e) => {
+  e.stopPropagation();
 
-   if (stage === 1) {
-  stage = 2;
-  card.classList.remove('stage-1');
-  card.classList.add('stage-2');
-  
-  // Очистити та додати два рядки
-  text.innerHTML = '';
-  const line1 = document.createElement('span');
-  line1.textContent = 'Ти гарно подумав?';
-  const lineBreak = document.createElement('br');
-  const line2 = document.createElement('span');
-  line2.textContent = 'Відновлення буде не можливе.';
-  
-  text.append(line1, lineBreak, line2);
-  return;
-}
+  // STAGE 1 → STAGE 2 (попередження)
+  if (stage === 1) {
+    stage = 2;
+    card.classList.remove('stage-1');
+    card.classList.add('stage-2');
 
+    text.innerHTML = `
+      Ти гарно подумав?<br>
+      Відновлення буде неможливе.
+    `;
+    return;
+  }
+
+      // STAGE 2 → STAGE 3 (таймер 10 сек)
       if (stage === 2) {
+        stage = 3;
+        let seconds = 10;
+
+        card.classList.add('stage-3');
+        skull.style.pointerEvents = 'none';
+
+        const countdown = setInterval(() => {
+          text.innerHTML = `Зачекай ${seconds} сек...<br>Після цього можна видалити`;
+          seconds--;
+
+          if (seconds < 0) {
+            clearInterval(countdown);
+            stage = 4;
+            skull.style.pointerEvents = 'auto';
+            text.innerHTML = 'Тепер можна видалити ☠️';
+          }
+        }, 1000);
+
+        return;
+      }
+
+      // STAGE 4 → ВИДАЛЕННЯ
+      if (stage === 4) {
         deleteAccount(card);
         reset();
       }
-
     };
+
   });
 }
 
@@ -3132,27 +3229,38 @@ function updateExchange(source = 'from'){
 // ВІДКРИТТЯ МОДАЛКИ
 window.openStaffCash = function () {
 
-  const staffWallets = state.wallets.filter(w => w.owner === 'accountant');
+  const staffWallets = state.wallets.filter(w =>
+    w.owner === 'accountant' || w.owner === 'foreman'
+  );
+
   const list = document.getElementById('staffCashList');
 
-  list.innerHTML = staffWallets.map(w => `
-    <div class="rate-card" onclick="openStaffWallet(${w.id})">
+  list.innerHTML = staffWallets.map(w => {
 
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <div class="rate-title">${w.name}</div>
-        <div class="staff-badge">Бухгалтер</div>
+    const badge =
+      w.owner === 'accountant'
+        ? '<div class="staff-badge">Бухгалтер</div>'
+        : '<div class="staff-badge" style="background:rgba(76,125,255,.15);border-color:rgba(76,125,255,.35);color:#4c7dff">Прораб</div>';
+
+    return `
+      <div class="rate-card" onclick="openStaffWallet(${w.id})">
+
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div class="rate-title">${w.name}</div>
+          ${badge}
+        </div>
+
+        <div style="margin-top:6px;font-size:16px;font-weight:700;">
+          ${Number(w.balance).toFixed(2)} ${w.currency}
+        </div>
+
       </div>
-
-      <div style="margin-top:6px;font-size:16px;font-weight:700;">
-        ${Number(w.balance).toFixed(2)} ${w.currency}
-      </div>
-
-    </div>
-  `).join('');
-
+    `;
+  }).join('');
 
   document.getElementById('staffCashModal').classList.remove('hidden');
 }
+
 
 
 // ЗАКРИТТЯ
