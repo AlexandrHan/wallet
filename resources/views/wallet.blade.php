@@ -321,6 +321,7 @@ main,
   font-size:14px;
   font-weight:600;
 }
+
 .burger-menu{
   display:flex;
   flex-direction:column;
@@ -392,10 +393,12 @@ main,
 /* ================== CARDS ================== */
 .grid{
   display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
-  gap:16px;
-  margin-top:16px;
+  grid-template-columns:repeat(auto-fill,minmax(360px,1fr));
+  gap:22px;
+  margin-top:22px;
+  align-items:stretch;
 }
+
 
 .card{
   background:linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,.02));
@@ -939,16 +942,18 @@ img{display:block; max-height:48px}
 }
 
 .modal-header{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
   margin-bottom:12px;
 }
 
 .modal-title{
+  margin-top: 2rem;
   text-align:center;
   font-weight:700;
   font-size:18px;
+}
+
+.modal-cash{
+  margin-bottom:2rem;
 }
 
 .modal-close{
@@ -1107,6 +1112,23 @@ html{
   background:#0b0d10;
 }
 
+.wallet-card--accountant {
+  background: linear-gradient(135deg, #2a2f36, #1c2127);
+  border: 1px dashed rgba(255,255,255,0.15);
+}
+.staff-badge{
+  font-size:11px;
+  padding:4px 8px;
+  border-radius:999px;
+  background:rgba(102,242,168,.15);
+  border:1px solid rgba(102,242,168,.35);
+  color:#66f2a8;
+  font-weight:700;
+  letter-spacing:.3px;
+}
+
+
+
 
 </style>
 
@@ -1137,15 +1159,19 @@ html{
 
         <div id="burgerMenu" class="burger-menu hidden">
             <a href="/profile" class="burger-item">🔐 Адмінка / пароль</a>
+            <div class="menu-item burger-item" onclick="openStaffCash()">
+              👥 КЕШ співробітників
+            </div>
 
-<div class="burger-actions">
-  <button id="showRatesBtn" type="button" class="burger-item">💱 Обмінник</button>
 
-  <form method="POST" action="{{ route('logout') }}">
-    @csrf
-    <button type="submit" class="burger-item danger">🚪 Вийти</button>
-  </form>
-</div>
+        <div class="burger-actions">
+          <button id="showRatesBtn" type="button" class="burger-item">💱 Обмінник</button>
+
+          <form method="POST" action="{{ route('logout') }}">
+            @csrf
+            <button type="submit" class="burger-item danger">🚪 Вийти</button>
+          </form>
+        </div>
 
         </div>
         </div>
@@ -2841,7 +2867,7 @@ function renderRatesModal(data){
   const modal = document.getElementById('ratesModal');
   const body  = document.getElementById('ratesContent');
 
-  body.innerHTML = `<div style="opacity:.7;margin-bottom:10px">📅 ${data.date}</div>`;
+  body.innerHTML = `<div style="text-align:center; font-size:18px;font-weight:bold;opacity:.7;margin-bottom:10px">📅 ${data.date}</div>`;
 
   data.rates.forEach(r => {
     body.innerHTML += `
@@ -3030,13 +3056,125 @@ function updateExchange(source = 'from'){
   }
 }
 
+//////////////////////////////////////////////////////////////////////////////////////
+// КЕШ співробітників — МОДАЛКА
+//////////////////////////////////////////////////////////////////////////////////////
+// ВІДКРИТТЯ МОДАЛКИ
+window.openStaffCash = function () {
+
+  const staffWallets = state.wallets.filter(w => w.owner === 'accountant');
+  const list = document.getElementById('staffCashList');
+
+  list.innerHTML = staffWallets.map(w => `
+    <div class="rate-card" onclick="openStaffWallet(${w.id})">
+
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div class="rate-title">${w.name}</div>
+        <div class="staff-badge">Бухгалтер</div>
+      </div>
+
+      <div style="margin-top:6px;font-size:16px;font-weight:700;">
+        ${Number(w.balance).toFixed(2)} ${w.currency}
+      </div>
+
+    </div>
+  `).join('');
 
 
+  document.getElementById('staffCashModal').classList.remove('hidden');
+}
+
+
+// ЗАКРИТТЯ
+window.closeStaffCash = function(){
+  document.getElementById('staffCashModal').classList.add('hidden');
+}
+
+
+// ВІДКРИТТЯ РАХУНКУ
+window.openStaffWallet = async function(walletId){
+  closeStaffCash();
+  await loadEntries(walletId);
+}
+
+
+
+
+
+document.addEventListener('DOMContentLoaded', () => {
+
+  const staffPanel = document.querySelector('#staffCashModal .modal-panel');
+  if (!staffPanel) return;
+
+  let startY = 0;
+  let currentY = 0;
+  let dragging = false;
+
+  staffPanel.addEventListener('touchstart', e => {
+    startY = e.touches[0].clientY;
+    dragging = true;
+  });
+
+  staffPanel.addEventListener('touchmove', e => {
+    if (!dragging) return;
+    currentY = e.touches[0].clientY;
+    const diff = currentY - startY;
+
+    if (diff > 0) {
+      staffPanel.style.transform = `translateY(${diff}px)`;
+    }
+  });
+
+  staffPanel.addEventListener('touchend', () => {
+    dragging = false;
+    const diff = currentY - startY;
+
+    if (diff > 120) closeStaffCash();
+
+    staffPanel.style.transform = '';
+  });
+
+});
 
 
 
 
 </script>
+
+<div id="staffCashModal" class="modal hidden">
+
+  <div class="modal-backdrop" onclick="closeStaffCash()"></div>
+
+  <div class="modal-panel">
+
+    <div class="modal-handle"></div>
+
+    <div class="modal-header">
+      <div class="modal-title modal-cash">Кеш співробітників</div>
+   
+    </div>
+
+    <div class="modal-body" id="staffCashList">
+      <!-- Сюди підтягуються рахунки -->
+    </div>
+
+  </div>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 <!-- Exchange Rates Modal -->
 <div id="ratesModal" class="modal hidden">
   <div class="modal-backdrop"></div>
