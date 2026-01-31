@@ -524,6 +524,21 @@ tbody td:last-child{
 }
 
 
+.receipt-btn{
+  all: unset;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:34px;
+  height:34px;
+  border-radius:999px;
+  margin-top:6px;
+
+  background: rgba(255,255,255,0.06);
+  backdrop-filter: blur(8px);
+  cursor:pointer;
+}
+.receipt-btn:active{ transform: scale(.94); }
 
 /* ================== SEGMENTED ================== */
 .segmented{
@@ -1459,6 +1474,20 @@ html{
     <select id="sheetCategory"></select>
 
     <input id="sheetComment" placeholder="Коментар" />
+    <div class="row" style="gap:10px; align-items:center; justify-content:flex-start; margin:10px 0;">
+      <button type="button" id="receiptBtn" class="btn mini" title="Додати чек">📷</button>
+
+      <span id="receiptBadge" class="tag hidden" style="background:rgba(76,125,255,.18); border-color:rgba(76,125,255,.35);">
+        📎 Є фото
+      </span>
+    </div>
+
+    <div id="receiptPreview" class="hidden" style="margin-bottom:10px;">
+      <img id="receiptImg" src="" alt="receipt" style="width:88px;height:88px;border-radius:16px;object-fit:cover;border:1px solid var(--stroke);">
+    </div>
+
+    <input id="receiptInput" type="file" accept="image/*" capture="environment" class="hidden">
+
 
     <button type="button" id="sheetConfirm" class="btn primary">Зберегти</button>
   </div>
@@ -1512,6 +1541,9 @@ if (AUTH_USER.role !== 'accountant' && !AUTH_ACTOR) {
     selectedWallet: null,
     entries: [],
     activeEntryId: null,
+    pendingReceiptFile: null,
+    pendingReceiptUrl: null,
+
 
 
     // для 2-крокового видалення
@@ -1608,11 +1640,27 @@ function checkOnline() {
   const btnAddWallet = document.getElementById('addWallet');
 
   // Sheet entry
-  const sheetEntry = document.getElementById('sheetEntry');
+
   const sheetEntryTitle = document.getElementById('sheetEntryTitle');
   const sheetAmount = document.getElementById('sheetAmount');
   const sheetComment = document.getElementById('sheetComment');
   const sheetConfirm = document.getElementById('sheetConfirm');
+  // закриття по кліку на бекдроп
+  sheetEntry.querySelector('.sheet-backdrop').onclick = closeEntrySheet;
+
+  // кнопка "Зберегти" в модалці операції
+  sheetConfirm.onclick = async () => {
+    const amount = Number(sheetAmount.value);
+
+    if (!amount || amount <= 0) {
+      alert('Введи суму більше 0');
+      return;
+    }
+
+    const ok = await submitEntry(sheetType, amount, sheetComment.value);
+    if (ok) closeEntrySheet();
+  };
+
   let sheetType = null;
 
   // Sheet wallet
@@ -1620,6 +1668,42 @@ function checkOnline() {
   const walletName = document.getElementById('walletName');
   const walletCurrency = document.getElementById('walletCurrency');
   const walletConfirm = document.getElementById('walletConfirm');
+  const receiptBtn = document.getElementById('receiptBtn');
+  const receiptInput = document.getElementById('receiptInput');
+  const receiptBadge = document.getElementById('receiptBadge');
+  const receiptPreview = document.getElementById('receiptPreview');
+  const receiptImg = document.getElementById('receiptImg');
+
+  function resetReceiptUI(){
+    if (state.pendingReceiptUrl) URL.revokeObjectURL(state.pendingReceiptUrl);
+    state.pendingReceiptUrl = null;
+    state.pendingReceiptFile = null;
+
+    receiptBadge?.classList.add('hidden');
+    receiptPreview?.classList.add('hidden');
+    if (receiptImg) receiptImg.src = '';
+    if (receiptInput) receiptInput.value = '';
+  }
+
+  receiptBtn?.addEventListener('click', () => {
+    receiptInput?.click();
+  });
+
+  receiptInput?.addEventListener('change', () => {
+    const file = receiptInput.files?.[0];
+    if (!file) return;
+
+    // тільки 1 фото (бо у тебе 1 поле receipt_path)
+    resetReceiptUI();
+
+    state.pendingReceiptFile = file;
+    state.pendingReceiptUrl = URL.createObjectURL(file);
+
+    if (receiptImg) receiptImg.src = state.pendingReceiptUrl;
+    receiptBadge?.classList.remove('hidden');
+    receiptPreview?.classList.remove('hidden');
+  });
+
 
   // категорії в коментарях
   const CATEGORIES = {
@@ -1957,6 +2041,12 @@ const CURRENCY_SYMBOLS = {
 
         <td class="entry-comment">
           ${renderComment(e.comment)}
+
+          ${e.receipt_url ? `
+            <button class="receipt-btn" onclick="openReceipt('${e.receipt_url}'); event.stopPropagation()">
+              📎
+            </button>
+        ` : ''}
 
           ${editable ? `
             <div class="entry-actions">
@@ -2393,6 +2483,8 @@ function openEntrySheet(type){
   sheetCategory.value = '';
 
   sheetEntry.classList.remove('hidden');
+  resetReceiptUI();
+
 }
 
 
@@ -2405,6 +2497,8 @@ function closeEntrySheet(){
   sheetType = null;
   state.editingEntryId = null;
   sheetEntry.classList.remove('entry-income', 'entry-expense');
+  resetReceiptUI();
+
 }
 
 
@@ -2413,7 +2507,7 @@ function closeEntrySheet(){
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 async function submitEntry(entry_type, amount, comment){
-  if (!checkOnline()) return;
+  if (!checkOnline()) return false;
 
   const finalComment = sheetCategory.value
     ? `[${sheetCategory.value}] ${comment || ''}`
@@ -2440,7 +2534,8 @@ async function submitEntry(entry_type, amount, comment){
     method,
     headers: {
       'Content-Type': 'application/json',
-      'X-CSRF-TOKEN': CSRF
+      'X-CSRF-TOKEN': CSRF,
+      'Accept': 'application/json',
     },
     body: JSON.stringify(payload)
   });
@@ -2451,6 +2546,46 @@ async function submitEntry(entry_type, amount, comment){
     return false;
   }
 
+  // 1) Витягуємо id створеної операції (тільки для POST)
+  let createdId = null;
+  if (!isEdit) {
+    try {
+      const data = await res.json();
+      createdId = data?.id ?? data?.entry?.id ?? null;
+    } catch (e) {
+      // якщо бек повернув не JSON — тоді createdId буде null
+    }
+  }
+
+  // 2) Якщо є фото і це нова операція — завантажуємо чек
+  if (!isEdit && state.pendingReceiptFile) {
+
+    if (!createdId) {
+      alert('Операцію створено, але сервер не повернув id. Треба щоб POST /api/entries повертав JSON {id: ...}.');
+      // не валимо всю операцію, просто без фото
+    } else {
+      const form = new FormData();
+      form.append('file', state.pendingReceiptFile);
+
+      const up = await fetch(`/api/entries/${createdId}/receipt`, {
+        method: 'POST',
+        headers: {
+          'X-CSRF-TOKEN': CSRF,
+          'Accept': 'application/json',
+        },
+        body: form
+      });
+
+      if (!up.ok) {
+        const txt = await up.text();
+        alert('Чек не завантажився: ' + (txt || up.status));
+        // операцію не відміняємо, просто фото не прикріпилось
+      } else {
+        resetReceiptUI();
+      }
+    }
+  }
+
   state.editingEntryId = null;
 
   await loadEntries(state.selectedWalletId);
@@ -2458,18 +2593,6 @@ async function submitEntry(entry_type, amount, comment){
   return true;
 }
 
-
-
-  sheetEntry.querySelector('.sheet-backdrop').onclick = closeEntrySheet;
-  sheetConfirm.onclick = async () => {
-    const amount = Number(sheetAmount.value);
-    if (!amount || amount <= 0) {
-      alert('Введи суму більше 0');
-      return;
-    }
-    const ok = await submitEntry(sheetType, amount, sheetComment.value);
-    if (ok) closeEntrySheet();
-  };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -2953,35 +3076,35 @@ skull.onclick = (e) => {
     return;
   }
 
-      // STAGE 2 → STAGE 3 (таймер 10 сек)
-      if (stage === 2) {
-        stage = 3;
-        let seconds = 10;
+    // STAGE 2 → STAGE 3 (таймер 10 сек)
+    if (stage === 2) {
+      stage = 3;
+      let seconds = 10;
 
-        card.classList.add('stage-3');
-        skull.style.pointerEvents = 'none';
+      card.classList.add('stage-3');
+      skull.style.pointerEvents = 'none';
 
-        const countdown = setInterval(() => {
-          text.innerHTML = `Зачекай ${seconds} сек...<br>Після цього можна видалити`;
-          seconds--;
+      const countdown = setInterval(() => {
+        text.innerHTML = `Зачекай ${seconds} сек...<br>Після цього можна видалити`;
+        seconds--;
 
-          if (seconds < 0) {
-            clearInterval(countdown);
-            stage = 4;
-            skull.style.pointerEvents = 'auto';
-            text.innerHTML = 'Тепер можна видалити ☠️';
-          }
-        }, 1000);
+        if (seconds < 0) {
+          clearInterval(countdown);
+          stage = 4;
+          skull.style.pointerEvents = 'auto';
+          text.innerHTML = 'Тепер можна видалити ☠️';
+        }
+      }, 1000);
 
-        return;
-      }
+      return;
+    }
 
-      // STAGE 4 → ВИДАЛЕННЯ
-      if (stage === 4) {
-        deleteAccount(card);
-        reset();
-      }
-    };
+    // STAGE 4 → ВИДАЛЕННЯ
+    if (stage === 4) {
+      deleteAccount(card);
+      reset();
+    }
+  };
 
   });
 }
@@ -3316,6 +3439,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
+window.openReceipt = function(url){
+  // простий і надійний варіант
+  window.open(url, '_blank');
+}
 
 </script>
 

@@ -4,13 +4,20 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Http;
+use App\Http\Controllers\EntryReceiptController;
+use App\Services\ErpNextService;
+use Illuminate\Support\Facades\Storage;
+
+
+
+
 
 Route::get('/ping', fn () => response()->json(['ok' => true]));
 
 // ❗ ПОКИ БЕЗ auth, ЩОБ НЕ ЗАВАЖАВ
 
+Route::post('/entries/{entry}/receipt', [EntryReceiptController::class, 'store']);
 
-use App\Services\ErpNextService;
 
 Route::post('/entries', function (Request $request) {
 
@@ -117,11 +124,16 @@ Route::get('/wallets/{walletId}/entries', function (int $walletId) {
                 'posting_date' => $e->posting_date,
                 'entry_type' => $e->entry_type,
                 'amount' => (float)$e->amount,
-                'signed_amount' => $signed, // 🔥 КЛЮЧОВЕ
+                'signed_amount' => $signed,
                 'title' => $e->title,
                 'comment' => $e->comment,
                 'created_by' => $e->created_by,
+
+                // ✅ ДОДАЛИ
+                'receipt_path' => $e->receipt_path,
+                'receipt_url'  => $e->receipt_path ? Storage::disk('public')->url($e->receipt_path) : null,
             ];
+
         });
 
 
@@ -267,6 +279,9 @@ Route::delete('/entries/{id}', function (int $id) {
 
     return ['ok' => true];
 });
+
+
+Route::post('/entries/{entry}/receipt', [EntryReceiptController::class, 'store']);
 
 ///////////////////////////////////. Видалення картки рахунку.  /////////////////////////////////////
 use App\Models\BankAccount;
