@@ -161,6 +161,17 @@ body{
   -webkit-overflow-scrolling:touch;
 }
 
+body.modal-open{
+  overflow:hidden;
+  touch-action:none;
+}
+
+/* щоб receipt-модалка виглядала як твій sheet/modal */
+.receipt-panel{
+  background: rgba(28,32,45,.92);
+}
+
+
 /* ================== HEADER (FULL SCREEN + SAFE AREA) ================== */
 header{
   position:fixed;
@@ -529,7 +540,7 @@ tbody td:last-child{
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  width:34px;
+  width:5rem;
   height:34px;
   border-radius:999px;
   margin-top:6px;
@@ -539,6 +550,33 @@ tbody td:last-child{
   cursor:pointer;
 }
 .receipt-btn:active{ transform: scale(.94); }
+
+
+
+.receipt-actions{
+  display:flex;
+  justify-content:center;
+  gap:10px;
+  margin-top:12px;
+
+  flex-wrap:nowrap;     /* 🔥 не переносити */
+  width:100%;
+}
+
+.receipt-actions .btn{
+  flex:1 1 0;   
+  margin-top:2rem;  
+  margin-bottom:2rem;      /* 🔥 однакова ширина */
+  min-width:0;          /* 🔥 щоб текст не розпирало */
+  max-width:220px;      /* можна 180/200/240 як хочеш */
+  text-align:center;
+  text-decoration:none;
+
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
+
 
 /* ================== SEGMENTED ================== */
 .segmented{
@@ -1242,8 +1280,6 @@ html{
   from{opacity:0; transform:translate(-50%,-45%) scale(.96)}
   to{opacity:1; transform:translate(-50%,-50%) scale(1)}
 }
-
-
 
 
 
@@ -3440,9 +3476,41 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 window.openReceipt = function(url){
-  // простий і надійний варіант
-  window.open(url, '_blank');
-}
+  const modal = document.getElementById('receiptModal');
+  const img   = document.getElementById('receiptFullImg');
+  const aOpen = document.getElementById('receiptOpenNew');
+  const aDown = document.getElementById('receiptDownload');
+
+  if (!modal || !img) return;
+
+  img.src = url;
+  aOpen.href = url;
+  aDown.href = url;
+
+  modal.classList.remove('hidden');
+  document.body.classList.add('modal-open');
+};
+
+window.closeReceiptModal = function(){
+  const modal = document.getElementById('receiptModal');
+  const img   = document.getElementById('receiptFullImg');
+  if (!modal) return;
+
+  modal.classList.add('hidden');
+  document.body.classList.remove('modal-open');
+  if (img) img.src = '';
+};
+
+// клік по ✕
+document.addEventListener('click', (e) => {
+  if (e.target.closest('#receiptClose')) closeReceiptModal();
+});
+
+// Esc
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeReceiptModal();
+});
+
 
 </script>
 
@@ -3512,6 +3580,32 @@ window.openReceipt = function(url){
   </div>
 </div>
 
+<!-- Receipt Viewer Modal -->
+<div id="receiptModal" class="modal hidden">
+  <div class="modal-backdrop" onclick="closeReceiptModal()"></div>
+
+  <div class="modal-panel">
+    <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;">
+      <div class="modal-title" style="margin:0"></div>
+      <button type="button" id="receiptClose" class="modal-close">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <img
+        id="receiptFullImg"
+        src=""
+        alt="receipt"
+        style="width:100%;max-height:70vh;object-fit:contain;border-radius:16px;border:1px solid var(--stroke);background:rgba(0,0,0,.25);"
+      >
+
+      <div class="row receipt-actions">
+        <a id="receiptOpenNew" class="btn" target="_blank" rel="noopener">Відкрити окремо</a>
+        <a id="receiptDownload" class="btn" download>Зберегти</a>
+      </div>
+
+    </div>
+  </div>
+</div>
 
 
 
