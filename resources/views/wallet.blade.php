@@ -281,7 +281,7 @@ main,
 .burger-btn{
   width: 50px;
   height: 50px;
-  margin-top: 15px;
+  margin-top: 8px;
   border-radius:999px;
   border:1px solid var(--stroke);
   background: rgba(31, 30, 30, 0);
