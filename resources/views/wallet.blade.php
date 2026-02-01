@@ -551,8 +551,6 @@ tbody td:last-child{
 }
 .receipt-btn:active{ transform: scale(.94); }
 
-
-
 .receipt-actions{
   display:flex;
   justify-content:center;
@@ -1289,6 +1287,199 @@ html{
 
 
 
+/* =========================================================
+🧾 ENTRY SHEET = same style as твої modal-panel (glass)
++ desktop нормальний вигляд
+========================================================= */
+
+/* контейнер шторки як оверлей */
+.sheet{
+  position:fixed;
+  inset:0;
+  z-index:3000;
+}
+
+/* бекдроп як у модалок */
+.sheet-backdrop{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.45);
+  backdrop-filter:blur(4px);
+  -webkit-backdrop-filter:blur(4px);
+}
+
+/* панель шторки = скло */
+.sheet-panel{
+  position:fixed;
+  left:0;
+  right:0;
+  bottom:0;
+  z-index:3001;
+
+  padding:16px 18px calc(24px + env(safe-area-inset-bottom));
+  border-radius:24px 24px 0 0;
+
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.03)),
+    rgba(12,14,18,.72);
+
+  backdrop-filter:blur(24px) saturate(160%);
+  -webkit-backdrop-filter:blur(24px) saturate(160%);
+
+  border:1px solid rgba(255,255,255,.12);
+
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.15),
+    0 -10px 34px rgba(0,0,0,.55);
+
+  animation:sheetUp .25s ease;
+}
+
+/* хедер */
+#sheetEntryTitle{
+  margin:0 0 14px;
+  text-align:center;
+  font-weight:800;
+  font-size:18px;
+  letter-spacing:.2px;
+}
+
+/* інпути як у твоєму стилі, але акуратніше */
+.sheet-panel input,
+.sheet-panel select{
+  width:100%;
+  padding:14px 14px;
+  border-radius:14px;
+
+  border:1px solid rgba(255,255,255,.10);
+  background:rgba(255,255,255,.08);
+  color:var(--text);
+
+  margin-bottom:10px;
+  font-size:16px;
+  outline:none;
+
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+}
+
+.sheet-panel select{
+  appearance:none;
+  -webkit-appearance:none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, rgba(255,255,255,.55) 50%),
+    linear-gradient(135deg, rgba(255,255,255,.55) 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) 50%,
+    calc(100% - 12px) 50%;
+  background-size:6px 6px, 6px 6px;
+  background-repeat:no-repeat;
+  padding-right:36px;
+}
+
+/* кнопка збереження: велика, “app-like” */
+#sheetConfirm{
+  width:100%;
+  margin-top:6px;
+  padding:14px 16px;
+  border-radius:16px;
+  font-weight:900;
+  font-size:16px;
+  letter-spacing:.2px;
+
+  background:rgba(255,255,255,.10);
+  border:1px solid rgba(255,255,255,.14);
+}
+#sheetConfirm:active{ transform:scale(.98); }
+
+/* ✅ акцентні кольори (бо твій CSS для .sheet-confirm не попадав у #sheetConfirm) */
+#sheetEntry.entry-income{ --accent:#3bd671; }
+#sheetEntry.entry-expense{ --accent:#ff5a5f; }
+
+#sheetEntry.entry-income #sheetEntryTitle,
+#sheetEntry.entry-expense #sheetEntryTitle{
+  color:var(--accent) !important;
+  text-shadow:0 0 10px rgba(0,0,0,.25);
+}
+
+#sheetEntry.entry-income #sheetConfirm,
+#sheetEntry.entry-expense #sheetConfirm{
+  background:var(--accent);
+  color:#07120c;
+  border-color:rgba(255,255,255,.18);
+  box-shadow:
+    0 10px 26px rgba(0,0,0,.35),
+    0 0 0 1px rgba(255,255,255,.08) inset;
+}
+
+/* фокус інпутів під акцент */
+#sheetEntry.entry-income input:focus,
+#sheetEntry.entry-income select:focus{
+  border-color:rgba(59,214,113,.75);
+  box-shadow:0 0 10px rgba(59,214,113,.25);
+}
+#sheetEntry.entry-expense input:focus,
+#sheetEntry.entry-expense select:focus{
+  border-color:rgba(255,90,95,.75);
+  box-shadow:0 0 10px rgba(255,90,95,.22);
+}
+
+/* блок з 📷 та бейджиком */
+#sheetEntry .row{
+  align-items:center;
+}
+#receiptBtn.btn.mini{
+  width:10rem;
+  height:38px;
+  padding:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:999px;
+}
+#receiptBtn.btn.mini,span{margin-left:1rem;}
+/* =========================================================
+💻 DESKTOP: sheet як модалка по центру + сітка
+========================================================= */
+@media (min-width: 900px){
+
+  /* панель по центру як modal-panel */
+  .sheet-panel{
+    top:50%;
+    left:50%;
+    right:auto;
+    bottom:auto;
+
+    transform:translate(-50%, -50%);
+    width:min(560px, calc(100vw - 40px));
+    max-height:80vh;
+
+    border-radius:22px;
+    padding:22px 26px;
+
+    animation:fadeScale .25s ease;
+  }
+
+  .sheet-handle{ display:none; }
+
+  /* 👇 сума + категорія в ряд */
+  #sheetEntry .sheet-panel{
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap:12px;
+  }
+
+  #sheetEntryTitle{ grid-column:1 / -1; }
+  #sheetAmount{ grid-column:1; margin-bottom:0; }
+  #sheetCategory{ grid-column:2; margin-bottom:0; }
+
+  #sheetComment{ grid-column:1 / -1; }
+
+  /* ряд з чеком + прев’ю */
+  #sheetEntry .row{ grid-column:1 / -1; }
+  #receiptPreview{ grid-column:1 / -1; }
+
+  #sheetConfirm{ grid-column:1 / -1; }
+}
 
 
 </style>
@@ -1511,10 +1702,10 @@ html{
 
     <input id="sheetComment" placeholder="Коментар" />
     <div class="row" style="gap:10px; align-items:center; justify-content:flex-start; margin:10px 0;">
-      <button type="button" id="receiptBtn" class="btn mini" title="Додати чек">📷</button>
+      <button type="button" id="receiptBtn" class="btn mini" title="Додати чек">📷 <span>Додати чек</span></button>
 
-      <span id="receiptBadge" class="tag hidden" style="background:rgba(76,125,255,.18); border-color:rgba(76,125,255,.35);">
-        📎 Є фото
+      <span id="receiptBadge" class="tag hidden">
+        📎 <span>Фото завантажене</span>
       </span>
     </div>
 
@@ -2519,6 +2710,7 @@ function openEntrySheet(type){
   sheetCategory.value = '';
 
   sheetEntry.classList.remove('hidden');
+  document.body.classList.add('modal-open'); 
   resetReceiptUI();
 
 }
@@ -2533,6 +2725,7 @@ function closeEntrySheet(){
   sheetType = null;
   state.editingEntryId = null;
   sheetEntry.classList.remove('entry-income', 'entry-expense');
+  document.body.classList.remove('modal-open');
   resetReceiptUI();
 
 }
