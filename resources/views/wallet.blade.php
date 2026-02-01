@@ -279,9 +279,9 @@ main,
 
 
 .burger-btn{
-  width:40px;
-  height:40px;
-  margin-top:1rem;
+  width: 50px;
+  height: 50px;
+  margin-top: 15px;
   border-radius:999px;
   border:1px solid var(--stroke);
   background: rgba(31, 30, 30, 0);
@@ -614,7 +614,6 @@ tbody td:last-child{
 .segmented{
   display:flex;
   margin-top:2rem;
-  margin-left: 1.5rem;
   border-radius:999px;
   padding:4px;
   border:1px solid var(--stroke);
@@ -2743,6 +2742,11 @@ async function submitEntry(entry_type, amount, comment){
     return false;
   }
 
+  entryFeedback(entry_type);
+
+
+
+
   // 1) Витягуємо id створеної операції (тільки для POST)
   let createdId = null;
   if (!isEdit) {
@@ -3673,6 +3677,82 @@ document.addEventListener('keydown', (e) => {
 });
 
 
+
+
+// =======================
+// 🔊 SOUND + 📳 VIBRO
+// =======================
+let SND = {
+  leave: null,
+  moneta: null,
+  alarm: null,
+  unlocked: false,
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+  SND.leave  = document.getElementById('sndLeave');
+  SND.moneta = document.getElementById('sndMoneta');
+  SND.alarm  = document.getElementById('sndAlarm');
+
+  const unlock = () => {
+    if (SND.unlocked) return;
+    SND.unlocked = true;
+
+    [SND.leave, SND.moneta, SND.alarm].forEach(a => {
+      if (!a) return;
+      try {
+        a.muted = true;
+        a.play().then(() => {
+          a.pause();
+          a.currentTime = 0;
+          a.muted = false;
+        }).catch(() => {
+          a.muted = false;
+        });
+      } catch {}
+    });
+  };
+
+  // перший жест користувача "розблоковує" аудіо (особливо iOS)
+  document.addEventListener('touchstart', unlock, { once: true, passive: true });
+  document.addEventListener('click', unlock, { once: true });
+});
+
+function playSound(a, volume = 0.9) {
+  if (!a) return;
+  try {
+    a.volume = volume;
+    a.currentTime = 0;
+    a.play().catch(()=>{});
+  } catch {}
+}
+
+function vibrate(pattern) {
+  // Android/Chrome: працює; iOS: зазвичай ігнорує (це нормально)
+  try { navigator.vibrate?.(pattern); } catch {}
+}
+
+function entryFeedback(type) {
+  if (type === 'income') {
+    playSound(SND.moneta, 0.85);
+    vibrate([18, 22, 18]);
+  } else if (type === 'expense') {
+    playSound(SND.leave, 0.9);
+    vibrate([30]);
+  }
+}
+
+function deleteFeedback() {
+  playSound(SND.alarm, 1.0);
+  vibrate([60, 40, 60, 40, 120]); // “сирена”
+}
+
+
+
+
+
+
+
 </script>
 
 <div id="staffCashModal" class="modal hidden">
@@ -3780,6 +3860,8 @@ document.addEventListener('keydown', (e) => {
 
 
 
+<audio id="sndLeave" preload="auto" src="/sounds/leave.mp3"></audio>
+<audio id="sndMoneta" preload="auto" src="/sounds/moneta.mp3"></audio>
 
 
 </body>
