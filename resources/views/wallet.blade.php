@@ -1672,10 +1672,10 @@ html{
 
     <input id="sheetComment" placeholder="Коментар" />
     <div class="row row-actions">
-      <button type="button" id="receiptBtn" class="btn mini" title="Додати чек">📷 Сфотографувати чек</button>
+      <button type="button" id="receiptBtn" class="btn mini" title="Додати чек">📷 Додати чек</button>
 
       <span id="receiptBadge" class="tag hidden" style="background:rgba(206, 206, 206, 0.18);">
-        📎 Фото завантажене
+        📎 Завантажено
       </span>
     </div>
 
