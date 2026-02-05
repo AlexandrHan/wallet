@@ -297,7 +297,7 @@ main,
   inset 0 1px 1px rgba(255,255,255,.12),
   0 4px 14px rgba(0,0,0,.25);
   color:var(--text);
-  font-size:30px;
+  font-size:26px;
   cursor:pointer;
   transition:.2s ease;
 }
@@ -1628,6 +1628,21 @@ html{
     <button type="button" class="btn" id="toggleHoldingStats">📊 Статистика</button>
   </div>
 </div>
+
+<div id="holdingStatsBox" class="hidden" style="margin-top:14px;">
+
+  <div class="card">
+    <div class="segmented" id="holdingStatsFilter" style="width:100%;">
+      <button type="button" data-hf="all" class="active">Всі</button>
+      <button type="button" data-hf="cash">Кеш</button>
+      <button type="button" data-hf="bank">Банк</button>
+    </div>
+  </div>
+
+  <div id="holdingAccountsResult" style="margin-top:14px;"></div>
+
+</div>
+
 
   <!-- HOLDING STATS (EXPAND) -->
   <div id="holdingStatsBox" class="hidden" style="margin-top:14px;">
@@ -3072,20 +3087,7 @@ async function submitEntry(entry_type, amount, comment){
 }
 
 
-document.addEventListener('click', async (e) => {
-  const curBtn = e.target.closest('[data-hcur]');
-  if (curBtn){
-    state.holdingCurrency = curBtn.dataset.hcur;
-    if (state.holdingCurrency !== 'UAH' && !state.fx) await loadFx();
-    renderHoldingCard();
-    return;
-  }
 
-  if (e.target.closest('#holdingRefreshFx')){
-    await loadFx();
-    renderHoldingCard();
-  }
-});
 
 
 function fmtMoney2(n){
@@ -3144,33 +3146,7 @@ function convertAmount(amount, from, to){
   return fromUAH(uah, to);
 }
 
-async function loadAllCashOpsForHolding(){
-  // якщо worker: тільки свій кеш
-  const wallets =
-    (AUTH_USER.role === 'worker')
-      ? state.wallets.filter(w => w.owner === AUTH_USER.actor)
-      : state.wallets;
 
-  const cashWallets = wallets.filter(w => (w.type || 'cash') === 'cash');
-
-  const chunks = await Promise.all(
-    cashWallets.map(async w => {
-      const res = await fetch(`/api/wallets/${w.id}/entries`);
-      const data = res.ok ? await res.json() : null;
-      const entries = data?.entries || [];
-
-      return entries.map(e => ({
-        source: 'cash',
-        posting_date: String(e.posting_date || '').slice(0,10),
-        signed_amount: Number(e.signed_amount || 0),
-        comment: e.comment || '',
-        currency: w.currency || data?.wallet?.currency || 'UAH',
-      }));
-    }).map(p => p.catch(()=>[]))
-  );
-
-  return chunks.flat();
-}
 
 async function loadBankOpsForHolding(){
   if (AUTH_USER.role === 'worker') return []; // worker банк не бачить
@@ -3307,6 +3283,8 @@ function getHoldingTotal(){
 
 // ===== Holding Stats =====
 let hCatChartInstance = null;
+let holdingPieInstance = null;
+
 
 function initHoldingMonths(ops){
   const sel = document.getElementById('hStatsMonth');
@@ -3464,56 +3442,10 @@ function fmtMoney(n){
   return Number(n || 0).toLocaleString('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function fxMapFromApi(data){
-  const map = {};
-  (data?.rates || []).forEach(r => {
-    if (!r?.currency) return;
-    map[r.currency] = {
-      purchase: Number(r.purchase),
-      sale: Number(r.sale),
-    };
-  });
-  return { date: data?.date || '', map };
-}
 
-async function loadFx(){
-  if (state.fxLoading) return state.fx;
-  state.fxLoading = true;
-  try{
-    const res = await fetch('/api/exchange-rates', { headers: { 'Accept': 'application/json' } });
-    const data = await res.json().catch(()=>null);
-    if (!res.ok || !data?.rates) return state.fx;
 
-    state.fx = fxMapFromApi(data);
-    return state.fx;
-  } finally {
-    state.fxLoading = false;
-  }
-}
 
-function convertAmount(amount, from, to){
-  amount = Number(amount || 0);
-  if (!amount) return 0;
-  if (from === to) return amount;
 
-  // UAH базова без курсу
-  if (to === 'UAH') {
-    if (from === 'UAH') return amount;
-    const r = state.fx?.map?.[from];
-    if (!r?.purchase) return NaN;
-    return amount * r.purchase; // foreign -> UAH (sell foreign)
-  }
-
-  if (from === 'UAH') {
-    const r = state.fx?.map?.[to];
-    if (!r?.sale) return NaN;
-    return amount / r.sale; // UAH -> foreign (buy foreign)
-  }
-
-  // foreign -> foreign через UAH
-  const uah = convertAmount(amount, from, 'UAH');
-  return convertAmount(uah, 'UAH', to);
-}
 
 function computeHoldingTotals(base){
   let cash = 0;
@@ -3631,6 +3563,8 @@ function bindHoldingCardActions(){
       await loadFx(true);
       renderHoldingCard();
       renderHoldingStatsUI?.(); // якщо відкрита статистика, хай теж оновиться
+      renderHoldingAccountsStatsUI();
+
     };
   }
 
@@ -3650,13 +3584,14 @@ function bindHoldingCardActions(){
 
       renderHoldingCard();
       renderHoldingStatsUI?.(); // перерахувати статистику, якщо відкрита
+      renderHoldingAccountsStatsUI();
     };
   }
 
   // 3) кнопка “📊 Статистика”
   const statsBtn = document.getElementById('toggleHoldingStats');
   if (statsBtn){
-    statsBtn.onclick = async () => {
+    statsBtn.onclick = () => {
       const box = document.getElementById('holdingStatsBox');
       if (!box) return;
 
@@ -3664,15 +3599,11 @@ function bindHoldingCardActions(){
       box.classList.toggle('hidden');
 
       if (willOpen) {
-        const res = document.getElementById('hStatsResult');
-        if (res) res.innerHTML = '<div class="muted">Завантаження…</div>';
-
-        await ensureHoldingOps();
-        initHoldingMonths(state.holdingOps);
-        renderHoldingStatsUI();
+        renderHoldingAccountsStatsUI();
       }
     };
   }
+
 }
 
 
@@ -3770,16 +3701,30 @@ function groupByEntity(list){
   return Object.entries(g).sort((a,b)=>b[1].total-a[1].total);
 }
 
+function pieColors(n){
+  const base = ['#66f2a8','#4c7dff','#ffb86c','#ff6b6b','#9aa6bc','#b48cff','#2dd4bf','#f472b6'];
+  const out = [];
+  for (let i=0;i<n;i++) out.push(base[i % base.length]);
+  return out;
+}
+
 function renderHoldingAccountsStatsUI(){
   const box = document.getElementById('holdingStatsBox');
   if (!box || box.classList.contains('hidden')) return;
 
   const base = state.holdingCurrency || 'UAH';
+
+  // якщо USD/EUR і нема курсу
+  if (base !== 'UAH' && !state.fx){
+    const out0 = document.getElementById('holdingAccountsResult');
+    if (out0) out0.innerHTML = `<div class="card">Потрібен курс валют для конвертації</div>`;
+    return;
+  }
+
   const sym  = CURRENCY_SYMBOLS[base] || base;
-
   const filter = state.holdingStatsFilter || 'all';
-  const list = getHoldingAccountsList(filter);
 
+  const list = getHoldingAccountsList(filter);
   const out = document.getElementById('holdingAccountsResult');
   if (!out) return;
 
@@ -3788,16 +3733,27 @@ function renderHoldingAccountsStatsUI(){
     return;
   }
 
-  const total = list.reduce((s,x)=>s + x.amountBase, 0);
+  // групи по субʼєкту
   const groups = groupByEntity(list);
+  const total = list.reduce((s,x)=>s + x.amountBase, 0);
 
+  // під графік беремо суми груп
+  const pieLabels = groups.map(([label]) => label);
+  const pieValues = groups.map(([,g]) => g.total);
+
+  // рендер HTML (вставляємо canvas всередину)
   out.innerHTML = `
     <div class="card">
       <div class="row">
         <div class="muted">Загальний баланс (${filter === 'cash' ? 'кеш' : filter === 'bank' ? 'банк' : 'кеш + банк'})</div>
         <div class="right big">${fmtMoney2(total)} ${sym}</div>
       </div>
-      <div class="muted" style="opacity:.7;margin-top:6px;">
+
+      <div style="height:260px;margin-top:10px;">
+        <canvas id="holdingAccountsPie"></canvas>
+      </div>
+
+      <div class="muted" style="opacity:.7;margin-top:8px;">
         Рахунків: <b>${list.length}</b>
       </div>
     </div>
@@ -3809,7 +3765,10 @@ function renderHoldingAccountsStatsUI(){
         <div class="card" style="margin-top:14px;">
           <div class="row" style="align-items:baseline;">
             <div style="font-weight:900">${escapeHtml(label)}</div>
-            <div class="right" style="font-weight:900">${fmtMoney2(g.total)} ${sym} <span style="opacity:.7;font-size:12px">${pctGroup}%</span></div>
+            <div class="right" style="font-weight:900">
+              ${fmtMoney2(g.total)} ${sym}
+              <span style="opacity:.7;font-size:12px">${pctGroup}%</span>
+            </div>
           </div>
 
           <div style="margin-top:10px;">
@@ -3839,7 +3798,42 @@ function renderHoldingAccountsStatsUI(){
       `;
     }).join('')}
   `;
+
+  // графік
+  const ctx = document.getElementById('holdingAccountsPie')?.getContext('2d');
+  if (!ctx || typeof Chart === 'undefined') return;
+
+  if (holdingPieInstance) holdingPieInstance.destroy();
+
+  holdingPieInstance = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: pieLabels,
+      datasets: [{
+        data: pieValues,
+        backgroundColor: pieColors(pieLabels.length),
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '55%',
+      plugins: {
+        legend: { labels: { color: '#e9eef6' } },
+        tooltip: {
+          callbacks: {
+            label: (c) => {
+              const val = Number(c.parsed || 0);
+              const pct = total ? Math.round((val/total)*100) : 0;
+              return ` ${c.label}: ${fmtMoney2(val)} ${sym} (${pct}%)`;
+            }
+          }
+        }
+      }
+    }
+  });
 }
+
 
 
 document.getElementById('holdingStatsFilter')?.addEventListener('click', (e) => {
