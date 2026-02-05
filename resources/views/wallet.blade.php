@@ -1407,6 +1407,74 @@ html{
   pointer-events:none;
 }
 
+/* ================= HOLDING CARD ================= */
+.holding-card{
+  margin-top:14px;
+  padding:16px 18px;
+}
+
+.holding-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+}
+
+.holding-title{
+  font-weight:900;
+  font-size:16px;
+}
+
+.holding-sub{
+  margin-top:4px;
+  font-size:12px;
+  opacity:.7;
+}
+
+.holding-amount{
+  margin-top:10px;
+  font-size:30px;
+  font-weight:900;
+  letter-spacing:.2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.holding-break{
+  display:flex;
+  gap:10px;
+  margin-top:12px;
+  flex-wrap:wrap;
+  align-items:center;
+}
+
+.holding-pill{
+  padding:8px 10px;
+  border-radius:999px;
+  background:rgba(255,255,255,.06);
+  border:1px solid var(--stroke);
+  font-size:12px;
+  font-weight:800;
+  opacity:.95;
+}
+
+.segmented.holding-mode{
+  margin-top:0;
+  padding:3px;
+  width:auto;
+}
+
+.segmented.holding-mode button{
+  padding:6px 10px;
+  font-size:12px;
+}
+
+.holding-warn{
+  margin-top:10px;
+  font-size:12px;
+  opacity:.75;
+}
+
+
 /* ✅ Desktop: sheet виглядає як нормальна модалка по центру */
 @media (min-width: 900px){
   .sheet-panel{
@@ -1536,6 +1604,9 @@ html{
     @endif
 
     </div>
+    <!-- SG HOLDING TOTAL -->
+    <div id="holdingCard" class="card holding-card hidden"></div>
+
     <div id="wallets" class="grid"></div>
   </div> <!-- END walletsView -->
 
@@ -1744,6 +1815,9 @@ if (AUTH_USER.role !== 'accountant' && !AUTH_ACTOR) {
     activeEntryId: null,
     pendingReceiptFile: null,
     pendingReceiptUrl: null,
+    fx: null,                 // { date, map: {USD:{purchase,sale}, EUR:{...}} }
+    holdingCurrency: 'UAH',
+    fxLoading: false,
 
 
 
@@ -2064,9 +2138,13 @@ function canWriteWallet(walletOwner){
     }
 
   }
+    // FX для Holding card
+  await loadFx();
 
 
   renderWallets();
+  renderHoldingCard();
+
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2950,6 +3028,174 @@ async function submitEntry(entry_type, amount, comment){
 
     function fmt(n) {
   return Number(n || 0).toLocaleString('uk-UA');
+}
+
+
+document.addEventListener('click', async (e) => {
+  const curBtn = e.target.closest('[data-hcur]');
+  if (curBtn){
+    state.holdingCurrency = curBtn.dataset.hcur;
+    if (state.holdingCurrency !== 'UAH' && !state.fx) await loadFx();
+    renderHoldingCard();
+    return;
+  }
+
+  if (e.target.closest('#holdingRefreshFx')){
+    await loadFx();
+    renderHoldingCard();
+  }
+});
+
+
+
+function fmtMoney(n){
+  return Number(n || 0).toLocaleString('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fxMapFromApi(data){
+  const map = {};
+  (data?.rates || []).forEach(r => {
+    if (!r?.currency) return;
+    map[r.currency] = {
+      purchase: Number(r.purchase),
+      sale: Number(r.sale),
+    };
+  });
+  return { date: data?.date || '', map };
+}
+
+async function loadFx(){
+  if (state.fxLoading) return state.fx;
+  state.fxLoading = true;
+  try{
+    const res = await fetch('/api/exchange-rates', { headers: { 'Accept': 'application/json' } });
+    const data = await res.json().catch(()=>null);
+    if (!res.ok || !data?.rates) return state.fx;
+
+    state.fx = fxMapFromApi(data);
+    return state.fx;
+  } finally {
+    state.fxLoading = false;
+  }
+}
+
+function convertAmount(amount, from, to){
+  amount = Number(amount || 0);
+  if (!amount) return 0;
+  if (from === to) return amount;
+
+  // UAH базова без курсу
+  if (to === 'UAH') {
+    if (from === 'UAH') return amount;
+    const r = state.fx?.map?.[from];
+    if (!r?.purchase) return NaN;
+    return amount * r.purchase; // foreign -> UAH (sell foreign)
+  }
+
+  if (from === 'UAH') {
+    const r = state.fx?.map?.[to];
+    if (!r?.sale) return NaN;
+    return amount / r.sale; // UAH -> foreign (buy foreign)
+  }
+
+  // foreign -> foreign через UAH
+  const uah = convertAmount(amount, from, 'UAH');
+  return convertAmount(uah, 'UAH', to);
+}
+
+function computeHoldingTotals(base){
+  let cash = 0;
+  let bank = 0;
+  const missing = new Set();
+
+  // cash wallets
+  state.wallets.forEach(w => {
+    const v = convertAmount(w.balance, w.currency, base);
+    if (Number.isFinite(v)) cash += v;
+    else missing.add(w.currency);
+  });
+
+  // bank accounts
+  state.bankAccounts.forEach(b => {
+    const v = convertAmount(b.balance, b.currency, base);
+    if (Number.isFinite(v)) bank += v;
+    else missing.add(b.currency);
+  });
+
+  return { cash, bank, total: cash + bank, missing: [...missing] };
+}
+
+function renderHoldingCard(){
+  const el = document.getElementById('holdingCard');
+  if (!el) return;
+
+  // робітнику не показуємо холдинг
+  if (AUTH_USER.role === 'worker'){
+    el.classList.add('hidden');
+    return;
+  }
+
+  el.classList.remove('hidden');
+
+  const base = state.holdingCurrency || 'UAH';
+
+  // якщо курс ще не підвантажили
+  if (!state.fx && base !== 'UAH'){
+    el.innerHTML = `
+      <div class="holding-head">
+        <div>
+          <div class="holding-title">SG Holding</div>
+          <div class="holding-sub">Потрібен курс обмінника для конвертації</div>
+        </div>
+        <button class="btn mini" id="holdingRefreshFx">↻ Курс</button>
+      </div>
+    `;
+    return;
+  }
+
+  const hasFx = !!state.fx;
+  const totals = (base === 'UAH' || hasFx)
+    ? computeHoldingTotals(base)
+    : {cash:0, bank:0, total:0, missing:[]};
+
+  const cls = totals.total >= 0 ? 'pos' : 'neg';
+  const sym = CURRENCY_SYMBOLS[base] ?? '';
+
+  el.innerHTML = `
+    <div class="holding-head">
+      <div>
+        <div class="holding-title">SG Holding</div>
+        <div class="holding-sub">
+          Загальний баланс по всіх рахунках
+          ${state.fx?.date ? `• курс: ${state.fx.date}` : ''}
+        </div>
+      </div>
+
+      <div>
+        <div class="segmented holding-mode">
+          <button type="button" data-hcur="UAH" class="${base==='UAH'?'active':''}">UAH</button>
+          <button type="button" data-hcur="USD" class="${base==='USD'?'active':''}">USD</button>
+          <button type="button" data-hcur="EUR" class="${base==='EUR'?'active':''}">EUR</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="holding-amount ${cls}">
+      ${fmtMoney(totals.total)} ${sym} ${base}
+    </div>
+
+    <div class="holding-break">
+      <div class="holding-pill">💵 Cash: ${fmtMoney(totals.cash)} ${sym}</div>
+      <div class="holding-pill">🏦 Bank: ${fmtMoney(totals.bank)} ${sym}</div>
+      <button class="btn mini" id="holdingRefreshFx">↻ Курс</button>
+    </div>
+
+    ${totals.missing.length ? `
+      <div class="holding-warn">
+        ⚠️ Немає курсу для: <b>${totals.missing.join(', ')}</b>
+      </div>
+    ` : ''}
+  `;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
