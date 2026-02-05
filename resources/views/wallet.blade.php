@@ -408,6 +408,9 @@ main,
 .btn.danger{background:#ff001aad; border-color:rgba(158, 158, 158, 0.6);}
 .btn.mini{padding:6px 10px; font-size:16px; border-radius:19px;}
 .btn:disabled{opacity:.4}
+.btn-stat-sg{
+  width: 100%;
+}
 .save {
     width: 100%;
     margin-top: 8px;
@@ -1604,8 +1607,45 @@ html{
     @endif
 
     </div>
-    <!-- SG HOLDING TOTAL -->
-    <div id="holdingCard" class="card holding-card hidden"></div>
+
+<!-- SG HOLDING CARD -->
+<div id="holdingCard" class="card" style="margin-top:14px;">
+  <div class="card-top" style="align-items:flex-start; gap:12px;">
+    <div style="min-width:0">
+      <div class="muted" style="opacity:.85">SG Holding</div>
+      <div class="big" id="holdingTotal">—</div>
+      <div class="muted" id="holdingSub" style="opacity:.7; margin-top:6px;">кеш + банк</div>
+    </div>
+
+    <div class="segmented" id="holdingCurSeg" style="margin-top:0; width:210px; margin-left:auto;">
+      <button type="button" data-hcur="UAH" class="active">UAH</button>
+      <button type="button" data-hcur="USD">USD</button>
+      <button type="button" data-hcur="EUR">EUR</button>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:12px;">
+    <button type="button" class="btn" id="toggleHoldingStats">📊 Статистика</button>
+  </div>
+</div>
+
+  <!-- HOLDING STATS (EXPAND) -->
+  <div id="holdingStatsBox" class="hidden" style="margin-top:14px;">
+
+    <div class="card">
+      <div class="row" style="align-items:center;">
+        <div class="segmented" id="holdingStatsFilter" style="margin-top:0;width:100%;">
+          <button type="button" data-hf="all" class="active">Всі</button>
+          <button type="button" data-hf="cash">Кеш</button>
+          <button type="button" data-hf="bank">Банк</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="holdingAccountsResult" style="margin-top:16px;"></div>
+
+  </div>
+
 
     <div id="wallets" class="grid"></div>
   </div> <!-- END walletsView -->
@@ -1808,23 +1848,23 @@ if (AUTH_USER.role !== 'accountant' && !AUTH_ACTOR) {
     actor: AUTH_ACTOR,
     viewOwner: AUTH_ACTOR,
     wallets: [],
-    bankAccounts: [], // ⬅️ ДОДАЛИ
+    bankAccounts: [],
     selectedWalletId: null,
     selectedWallet: null,
     entries: [],
     activeEntryId: null,
     pendingReceiptFile: null,
     pendingReceiptUrl: null,
-    fx: null,                 // { date, map: {USD:{purchase,sale}, EUR:{...}} }
-    holdingCurrency: 'UAH',
+
     fxLoading: false,
+    fx: null,
+    holdingCurrency: 'UAH',
+    holdingOps: null,
 
-
-
-    // для 2-крокового видалення
     delArmedId: null,
     delTimer: null,
   };
+
 
 let isRenderingWallets = false;
 
@@ -1862,6 +1902,7 @@ function checkOnline() {
   const btnToggleStats = document.getElementById('toggleStats');
   const elStatsBox     = document.getElementById('statsBox');
   const ctxChart = document.getElementById('catChart')?.getContext('2d');
+  const sheetEntry = document.getElementById('sheetEntry');
 
 
 
@@ -2140,10 +2181,10 @@ function canWriteWallet(walletOwner){
   }
     // FX для Holding card
   await loadFx();
-
+  renderHoldingCard();
 
   renderWallets();
-  renderHoldingCard();
+
 
 }
 
@@ -3047,6 +3088,377 @@ document.addEventListener('click', async (e) => {
 });
 
 
+function fmtMoney2(n){
+  return Number(n || 0).toLocaleString('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+async function loadFx(force=false){
+  if (!force && state.fx?.date) return state.fx;
+
+  try{
+    const res = await fetch('/api/exchange-rates', { headers: { 'Accept':'application/json' } });
+    const data = await res.json();
+    if (!res.ok || data.error) return null;
+
+    // очікуємо: { date, rates:[{currency:'USD', purchase, sale}, ...] }
+    const map = {};
+    (data.rates || []).forEach(r => {
+      map[r.currency] = { purchase: Number(r.purchase), sale: Number(r.sale) };
+    });
+
+    state.fx = { date: data.date, map };
+    return state.fx;
+  } catch {
+    return null;
+  }
+}
+
+// valuation / conversion by exchanger:
+// - CUR -> UAH : * purchase
+// - UAH -> CUR : / sale
+function convertAmount(amount, from, to){
+  amount = Number(amount || 0);
+  if (!amount) return 0;
+  if (from === to) return amount;
+
+  const fx = state.fx?.map || {};
+  const USD = fx.USD;
+  const EUR = fx.EUR;
+
+  const toUAH = (a, cur) => {
+    if (cur === 'UAH') return a;
+    const r = fx[cur];
+    if (!r?.purchase) return NaN;
+    return a * r.purchase;
+  };
+
+  const fromUAH = (a, cur) => {
+    if (cur === 'UAH') return a;
+    const r = fx[cur];
+    if (!r?.sale) return NaN;
+    return a / r.sale;
+  };
+
+  // через UAH як “хаб”
+  const uah = toUAH(amount, from);
+  return fromUAH(uah, to);
+}
+
+async function loadAllCashOpsForHolding(){
+  // якщо worker: тільки свій кеш
+  const wallets =
+    (AUTH_USER.role === 'worker')
+      ? state.wallets.filter(w => w.owner === AUTH_USER.actor)
+      : state.wallets;
+
+  const cashWallets = wallets.filter(w => (w.type || 'cash') === 'cash');
+
+  const chunks = await Promise.all(
+    cashWallets.map(async w => {
+      const res = await fetch(`/api/wallets/${w.id}/entries`);
+      const data = res.ok ? await res.json() : null;
+      const entries = data?.entries || [];
+
+      return entries.map(e => ({
+        source: 'cash',
+        posting_date: String(e.posting_date || '').slice(0,10),
+        signed_amount: Number(e.signed_amount || 0),
+        comment: e.comment || '',
+        currency: w.currency || data?.wallet?.currency || 'UAH',
+      }));
+    }).map(p => p.catch(()=>[]))
+  );
+
+  return chunks.flat();
+}
+
+async function loadBankOpsForHolding(){
+  if (AUTH_USER.role === 'worker') return []; // worker банк не бачить
+
+  const banks = state.bankAccounts || [];
+  const chunks = await Promise.all(
+    banks.map(async bank => {
+      let rows = [];
+
+      if (bank.bankCode === 'monobank') {
+        const id = String(bank.id || '').replace('mono_','');
+        const res = await fetch(`/api/bank/transactions-monobank?id=${encodeURIComponent(id)}`);
+        rows = res.ok ? await res.json() : [];
+        return rows.map(r => ({
+          source:'bank',
+          posting_date: String(r.date || '').slice(0,10),
+          signed_amount: Number(r.amount || 0),
+          comment: r.comment || '',
+          currency: bank.currency || 'UAH',
+        }));
+      }
+
+      if (bank.bankCode === 'privatbank') {
+        const id = String(bank.id || '').replace('privat_','');
+        const res = await fetch(`/api/bank/transactions-privat?id=${encodeURIComponent(id)}`);
+        rows = res.ok ? await res.json() : [];
+        return rows.map(r => ({
+          source:'bank',
+          posting_date: String(r.date || '').slice(0,10),
+          signed_amount: Number(r.amount || 0),
+          comment: r.comment || '',
+          currency: bank.currency || 'UAH',
+        }));
+      }
+
+      // ukrgas
+      const iban = bank.iban || '';
+      let url = '';
+
+      if (bank.bankCode === 'ukrgasbank_solarglass') {
+        url = `/api/bank/transactions-solarglass?iban=${encodeURIComponent(iban)}`;
+      } else if (bank.bankCode === 'ukrgasbank_sggroup') {
+        url = `/api/bank/transactions-sggroup?iban=${encodeURIComponent(iban)}`;
+      } else {
+        url = `/api/bank/transactions-engineering?iban=${encodeURIComponent(iban)}`;
+      }
+
+      const res = await fetch(url);
+      rows = res.ok ? await res.json() : [];
+
+      return rows.map(r => ({
+        source:'bank',
+        posting_date: String(r.date || '').slice(0,10),
+        signed_amount: Number(r.amount || 0),
+        comment: r.comment || r.counterparty || '',
+        currency: bank.currency || 'UAH',
+      }));
+    }).map(p => p.catch(()=>[]))
+  );
+
+  return chunks.flat();
+}
+
+async function ensureHoldingOps(){
+  if (state.holdingOps) return state.holdingOps;
+
+  await loadFx(); // потрібен курс для конвертацій
+
+  const [cashOps, bankOps] = await Promise.all([
+    loadAllCashOpsForHolding(),
+    loadBankOpsForHolding(),
+  ]);
+
+  state.holdingOps = [...cashOps, ...bankOps];
+  return state.holdingOps;
+}
+
+function normalizeText(s){ return String(s||'').toLowerCase(); }
+
+// дуже базові правила, потім розшириш
+const BANK_CAT_RULES = [
+  { cat: 'Нова пошта',  re: /(нова пошта|novaposhta|np|нп)/i },
+  { cat: 'Логістика',   re: /(логіст|перевез|доставка|shipping|transport)/i },
+  { cat: 'Їжа',         re: /(silpo|атб|ashan|metro|кафе|restaurant|food|їжа)/i },
+  { cat: 'Digital',     re: /(meta|facebook|google|ads|hosting|domain|digital|реклама)/i },
+  { cat: 'Оренда',      re: /(оренда|rent)/i },
+  { cat: 'Зарплата',    re: /(зарп|salary|аванс)/i },
+  { cat: 'Обладнання',  re: /(інвертор|панел|акум|battery|solar|обладнан)/i },
+  { cat: 'Хоз. витрати',re: /(хоз|канц|папір|побут)/i },
+  { cat: 'Туда Сюда',   re: /(переказ|transfer|card2card|на карту)/i },
+];
+
+function extractCategoryFromEntry(entry){
+  const c = entry.comment || '';
+
+  // кеш: у тебе вже є [Категорія]
+  const m = c.match(/^\[(.+?)\]/);
+  if (m) return m[1];
+
+  // банк: пробуємо правила
+  if (entry.source === 'bank') {
+    for (const r of BANK_CAT_RULES){
+      if (r.re.test(c)) return r.cat;
+    }
+    return 'Інше';
+  }
+
+  return 'Інше';
+}
+
+
+function getHoldingTotal(){
+  const base = state.holdingCurrency || 'UAH';
+
+  // баланси рахунків (не операції)
+  const wallets =
+    (AUTH_USER.role === 'worker')
+      ? state.wallets.filter(w => w.owner === AUTH_USER.actor)
+      : state.wallets;
+
+  const cashSum = wallets
+    .filter(w => (w.type || 'cash') === 'cash')
+    .reduce((acc,w) => acc + convertAmount(Number(w.balance||0), w.currency||'UAH', base), 0);
+
+  const bankSum = (AUTH_USER.role === 'worker')
+    ? 0
+    : (state.bankAccounts || []).reduce((acc,b) =>
+        acc + convertAmount(Number(b.balance||0), b.currency||'UAH', base), 0);
+
+  return cashSum + bankSum;
+}
+
+
+
+// ===== Holding Stats =====
+let hCatChartInstance = null;
+
+function initHoldingMonths(ops){
+  const sel = document.getElementById('hStatsMonth');
+  if (!sel) return;
+
+  const months = {};
+  ops.forEach(e => {
+    const d = String(e.posting_date||'');
+    if (d.length >= 7) months[d.slice(0,7)] = true;
+  });
+
+  sel.innerHTML = '<option value="">Місяць</option>';
+  Object.keys(months).sort().reverse().forEach(ym => {
+    const [y,m] = ym.split('-');
+    const opt = document.createElement('option');
+    opt.value = ym;
+    opt.textContent = `${m}.${y}`;
+    sel.appendChild(opt);
+  });
+
+  const first = Object.keys(months).sort().reverse()[0];
+  if (first) sel.value = first;
+}
+
+function buildHoldingStats(ops, ym, type){
+  const base = state.holdingCurrency || 'UAH';
+  const sym  = CURRENCY_SYMBOLS[base] || base;
+
+  const map = {};
+  let total = 0;
+  let count = 0;
+
+  ops.forEach(e => {
+    const d = String(e.posting_date||'');
+    if (ym && !d.startsWith(ym)) return;
+
+    const val = Number(e.signed_amount||0);
+    if (type === 'expense' && val >= 0) return;
+    if (type === 'income'  && val <= 0) return;
+
+    const abs = Math.abs(val);
+    const converted = convertAmount(abs, e.currency||'UAH', base);
+    if (!Number.isFinite(converted)) return;
+
+    total += converted;
+    count++;
+
+    const cat = extractCategoryFromEntry(e);
+    map[cat] = (map[cat] || 0) + converted;
+  });
+
+  return { map, total, count, avg: count ? total/count : 0, sym };
+}
+
+function renderHoldingStatsUI(){
+  const box = document.getElementById('holdingStatsBox');
+  if (!box || box.classList.contains('hidden')) return;
+
+  const ym = document.getElementById('hStatsMonth')?.value || '';
+  const type = (document.getElementById('hStatsIncome')?.classList.contains('active')) ? 'income' : 'expense';
+
+  const ops = state.holdingOps || [];
+  const { map, total, count, avg, sym } = buildHoldingStats(ops, ym, type);
+
+  // summary
+  const sumBox = document.getElementById('hEntriesSummary');
+  if (!count) {
+    sumBox.classList.add('hidden');
+  } else {
+    sumBox.classList.remove('hidden');
+    document.getElementById('hSumTotal').textContent = `${fmtMoney2(total)} ${sym}`;
+    document.getElementById('hSumCount').textContent = `${count}`;
+    document.getElementById('hSumAvg').textContent   = `${fmtMoney2(avg)} ${sym}`;
+    document.getElementById('hSumTotal').className = 'summary-value ' + (type==='expense'?'neg':'pos');
+  }
+
+  // bars
+  const pairs = Object.entries(map).sort((a,b)=>b[1]-a[1]);
+  const all = pairs.reduce((a,[,v])=>a+v,0);
+
+  const catBox = document.getElementById('hCategoryStats');
+  const catList = document.getElementById('hCatList');
+
+  if (!pairs.length) {
+    catBox.classList.add('hidden');
+    document.getElementById('hStatsResult').innerHTML = '<div class="muted">Немає даних</div>';
+  } else {
+    catBox.classList.remove('hidden');
+    catList.innerHTML = '';
+    pairs.forEach(([cat, v]) => {
+      const pct = all ? Math.round((v/all)*100) : 0;
+      catList.insertAdjacentHTML('beforeend', `
+        <div class="cat-row">
+          <div class="cat-name">${cat}</div>
+          <div class="cat-bar"><div style="width:${pct}%"></div></div>
+          <div class="cat-pct">${pct}%</div>
+        </div>
+      `);
+    });
+
+    // optional: текстовий список
+    const res = document.getElementById('hStatsResult');
+    res.innerHTML = `
+      <div class="card">
+        ${pairs.slice(0,20).map(([cat,v]) => `
+          <div class="row" style="margin-bottom:6px;">
+            <div>${cat}</div>
+            <div class="right ${type==='expense'?'neg':'pos'}">${fmtMoney2(v)} ${sym}</div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  // pie chart
+  const ctx = document.getElementById('hCatChart')?.getContext('2d');
+  if (ctx && typeof Chart !== 'undefined') {
+    const labels = pairs.map(x=>x[0]);
+    const values = pairs.map(x=>x[1]);
+
+    if (hCatChartInstance) hCatChartInstance.destroy();
+    hCatChartInstance = new Chart(ctx, {
+      type: 'pie',
+      data: {
+        labels,
+        datasets: [{
+          data: values,
+          backgroundColor: ['#66f2a8','#4c7dff','#ffb86c','#ff6b6b','#9aa6bc']
+        }]
+      },
+      options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ labels:{ color:'#e9eef6' } } } }
+    });
+  }
+}
+
+
+document.getElementById('hShowStats')?.addEventListener('click', () => renderHoldingStatsUI());
+
+document.getElementById('hStatsExpense')?.addEventListener('click', () => {
+  document.getElementById('hStatsExpense').classList.add('active');
+  document.getElementById('hStatsIncome').classList.remove('active');
+  renderHoldingStatsUI();
+});
+
+document.getElementById('hStatsIncome')?.addEventListener('click', () => {
+  document.getElementById('hStatsIncome').classList.add('active');
+  document.getElementById('hStatsExpense').classList.remove('active');
+  renderHoldingStatsUI();
+});
+
+
+
 
 function fmtMoney(n){
   return Number(n || 0).toLocaleString('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -3134,7 +3546,6 @@ function renderHoldingCard(){
     el.classList.add('hidden');
     return;
   }
-
   el.classList.remove('hidden');
 
   const base = state.holdingCurrency || 'UAH';
@@ -3149,7 +3560,13 @@ function renderHoldingCard(){
         </div>
         <button class="btn mini" id="holdingRefreshFx">↻ Курс</button>
       </div>
+
+      <div class="row" style="margin-top:12px;">
+        <button type="button" class="btn btn-stat-sg" id="toggleHoldingStats">📊 Статистика</button>
+      </div>
     `;
+
+    bindHoldingCardActions(); // ⬅️ важливо
     return;
   }
 
@@ -3172,7 +3589,7 @@ function renderHoldingCard(){
       </div>
 
       <div>
-        <div class="segmented holding-mode">
+        <div class="segmented holding-mode" id="holdingCurSeg">
           <button type="button" data-hcur="UAH" class="${base==='UAH'?'active':''}">UAH</button>
           <button type="button" data-hcur="USD" class="${base==='USD'?'active':''}">USD</button>
           <button type="button" data-hcur="EUR" class="${base==='EUR'?'active':''}">EUR</button>
@@ -3190,13 +3607,253 @@ function renderHoldingCard(){
       <button class="btn mini" id="holdingRefreshFx">↻ Курс</button>
     </div>
 
+    <div class="row" style="margin-top:12px;">
+      <button type="button" class="btn" id="toggleHoldingStats">📊 Статистика</button>
+    </div>
+
     ${totals.missing.length ? `
       <div class="holding-warn">
         ⚠️ Немає курсу для: <b>${totals.missing.join(', ')}</b>
       </div>
     ` : ''}
   `;
+
+  bindHoldingCardActions(); // ⬅️ важливо
 }
+
+
+function bindHoldingCardActions(){
+  // 1) кнопка “Курс”
+  const refreshBtn = document.getElementById('holdingRefreshFx');
+  if (refreshBtn){
+    refreshBtn.onclick = async (e) => {
+      e.preventDefault();
+      await loadFx(true);
+      renderHoldingCard();
+      renderHoldingStatsUI?.(); // якщо відкрита статистика, хай теж оновиться
+    };
+  }
+
+  // 2) перемикач валюти (UAH/USD/EUR)
+  const seg = document.getElementById('holdingCurSeg');
+  if (seg){
+    seg.onclick = async (e) => {
+      const btn = e.target.closest('button[data-hcur]');
+      if (!btn) return;
+
+      const cur = btn.dataset.hcur;
+      if (!cur) return;
+
+      state.holdingCurrency = cur;
+
+      if (cur !== 'UAH') await loadFx(true);
+
+      renderHoldingCard();
+      renderHoldingStatsUI?.(); // перерахувати статистику, якщо відкрита
+    };
+  }
+
+  // 3) кнопка “📊 Статистика”
+  const statsBtn = document.getElementById('toggleHoldingStats');
+  if (statsBtn){
+    statsBtn.onclick = async () => {
+      const box = document.getElementById('holdingStatsBox');
+      if (!box) return;
+
+      const willOpen = box.classList.contains('hidden');
+      box.classList.toggle('hidden');
+
+      if (willOpen) {
+        const res = document.getElementById('hStatsResult');
+        if (res) res.innerHTML = '<div class="muted">Завантаження…</div>';
+
+        await ensureHoldingOps();
+        initHoldingMonths(state.holdingOps);
+        renderHoldingStatsUI();
+      }
+    };
+  }
+}
+
+
+state.holdingStatsFilter = 'all';
+
+const OWNER_LABELS = {
+  kolisnyk: 'Колісник',
+  hlushchenko: 'Глущенко',
+  accountant: 'Бухгалтер',
+  foreman: 'Прораб',
+  shared: 'Спільне',
+};
+
+function escapeHtml(s){
+  return String(s ?? '').replace(/[&<>"']/g, m => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[m]));
+}
+
+function bankEntityLabel(b){
+  const code = String(b.bankCode || '').toLowerCase();
+  const name = String(b.name || '').toLowerCase();
+
+  if (code.includes('sggroup') || name.includes('sg group')) return 'SG Group';
+  if (code.includes('solarglass') || name.includes('solarglass')) return 'SolarGlass';
+  if (code.includes('engineering') || name.includes('engineering')) return 'Solar Engineering';
+
+  // fallback: якщо в назві є підказки
+  if (name.includes('колісник') || name.includes('kolisnyk')) return 'Колісник';
+  if (name.includes('глущ') || name.includes('hlush')) return 'Глущенко';
+
+  return 'Банк';
+}
+
+function getHoldingAccountsList(filter){
+  const base = state.holdingCurrency || 'UAH';
+  const list = [];
+
+  // CASH
+  const wallets =
+    (AUTH_USER.role === 'worker')
+      ? state.wallets.filter(w => w.owner === AUTH_USER.actor)
+      : state.wallets;
+
+  if (filter !== 'bank'){
+    wallets
+      .filter(w => (w.type || 'cash') === 'cash')
+      .forEach(w => {
+        const original = Number(w.balance || 0);
+        const conv = convertAmount(original, w.currency || 'UAH', base);
+        if (!Number.isFinite(conv)) return;
+
+        list.push({
+          kind: 'cash',
+          entity: OWNER_LABELS[w.owner] || w.owner || 'Кеш',
+          name: w.name || 'Cash',
+          currency: w.currency || 'UAH',
+          original,
+          amountBase: conv,
+        });
+      });
+  }
+
+  // BANK
+  if (AUTH_USER.role !== 'worker' && filter !== 'cash'){
+    (state.bankAccounts || []).forEach(b => {
+      const original = Number(b.balance || 0);
+      const conv = convertAmount(original, b.currency || 'UAH', base);
+      if (!Number.isFinite(conv)) return;
+
+      list.push({
+        kind: 'bank',
+        entity: bankEntityLabel(b),
+        name: b.name || 'Bank',
+        currency: b.currency || 'UAH',
+        original,
+        amountBase: conv,
+      });
+    });
+  }
+
+  return list;
+}
+
+function groupByEntity(list){
+  const g = {};
+  list.forEach(a => {
+    const key = a.entity || 'Інше';
+    if (!g[key]) g[key] = { total: 0, items: [] };
+    g[key].total += a.amountBase;
+    g[key].items.push(a);
+  });
+
+  Object.values(g).forEach(x => x.items.sort((a,b)=>b.amountBase-a.amountBase));
+  return Object.entries(g).sort((a,b)=>b[1].total-a[1].total);
+}
+
+function renderHoldingAccountsStatsUI(){
+  const box = document.getElementById('holdingStatsBox');
+  if (!box || box.classList.contains('hidden')) return;
+
+  const base = state.holdingCurrency || 'UAH';
+  const sym  = CURRENCY_SYMBOLS[base] || base;
+
+  const filter = state.holdingStatsFilter || 'all';
+  const list = getHoldingAccountsList(filter);
+
+  const out = document.getElementById('holdingAccountsResult');
+  if (!out) return;
+
+  if (!list.length){
+    out.innerHTML = `<div class="muted">Немає даних</div>`;
+    return;
+  }
+
+  const total = list.reduce((s,x)=>s + x.amountBase, 0);
+  const groups = groupByEntity(list);
+
+  out.innerHTML = `
+    <div class="card">
+      <div class="row">
+        <div class="muted">Загальний баланс (${filter === 'cash' ? 'кеш' : filter === 'bank' ? 'банк' : 'кеш + банк'})</div>
+        <div class="right big">${fmtMoney2(total)} ${sym}</div>
+      </div>
+      <div class="muted" style="opacity:.7;margin-top:6px;">
+        Рахунків: <b>${list.length}</b>
+      </div>
+    </div>
+
+    ${groups.map(([label,g]) => {
+      const pctGroup = total ? Math.round((g.total/total)*100) : 0;
+
+      return `
+        <div class="card" style="margin-top:14px;">
+          <div class="row" style="align-items:baseline;">
+            <div style="font-weight:900">${escapeHtml(label)}</div>
+            <div class="right" style="font-weight:900">${fmtMoney2(g.total)} ${sym} <span style="opacity:.7;font-size:12px">${pctGroup}%</span></div>
+          </div>
+
+          <div style="margin-top:10px;">
+            ${g.items.map(a => {
+              const pct = g.total ? Math.round((a.amountBase/g.total)*100) : 0;
+              const icon = a.kind === 'bank' ? '🏦' : '💵';
+              return `
+                <div style="margin-bottom:12px;">
+                  <div class="row" style="margin-bottom:6px;">
+                    <div style="min-width:0;white-space:normal;font-weight:700;">
+                      ${icon} ${escapeHtml(a.name)}
+                      <span style="opacity:.7;font-size:12px;">
+                        (${fmtMoney2(a.original)} ${escapeHtml(a.currency)})
+                      </span>
+                    </div>
+                    <div class="right" style="font-weight:800;">
+                      ${fmtMoney2(a.amountBase)} ${sym}
+                      <span style="opacity:.7;font-size:12px">${pct}%</span>
+                    </div>
+                  </div>
+                  <div class="cat-bar"><div style="width:${pct}%"></div></div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    }).join('')}
+  `;
+}
+
+
+document.getElementById('holdingStatsFilter')?.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-hf]');
+  if (!btn) return;
+
+  document.querySelectorAll('#holdingStatsFilter button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+
+  state.holdingStatsFilter = btn.dataset.hf || 'all';
+  renderHoldingAccountsStatsUI();
+});
+
+
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
