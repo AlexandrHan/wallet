@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="csrf-token" content="{{ csrf_token() }}">
-  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="manifest" href="/public/manifest.webmanifest?v={{ filemtime(public_path('manifest.webmanifest')) }}">
+
   <meta name="theme-color" content="#0b0d10">
 
 
@@ -19,7 +20,11 @@
 
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="SG Wallet">
-  <link rel="stylesheet" href="{{ asset('css/wallet.css') }}?v={{ filemtime(public_path('css/wallet.css')) }}">
+  <link rel="stylesheet" href="/public/css/wallet.css?v={{ filemtime(public_path('css/wallet.css')) }}">
+  <script src="/public/js/wallet.js?v={{ filemtime(public_path('js/wallet.js')) }}" defer></script>
+  
+
+
 
   <title>SolarGlass</title>
 
@@ -418,8 +423,8 @@
   </div>
 </div>
 
-<audio id="sndLeave" preload="auto" src="/sounds/leave.mp3"></audio>
-<audio id="sndMoneta" preload="auto" src="/sounds/moneta.mp3"></audio>
+<audio id="sndLeave" src="/public/sounds/leave.mp3" preload="auto"></audio>
+<audio id="sndMoneta" src="/public/sounds/moneta.mp3" preload="auto"></audio>
 
 <script>
   window.AUTH_USER = @json(auth()->user());
