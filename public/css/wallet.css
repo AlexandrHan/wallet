@@ -1,0 +1,1430 @@
+/* ================== THEME ==================
+   Змінні теми. Далі стилі використовують var(...)
+=========================================== */
+:root{
+  --bg:#0b0d10;
+  --panel:rgba(28,32,45,.65);
+  --stroke:rgba(255,255,255,.08);
+  --text:#e9eef6;
+  --muted:#9aa6bc;
+
+  --blue:#4c7dff;
+  --green:#66f2a8;
+  --red:#ff6b6b;
+
+  --blur:20px;
+  --radius-xl:22px;
+  --radius-lg:18px;
+  --radius-pill:999px;
+}
+
+/* Підказка браузеру: темна схема (впливає на нативні контролли) */
+:root{ color-scheme: dark; }
+
+/* Select у sheet: базовий вигляд */
+.sheet-panel select{
+  color: var(--text);
+  background: rgba(255,255,255,.08);
+  border: 1px solid var(--stroke);
+}
+
+/* Dropdown-опції (Windows/Chrome/Edge) */
+.sheet-panel select option{
+  background: #0b0d10;
+  color: #e9eef6;
+}
+
+/* Optgroup (якщо використовуєш) */
+.sheet-panel select optgroup{
+  background: #0b0d10;
+  color: #9aa6bc;
+}
+
+/* Splash ховаємо, якщо вже показували у вкладці */
+html.no-splash #appSplash{
+  display: none !important;
+}
+
+/* ================== SPLASH ================== */
+#appSplash {
+  position: fixed;
+  width: 100%;
+  inset: 0;
+  background:
+    radial-gradient(1400px 700px at 20% -20%, #1b2450 0%, transparent 60%),
+    radial-gradient(1200px 600px at 90% 10%, #0f3a2a 0%, transparent 55%),
+    linear-gradient(180deg, #0b0d10 0%, #07080c 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+  transition: opacity .35s ease, visibility .35s ease;
+}
+
+#appSplash.hide {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.splash-logo {
+  width: 320px;
+  max-width: 40vw;
+
+  aspect-ratio: 1 / 1;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: -7rem;
+  animation: splashPulse 1.8s ease-in-out infinite;
+}
+
+.splash-logo img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  display: block;
+}
+
+/* ===== Entry Sheet Color Modes =====
+   Підсвітка sheet під дохід/витрату
+==================================== */
+.sheet.entry-income {
+  --accent: #3bd671; /* iOS green */
+}
+
+.sheet.entry-expense {
+  --accent: #ff5a5f; /* iOS red */
+}
+
+/* header / title */
+.sheet.entry-income .sheet-title,
+.sheet.entry-expense .sheet-title {
+  color: var(--accent);
+}
+
+/* confirm button */
+.sheet.entry-income .sheet-confirm { background: var(--accent); }
+.sheet.entry-expense .sheet-confirm { background: var(--accent); }
+
+/* input focus */
+.sheet.entry-income input:focus,
+.sheet.entry-income textarea:focus { border-color: var(--accent); }
+
+.sheet.entry-expense input:focus,
+.sheet.entry-expense textarea:focus { border-color: var(--accent); }
+
+/* ✅ точкові overrides по id (як у тебе було) */
+#sheetEntry.entry-income #sheetEntryTitle { color: var(--accent) !important; }
+#sheetEntry.entry-expense #sheetEntryTitle { color: #ff001aad !important; }
+#sheetEntry.entry-expense #sheetConfirm { background: #ff001aad !important; }
+
+/* ================== BASE ================== */
+*{ box-sizing:border-box; }
+
+/* NOTE: це правило далі перекривається нижче (body height:auto !important) */
+body{ height:110%; }
+
+html{
+  height:100%;
+  background:#0b0d10; /* ключове */
+}
+
+#opsView{
+  background-color: transparent;
+}
+
+body{
+  margin:0;
+  padding:0;
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display",system-ui;
+
+  /* NOTE: цей фон нижче відключається, коли працює .app-bg */
+  background:
+    radial-gradient(1400px 700px at 20% -20%, #1b2450 0%, transparent 60%),
+    radial-gradient(1200px 600px at 90% 10%, #0f3a2a 0%, transparent 55%),
+    linear-gradient(180deg, #0b0d10 0%, #07080c 100%);
+  background-attachment: fixed;
+  background-repeat:no-repeat;
+  background-size: cover;
+
+  color:var(--text);
+  overscroll-behavior:none;
+  -webkit-overflow-scrolling:touch;
+}
+
+body.modal-open{
+  overflow:hidden;
+  touch-action:none;
+}
+
+/* щоб receipt-модалка виглядала як твій sheet/modal */
+.receipt-panel{
+  background: rgba(28,32,45,.92);
+}
+
+/* ================== HEADER ================== */
+header{
+  position:fixed;
+  top:0;
+  left:0;
+  right:0;
+  z-index:1000;
+
+  background: linear-gradient(
+    to bottom,
+    rgba(11, 16, 12, 0.88) 0%,
+    rgba(11, 16, 12, 0.49) 35%,
+    rgba(11, 16, 12, 0.36) 65%,
+    rgba(11, 16, 12, 0) 100%
+  );
+
+  padding-top: env(safe-area-inset-top);
+}
+
+header .wrap{
+  display:flex;
+  align-items:center;
+  position:relative;
+}
+
+.header-right{
+  margin-left:auto;
+  display:flex;
+  align-items:center;
+}
+
+/* центр */
+.header-center{
+  position:absolute;
+  left:50%;
+  transform:translateX(-50%);
+}
+
+.top-area{
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+}
+
+.logo img{
+  height:48px;
+  filter:
+    drop-shadow(0 0 6px rgba(0, 0, 0, 0.58))
+    drop-shadow(0 2px 8px rgba(0, 0, 0, 0.7));
+}
+
+.logo{
+  display:flex;
+  align-items:center;
+  padding:6px;
+  border-radius:12px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ================== CONTENT OFFSET ================== */
+main,
+.content,
+.app{
+  padding-top: calc(6rem + env(safe-area-inset-top));
+}
+
+/* ================== LAYOUT ================== */
+.wrap{ max-width:980px; margin:0 auto; padding:18px; }
+.row{ display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+
+/* ================== BURGER ================== */
+.burger-wrap{ position:relative; }
+
+.burger-btn{
+  width: 50px;
+  height: 50px;
+  margin-top: 8px;
+  border-radius:999px;
+  border:1px solid var(--stroke);
+  background: rgba(31, 30, 30, 0);
+
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+
+  border: 1px solid rgba(255,255,255,.12);
+
+  box-shadow:
+    inset 0 1px 1px rgba(255,255,255,.12),
+    0 4px 14px rgba(0,0,0,.25);
+
+  color:var(--text);
+  font-size:26px;
+  cursor:pointer;
+  transition:.2s ease;
+}
+.burger-btn:hover{ background:rgba(255,255,255,.14); }
+
+/* iOS glass popover */
+.burger-menu{
+  position:absolute;
+  right:0;
+  top:90px;
+  z-index:2000;
+
+  min-width:220px;
+  padding:8px;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+
+  border-radius:16px;
+
+  background:
+    linear-gradient(to bottom, rgba(255,255,255,.08), rgba(255,255,255,.02)),
+    rgba(0, 0, 0, 0.65);
+
+  backdrop-filter:blur(12px) saturate(200%);
+  -webkit-backdrop-filter:blur(12px) saturate(200%); /* ✅ підтримка */
+
+  border:1px solid rgba(255,255,255,.14);
+
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.18),
+    0 12px 32px rgba(0,0,0,.45);
+}
+
+.burger-menu.hidden{ display:none; }
+
+.burger-item{
+  position:relative;
+  padding:14px 16px;
+  border-radius:12px;
+  text-decoration:none;
+  color:var(--text);
+  background:transparent;
+  border:none;
+  text-align:left;
+  cursor:pointer;
+  font-size:14px;
+  font-weight:600;
+}
+
+.burger-menu form{ display:contents; }
+
+.burger-menu .burger-item:not(:last-child)::after{
+  content:'';
+  position:absolute;
+  left:16px;
+  right:16px;
+  bottom:0;
+  height:1px;
+  background:linear-gradient(
+    to right,
+    transparent,
+    rgba(255,255,255,.12),
+    transparent
+  );
+}
+
+.burger-item:hover{ background:rgba(255,255,255,.1); }
+.burger-item.danger{ color:var(--red); }
+
+.userName{ color:#fff; }
+
+/* ================== BUTTONS ================== */
+.btn{
+  padding:10px 16px;
+  border-radius:var(--radius-lg);
+  background:rgba(255,255,255,.08);
+  border:1px solid var(--stroke);
+  color:var(--text);
+  cursor:pointer;
+  transition:.2s ease;
+}
+.btn:hover{ background:rgba(255,255,255,.14); }
+.btn.primary{ background:rgba(84, 192, 134, 0.71); border-color:rgba(158, 158, 158, 0.6); }
+.btn.danger{ background:#ff001aad; border-color:rgba(158, 158, 158, 0.6); }
+.btn.mini{ padding:6px 10px; font-size:16px; border-radius:19px; }
+.btn:disabled{ opacity:.4; }
+
+.btn-stat-sg{ width: 100%; }
+
+.save{
+  width: 100%;
+  margin-top: 8px;
+  background:rgba(84, 192, 134, 0.71);
+  color: #000000;
+  font-weight: 600;
+  font-size: 20px;
+  border-radius:5rem;
+}
+
+.tag{
+  padding:10px 12px;
+  border-radius:var(--radius-pill);
+  background:rgba(255,255,255,.06);
+  border:1px solid var(--stroke);
+  font-size:12px;
+  color:#fff;
+  font-weight:600;
+}
+
+/* ================== TEXT ================== */
+.muted{ color:#fff; font-size:14px; font-weight:600; }
+.big{ font-size:26px; font-weight:700; }
+.pos{ color:var(--green); }
+.neg{ color:#ff001aad; }
+
+/* ================== CARDS ================== */
+.grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(360px,1fr));
+  gap:22px;
+  margin-top:22px;
+  align-items:stretch;
+}
+
+.card{
+  background:linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,.02));
+  backdrop-filter: blur(var(--blur));
+  -webkit-backdrop-filter: blur(var(--blur));
+  border:1px solid var(--stroke);
+  border-radius:var(--radius-xl);
+  padding:18px;
+  transition:.25s ease;
+}
+.card:hover{ transform:translateY(-2px); }
+.card.ro{ opacity:.65; }
+
+.card-top{ display:flex; justify-content:space-between; align-items:center; }
+
+.bank-logo{
+  position:absolute;
+  top:34px;
+  right:14px;
+  height:3rem;
+  width:auto;
+  opacity:.85;
+  filter: drop-shadow(0 0 6px rgba(25, 151, 0, 0.5));
+}
+
+/* ===== Currency icons ===== */
+.currency-icon{
+  position:absolute;
+  top:34px;
+  right:14px;
+
+  width:2.8rem;
+  height:2.8rem;
+
+  display:flex;
+  align-items:center;
+  justify-content:center;
+
+  font-size:32px;
+  font-weight:700;
+
+  border-radius:10px;
+  box-shadow:0 0 6px rgba(25,151,0,.5);
+  backdrop-filter:blur(8px);
+  -webkit-backdrop-filter:blur(8px);
+  background:rgba(255,255,255,.08);
+  border:1px solid var(--stroke);
+}
+
+.currency-UAH { color:#fffb00ff; background: transparent; }
+.currency-EUR { color:#ff0000ff; background: transparent; }
+.currency-USD { color: rgba(40, 180, 47, 1); background: transparent; }
+
+/* ================== TABLE ================== */
+table{
+  width:100%;
+  border-collapse:separate;
+  border-spacing:0 10px;
+  table-layout:fixed;
+}
+thead{ display:none; }
+
+tbody tr{
+  background:
+    linear-gradient(to bottom, rgba(255,255,255,.08), rgba(255,255,255,.02)),
+    rgba(18,18,20,.65);
+
+  /* ✅ ВАЖЛИВО: у тебе тут був синтаксис backdrop-filter(...) без ":" і blur() */
+  backdrop-filter: blur(22px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+
+  border:1px solid rgba(255,255,255,.14);
+}
+
+tbody td{ padding:14px; font-size:14px; }
+
+tbody td{
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+tbody td:first-child{ border-radius:14px 0 0 14px; }
+
+/* сума */
+tbody td:last-child{
+  width:30%;
+  white-space:nowrap;
+  text-align:right;
+  border-radius:0 14px 14px 0;
+}
+
+/* коментар */
+.entry-comment{
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.comment-cell{
+  padding-right: 0;
+  padding-left:0;
+}
+
+/* Receipt кнопка під коментарем */
+.receipt-btn{
+  all: unset;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:5rem;
+  height:34px;
+  border-radius:999px;
+  margin-top:6px;
+
+  background: rgba(255,255,255,0.06);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  cursor:pointer;
+}
+.receipt-btn:active{ transform: scale(.94); }
+
+
+
+
+
+
+/* ================== RECEIPT ACTIONS ==================
+   Дві кнопки (або більше) в ряд, без переносу, рівна ширина
+====================================================== */
+.receipt-actions{
+  display:flex;
+  justify-content:center;
+  gap:10px;
+  margin-top:12px;
+
+  flex-wrap:nowrap; /* не переносити */
+  width:100%;
+}
+
+.receipt-actions .btn{
+  flex:1 1 0;              /* однакова ширина */
+  margin-top:2rem;
+  margin-bottom:2rem;
+  min-width:0;             /* щоб текст не розпирало */
+  max-width:220px;         /* ліміт ширини кнопки */
+  text-align:center;
+  text-decoration:none;
+
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
+
+
+/* ================== SEGMENTED ==================
+   iOS/Telegram-like segmented control
+================================================= */
+.segmented{
+  display:flex;
+  margin-top:2rem;
+  border-radius:999px;
+  padding:4px;
+
+  /* border був двічі: залишаю фінальний (нижній) як у тебе */
+  border:1px solid var(--stroke);
+
+  /* прозора база під "скло" */
+  background: rgba(31, 30, 30, 0);
+
+  /* glass */
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+
+  border: 1px solid rgba(255,255,255,.12);
+
+  /* легкий об’єм */
+  box-shadow:
+    inset 0 1px 1px rgba(255,255,255,.12),
+    0 4px 14px rgba(0,0,0,.25);
+}
+
+.segmented button{
+  flex:1;
+  padding:8px 14px;
+  border-radius:999px;
+  background:none;
+  border:none;
+  color:var(--muted);
+  font-weight:600;
+}
+
+.segmented button.active{
+  background:rgba(84, 192, 134, 0.93);
+  color:#000;
+}
+
+
+/* ================== SHEET ================== */
+.sheet.hidden{ display:none; }
+
+.sheet-backdrop{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.4);
+}
+
+.sheet-panel{
+  position:fixed;
+  left:0;
+  right:0;
+  bottom:0;
+  z-index:3001;
+
+  padding:16px 18px 80px;
+  border-radius:24px 24px 0 0;
+
+  /* glass */
+  backdrop-filter:blur(24px) saturate(160%);
+  -webkit-backdrop-filter:blur(24px) saturate(160%);
+
+  border:1px solid rgba(255,255,255,.12);
+
+  /* світло зверху + глибина знизу */
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.15),
+    0 -8px 30px rgba(0,0,0,.45);
+
+  animation: sheetUp .25s ease;
+}
+
+.sheet-handle{
+  width:40px;
+  height:4px;
+  background:rgba(255,255,255,.3);
+  border-radius:999px;
+  margin:0 auto 14px;
+}
+
+.sheet-panel h3{
+  margin:0 0 16px;
+  text-align:center;
+  font-size:28px;
+}
+
+.sheet-panel input,
+.sheet-panel select{
+  width:100%;
+  padding:14px;
+  border-radius:14px;
+  border:1px solid var(--stroke);
+  background:rgba(255,255,255,.08);
+  color:var(--text);
+  margin-bottom:10px;
+  margin-top:18px;
+  font-size:16px;
+  outline:none;
+}
+
+
+/* ================== ENTRY TABLE HELPERS ================== */
+.date-cell{
+  width:64px;
+  text-align:center;
+  white-space:nowrap;
+}
+
+.date-main{ font-size:14px; font-weight:700; }
+.date-year{ font-size:11px; opacity:.6; }
+
+.amount-cell{
+  text-align:right;
+  white-space:nowrap;
+  padding-right:10px;
+  padding-left:0;
+}
+
+.amount-value{ font-weight:700; font-size:15px; }
+.amount-currency{ font-size:12px; opacity:.7; margin-left:4px; }
+
+
+/* режим (бейдж/плашка) */
+.rejym{
+  background:rgba(102, 242, 167, 0.53);
+  color:#000;
+}
+
+img{ display:block; max-height:48px; }
+
+
+/* ================== SUMMARY ================== */
+.summary{
+  display:flex;
+  gap:14px;
+  margin:18px 0 10px;
+}
+.summary.hidden{ display:none; }
+
+.summary-item{
+  flex:1;
+  background:rgba(255,255,255,.06);
+  border:1px solid var(--stroke);
+  border-radius:14px;
+  padding:12px 14px;
+  text-align:center;
+}
+
+.summary-label{ font-size:12px; color:var(--muted); }
+
+.summary-value{
+  margin-top:4px;
+  font-size:18px;
+  font-weight:700;
+  font-variant-numeric: tabular-nums;
+}
+
+
+/* ================== CATEGORY STATS ================== */
+.cat{ margin:10px 0 18px; }
+.cat.hidden{ display:none; }
+
+.cat-title{
+  font-size:13px;
+  color:var(--muted);
+  margin-bottom:8px;
+}
+
+.cat-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-bottom:6px;
+}
+
+.cat-name{
+  min-width:90px;
+  font-size:12px;
+  white-space:nowrap;
+}
+
+.cat-bar{
+  flex:1;
+  height:8px;
+  background:rgba(255,255,255,.08);
+  border-radius:999px;
+  overflow:hidden;
+}
+
+.cat-bar > div{
+  height:100%;
+  background:var(--red);
+}
+
+.cat-pct{
+  width:38px;
+  text-align:right;
+  font-size:12px;
+  font-variant-numeric: tabular-nums;
+}
+
+
+/* ================== CHART BOX ================== */
+.hidden{ display:none; }
+
+.chart-wrap{
+  margin:16px 0 10px;
+  padding:10px;
+  background:rgba(255,255,255,.04);
+  border:1px solid var(--stroke);
+  border-radius:16px;
+}
+
+#statsBox{ padding:16px; }
+
+#statsBox canvas{
+  width: 100% !important;
+  max-height: 260px;
+}
+
+.selector-vytraty-dohody{ margin-bottom: 1rem; }
+
+
+/* ================== ENTRY ROW ACTIONS ================== */
+.entry-row{ cursor: pointer; }
+
+.entry-actions{
+  margin-top:4px;
+  display:none;
+}
+
+.entry-row.active .entry-actions{
+  display:flex;
+  gap:8px;
+}
+
+/* iOS-style buttons */
+.entry-actions button{
+  all: unset;
+  width: 5rem;
+  height: 34px;
+  border-radius: 999px;
+
+  display:flex;
+  align-items:center;
+  justify-content:center;
+
+  font-size:16px;
+  line-height:1;
+
+  background: rgba(255,255,255,0.06);
+
+  /* ✅ додано -webkit- (не міняє дизайн, тільки підтримка) */
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+
+  cursor:pointer;
+  transition:
+    background .15s ease,
+    transform .1s ease,
+    opacity .1s ease;
+}
+
+.entry-actions button:active{
+  transform: scale(0.92);
+  background: rgba(255,255,255,0.12);
+}
+
+.entry-actions button:first-child{ color:#4c7dff; } /* edit */
+.entry-actions button:last-child{ color:#ff6b6b; }  /* delete */
+
+@media (hover:hover){
+  .entry-actions button:hover{
+    background: rgba(255,255,255,0.12);
+  }
+}
+
+
+/* ================== PIRATE DELETE OVERLAY ================== */
+.account-card{
+  position:relative;
+  user-select:none;
+}
+
+.pirate-overlay{
+  position:absolute;
+  inset:0;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  background:rgba(0,0,0,.55);
+  opacity:0;
+  pointer-events:none;
+  transition:.2s ease;
+  border-radius:14px;
+}
+
+.account-card.stage-1 .pirate-overlay,
+.account-card.stage-2 .pirate-overlay{
+  opacity:1;
+  pointer-events:auto;
+}
+
+.account-card.stage-2 .pirate-overlay{
+  background:rgba(120,0,0,.85);
+}
+
+.pirate-skull{
+  font-size:42px;
+  animation: skullPulse 1.2s infinite;
+  cursor:pointer;
+}
+
+.account-card.stage-2 .pirate-skull{
+  animation: skullShake .6s infinite;
+}
+
+.pirate-text{
+  margin-top:10px;
+  font-size:14px;
+  color:#ffd6d6;
+  text-align:center;
+  max-width:80%;
+}
+
+@keyframes skullPulse{
+  0%{ transform:scale(1); }
+  50%{ transform:scale(1.15); }
+  100%{ transform:scale(1); }
+}
+
+@keyframes skullShake{
+  0%{ transform:rotate(0); }
+  25%{ transform:rotate(-8deg); }
+  50%{ transform:rotate(8deg); }
+  75%{ transform:rotate(-8deg); }
+  100%{ transform:rotate(0); }
+}
+
+@keyframes splashPulse{
+  0%{ transform: scale(1); }
+  50%{ transform: scale(1.08); }
+  100%{ transform: scale(1); }
+}
+
+
+/* ================== MODAL ================== */
+.modal.hidden{ display:none; }
+
+.modal-backdrop{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.45);
+
+  backdrop-filter:blur(4px);
+  -webkit-backdrop-filter:blur(4px); /* ✅ підтримка */
+
+  z-index:3000;
+}
+
+/* iOS glass modal sheet */
+.modal-panel{
+  position:fixed;
+  left:0;
+  right:0;
+  bottom:0;
+  z-index:3001;
+
+  padding:16px 18px 100px;
+  border-radius:24px 24px 0 0;
+
+  backdrop-filter:blur(24px) saturate(160%);
+  -webkit-backdrop-filter:blur(24px) saturate(160%);
+
+  border:1px solid rgba(255,255,255,.12);
+
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.15),
+    0 -8px 30px rgba(0,0,0,.45);
+
+  animation:sheetUp .25s ease;
+}
+
+@keyframes sheetUp{
+  from{ transform:translateY(100%); }
+  to{ transform:translateY(0); }
+}
+
+.modal-handle{
+  width:42px;
+  height:4px;
+  border-radius:999px;
+  background:rgba(255,255,255,.3);
+  margin:0 auto 14px;
+}
+
+.modal-header{ margin-bottom:12px; }
+
+.modal-title{
+  margin-top:2rem;
+  text-align:center;
+  font-weight:700;
+  font-size:18px;
+}
+
+.modal-cash{ margin-bottom:2rem; }
+
+.modal-close{
+  all:unset;
+  width:34px;
+  height:34px;
+  border-radius:999px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:rgba(255,255,255,.08);
+  cursor:pointer;
+}
+
+.modal-body{
+  font-size:15px;
+  line-height:1.5;
+}
+
+.rate-card{
+  background: linear-gradient(180deg, rgba(255, 255, 255, .12), rgba(255, 255, 255, .02));
+  backdrop-filter: blur(var(--blur));
+  -webkit-backdrop-filter: blur(var(--blur)); /* ✅ підтримка */
+  border:1px solid var(--stroke);
+  border-radius:14px;
+  padding:12px;
+  margin-bottom:10px;
+  margin-top:1rem;
+  transition:.2s;
+}
+
+.rate-title{ font-weight:700; margin-bottom:6px; }
+
+.rate-title-usd{
+  color:rgb(28, 231, 62);
+  text-shadow:0 0 8px rgba(102,242,168,.4);
+}
+
+.rate-title-eur{
+  color:rgb(231, 28, 28);
+  text-shadow:0 0 8px rgba(76,125,255,.4);
+}
+
+.burger-actions{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+
+
+/* ================== EXCHANGE ================== */
+.exchange{
+  margin-top:14px;
+  padding-top:12px;
+  border-top:1px solid var(--stroke);
+  animation:fadeIn .25s ease;
+}
+
+@keyframes fadeIn{
+  from{ opacity:0; transform:translateY(10px); }
+  to{ opacity:1; transform:translateY(0); }
+}
+
+.exchange-header{
+  display:flex;
+  justify-content:center;
+  width:100%;
+}
+
+/* прибрати зайві відступи в обміннику */
+.exchange-header .segmented.exchange-mode{
+  margin: 0 auto;
+}
+
+.exchange-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-bottom:10px;
+}
+
+.exchange-row input{
+  flex:1;
+  padding:12px;
+  border-radius:12px;
+  border:1px solid var(--stroke);
+  background:rgba(255,255,255,.08);
+  color:#fff;
+  font-size:16px;
+}
+
+/* ================== EXCHANGE ================== */
+.exchange-currency{
+  min-width:52px;
+  text-align:center;
+  font-weight:700;
+}
+
+.exchange-mode{
+  margin-bottom:10px;
+  width:100%;
+}
+
+/* Розкритий модальний “sheet” з прокруткою */
+.modal-panel.expanded{
+  max-height:85vh;
+  overflow:auto;
+
+  /* ✅ iOS: інерційний скрол */
+  -webkit-overflow-scrolling: touch;
+}
+
+
+/* Активна картка (вибір курсу) */
+.rate-card.active{
+  border:1px solid rgba(102, 242, 167, 0.53);
+  background:#4e876900; /* ✅ прибрано зайве ; */
+  box-shadow:0 0 8px rgba(102, 242, 167, 0.25);
+  transform:translateY(-2px);
+}
+
+
+/* ================== INPUT FOCUS (EXCHANGE) ==================
+   Прибираємо системний фокус + робимо свій
+============================================================ */
+.exchange-row input{
+  outline:none;
+  transition:.2s;
+  margin-top:1rem;
+}
+
+/* кастомний фокус */
+.exchange-row input:focus{
+  border:1px solid #6dff4c;
+  background:rgba(76,125,255,.12);
+  box-shadow:0 0 9px rgba(207, 255, 76, 0.35);
+  transform:translateY(-2px);
+}
+
+/* коли поле заповнене */
+.exchange-row input:not(:placeholder-shown){
+  border:1px solid rgba(109,255,76,.4);
+}
+
+
+/* =========================================================
+   🔧 BACKGROUND FIX (НЕ ЛАМАЄ ІСНУЮЧІ СТИЛІ)
+   Стабілізує фон на iOS / Chrome / WebView
+========================================================= */
+
+/* 1) Окремий шар фону замість body */
+.app-bg{
+  position:fixed;
+  inset:0;
+  z-index:-1;
+
+  background:
+    radial-gradient(1400px 700px at 20% -20%, #1b2450 0%, transparent 60%),
+    radial-gradient(1200px 600px at 90% 10%, #0f3a2a 0%, transparent 55%),
+    linear-gradient(180deg, #0b0d10 0%, #07080c 100%);
+
+  background-repeat:no-repeat;
+  background-size:cover;
+
+  transform:translateZ(0); /* iOS repaint fix */
+}
+
+/* 2) Відключаємо старий механізм фону на body */
+body{
+  background:none !important;
+  height:auto !important;
+
+  /* ✅ щоб документ не “стискався” в окремих браузерах */
+  min-height:100%;
+}
+
+/* 3) html не перебиває фон */
+html{
+  background:#0b0d10;
+}
+
+
+/* ================== STAFF / ACCOUNTANT CARD ================== */
+.wallet-card--accountant{
+  background: linear-gradient(135deg, #2a2f36, #1c2127);
+  border: 1px dashed rgba(255,255,255,0.15);
+}
+
+.staff-badge{
+  font-size:11px;
+  padding:4px 8px;
+  border-radius:999px;
+  background:rgba(102,242,168,.15);
+  border:1px solid rgba(102,242,168,.35);
+  color:#66f2a8;
+  font-weight:700;
+  letter-spacing:.3px;
+}
+
+
+/* ================= ACCOUNT CARDS (MOBILE FIRST) ================= */
+
+/* 📱 MOBILE */
+.account-card-ui{
+  padding:14px 16px;
+  border-radius:18px;
+  min-height:120px;
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+  position:relative;
+}
+
+.account-name{
+  font-size:15px;
+  font-weight:700;
+}
+
+.account-balance{
+  font-size:20px;
+  font-weight:800;
+}
+
+.account-type{
+  font-size:11px;
+  opacity:.6;
+}
+
+/* 💻 DESKTOP UPGRADE */
+@media (min-width:1100px){
+  .grid{
+    grid-template-columns:repeat(auto-fill,minmax(380px,1fr));
+    gap:26px;
+  }
+
+  .account-card-ui{
+    padding:24px 26px;
+    border-radius:22px;
+    min-height:250px;
+  }
+
+  .account-name{ font-size:20px; }
+  .account-balance{ font-size:30px; }
+}
+
+
+/* ===== HIDE SCROLLBAR (MOBILE APP STYLE) ===== */
+@media (max-width:768px){
+  html, body{
+    scrollbar-width:none;        /* Firefox */
+    -ms-overflow-style:none;     /* IE/Edge */
+  }
+
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar{
+    display:none;                /* Chrome / Safari / iOS */
+  }
+}
+
+
+/* ================= DESKTOP MODAL ================= */
+@media (min-width:900px){
+  .modal-panel{
+    top:50%;
+    left:50%;
+    right:auto;
+    bottom:auto;
+
+    transform:translate(-50%, -50%);
+    width:520px;
+    max-height:90vh;
+
+    border-radius:22px;
+    padding:22px 26px;
+
+    backdrop-filter:blur(32px) saturate(160%);
+    -webkit-backdrop-filter:blur(32px) saturate(160%);
+
+    box-shadow:
+      0 30px 80px rgba(0,0,0,.6),
+      inset 0 1px 0 rgba(255,255,255,.15);
+
+    animation:fadeScale .25s ease;
+  }
+
+  .modal-body{
+    max-height:55vh;
+    overflow:auto;
+    padding-right:6px;
+
+    /* ✅ iOS/macOS WebView: плавний скрол у тілі модалки */
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .modal-title{
+    margin-top:0;
+    font-size:20px;
+  }
+
+  .modal-handle{ display:none; }
+}
+
+/* плавна поява */
+@keyframes fadeScale{
+  from{ opacity:0; transform:translate(-50%,-45%) scale(.96); }
+  to{ opacity:1; transform:translate(-50%,-50%) scale(1); }
+}
+
+
+/* ================== RECEIPT (2 рівні “кнопки” на всю ширину) ================== */
+.row.row-actions{
+  display:flex;
+  gap:10px;
+  width:100%;
+  flex-wrap:nowrap; /* не переносити */
+  margin:30px 0;
+}
+
+/* обидва елементи як рівні колонки */
+.row.row-actions > #receiptBtn,
+.row.row-actions > #receiptBadge{
+  flex:1 1 0;
+  min-width:0;
+  height:44px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  white-space:nowrap;
+}
+
+/* badge виглядає як кнопка */
+#receiptBadge{
+  font-size:16px;
+  border-radius:19px; /* як .btn.mini */
+  padding:6px 10px;   /* як .btn.mini */
+}
+
+/* ✅ не прибираємо з потоку, щоб не “скакала” ширина */
+#receiptBadge.hidden{
+  display:flex !important;   /* перебиває .hidden{display:none} */
+  visibility:hidden;
+  pointer-events:none;
+}
+
+
+/* ================= HOLDING CARD ================= */
+.segmented.holding-mode button{
+  transition: background-color .18s ease, color .18s ease, border-color .18s ease;
+}
+
+.holding-card{
+  margin-top:14px;
+  padding:16px 18px;
+}
+
+.holding-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+}
+
+.holding-title{
+  font-weight:900;
+  font-size:20px;
+  color: #cacaca;
+}
+
+.holding-amount{
+  margin-top:10px;
+  font-size:30px;
+  font-weight:900;
+  letter-spacing:.2px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.holding-break{
+  display:flex;
+  gap:10px;
+  margin-top:12px;
+  flex-wrap:wrap;
+  align-items:center;
+  flex-wrap:nowrap;      /* ⬅️ не переносити на новий ряд */
+  align-items:stretch; 
+}
+
+.holding-pill{
+  padding:8px 10px;
+  border-radius:12px;
+  background:rgba(255,255,255,.06);
+  border:1px solid var(--stroke);
+  font-size:12px;
+  font-weight:800;
+  opacity:.95;
+  flex:1 1 0;            /* ⬅️ однакова ширина */
+  min-width:0;           /* ⬅️ щоб текст не розпирав */
+  display:flex;
+  flex-direction:column; /* ⬅️ верх/низ */
+  align-items:center;
+}
+
+/* верхній ряд: іконка + назва */
+.holding-pill .hp-top{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  font-size:12px;
+  font-weight:800;
+  opacity:.9;
+  line-height:1.1;
+}
+
+/* нижній ряд: сума */
+.holding-pill .hp-val{
+  margin-top:6px;
+  font-size:14px;
+  font-weight:900;
+  font-variant-numeric: tabular-nums;
+  line-height:1.1;
+}
+
+
+
+
+.segmented.holding-mode{
+  margin-top:0;
+  padding:3px;
+  width:auto;
+}
+
+.segmented.holding-mode button{
+  padding:6px 10px;
+  font-size:12px;
+}
+
+.holding-warn{
+  margin-top:10px;
+  font-size:12px;
+  opacity:.75;
+}
+
+
+/* ================= DESKTOP: SHEET AS CENTER MODAL ================= */
+@media (min-width:900px){
+  .sheet-panel{
+    left:50%;
+    right:auto;
+    bottom:auto;
+    top:50%;
+    transform:translate(-50%, -50%);
+
+    width:min(560px, calc(100vw - 48px));
+    max-height:80vh;
+    overflow:auto;
+
+    border-radius:22px;
+    padding:22px 26px;
+
+    backdrop-filter: blur(32px) saturate(160%);
+    -webkit-backdrop-filter: blur(32px) saturate(160%);
+
+    box-shadow:
+      0 30px 80px rgba(0,0,0,.6),
+      inset 0 1px 0 rgba(255,255,255,.15);
+
+    animation:fadeScaleSheet .22s ease;
+  }
+
+  .sheet-handle{ display:none; }
+
+  .sheet-panel h3{
+    font-size:20px;
+    margin-bottom:14px;
+  }
+}
+
+@keyframes fadeScaleSheet{
+  from{ opacity:0; transform:translate(-50%, -46%) scale(.97); }
+  to{ opacity:1; transform:translate(-50%, -50%) scale(1); }
+}
