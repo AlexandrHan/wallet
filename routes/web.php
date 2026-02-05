@@ -9,7 +9,7 @@ use App\Models\BankAccount;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use App\Models\BankTransactionRaw;
-
+use App\Http\Controllers\ReclamationsController;
 
 //////////////////////////////////////////////////////////////////////////////////////
 
@@ -774,6 +774,11 @@ return response()->json($rows);
 
 
 
+
+
+Route::get('/reclamations', [ReclamationsController::class, 'index'])
+  ->middleware(['auth'])
+  ->name('reclamations.index');
 
 
 

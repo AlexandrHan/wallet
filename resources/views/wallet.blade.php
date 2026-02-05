@@ -297,7 +297,7 @@ main,
   inset 0 1px 1px rgba(255,255,255,.12),
   0 4px 14px rgba(0,0,0,.25);
   color:var(--text);
-  font-size:20px;
+  font-size:30px;
   cursor:pointer;
   transition:.2s ease;
 }
@@ -1451,6 +1451,9 @@ html{
 
 
 
+
+
+
 </style>
 
 </head>
@@ -1480,6 +1483,8 @@ html{
 
         <div id="burgerMenu" class="burger-menu hidden">
             <a href="/profile" class="burger-item">🔐 Адмінка / пароль</a>
+            <a href="{{ route('reclamations.index') }}" class="burger-item">🧾 Рекламації</a>
+
         <div id="staffCashBtn" class="menu-item burger-item hidden" onclick="openStaffCash()">
           👥 КЕШ співробітників
         </div>
