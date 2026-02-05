@@ -1293,6 +1293,14 @@ html{
 
 
 /* ================= HOLDING CARD ================= */
+#holdingTotalAmt{
+  color: #d4d4d4 !important;
+  text-shadow:
+    0 2px 12px rgba(0,0,0,.6),
+    0 0 26px rgba(255,255,255,.12);
+}
+
+
 .segmented.holding-mode button{
   transition: background-color .18s ease, color .18s ease, border-color .18s ease;
 }

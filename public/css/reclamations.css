@@ -1,0 +1,158 @@
+/* локальні стилі сторінки рекламацій */
+.reclamations-page{
+  padding-top: 14px;
+}
+
+/* місце під майбутній контент */
+.reclamations-empty{
+  margin-top: 18px;
+  border: 1px dashed rgba(255,255,255,.12);
+  border-radius: 18px;
+  padding: 18px;
+  background: rgba(255,255,255,.04);
+  min-height: 240px;
+}
+
+.reclam-link{
+  display:block;
+  text-decoration:none;
+  color:inherit;
+}
+
+.reclam-link:active{
+  transform: scale(.99);
+}
+
+.reclam-link{
+  transition: transform .08s ease, background .15s ease, border-color .15s ease;
+}
+
+@media (hover:hover){
+  .reclam-link:hover{
+    background: rgba(255,255,255,.08);
+    border-color: rgba(255,255,255,.14);
+  }
+}
+
+.reclam-footer{
+  margin-top:12px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.reclam-pill{
+  padding:6px 10px;
+  border-radius:999px;
+  background:rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.10);
+  font-size:12px;
+  font-weight:800;
+  opacity:.95;
+}
+
+.reclam-arrow{
+  margin-left:auto;
+  opacity:.7;
+  font-weight:900;
+  font-size:18px;
+}
+.reclam-card{
+  padding:14px 16px;
+  border-radius:18px;
+}
+
+.reclam-top{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:12px;
+}
+
+.reclam-id{
+  font-weight:900;
+  font-size:16px;
+}
+
+.reclam-sub{
+  margin-top:4px;
+  font-size:12px;
+  opacity:.75;
+}
+
+.reclam-status{
+  padding:6px 10px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:900;
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.06);
+  white-space:nowrap;
+}
+
+.status-open{
+  color:#66f2a8;
+  border-color:rgba(102,242,168,.35);
+  background:rgba(102,242,168,.10);
+}
+
+.status-wait{
+  color:#ffb86c;
+  border-color:rgba(255,184,108,.35);
+  background:rgba(255,184,108,.10);
+}
+
+.status-done{
+  color:#4c7dff;
+  border-color:rgba(76,125,255,.35);
+  background:rgba(76,125,255,.10);
+}
+
+.reclam-body{
+  border-top:1px solid rgba(255,255,255,.08);
+  padding-top:10px;
+}
+
+.reclam-row{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  padding:6px 0;
+}
+
+.reclam-row .right{
+  text-align:right;
+  max-width:60%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.mono{
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.reclam-actions{
+  margin-top:12px;
+  display:flex;
+  gap:10px;
+}
+
+.reclam-actions .btn{
+  flex:1 1 0;
+  min-width:0;
+}
+
+/* щоб контент не залазив під fixed header */
+.page{
+  padding-top: 96px; /* якщо хедер вищий/нижчий – підкрути */
+}
+
+/* на мобілці часто хедер трохи інший */
+@media (max-width: 768px){
+  .page{
+    padding-top: 88px;
+  }
+}

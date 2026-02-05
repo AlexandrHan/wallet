@@ -1790,6 +1790,7 @@ function updateHoldingCardTotalsUI(){
     ? computeHoldingTotals(base)
     : {cash:0, bank:0, total:0, missing:[]};
 
+  // ✅ ТІЛЬКИ ЗНАК (₴ $ €). Якщо раптом валюта без знака — нічого не показуємо.
   const sym = CURRENCY_SYMBOLS[base] ?? '';
   const cls = totals.total >= 0 ? 'pos' : 'neg';
 
@@ -1797,21 +1798,22 @@ function updateHoldingCardTotalsUI(){
   if (totalEl){
     totalEl.classList.remove('pos','neg');
     totalEl.classList.add(cls);
-    totalEl.textContent = `${fmtMoney(totals.total)} ${sym} ${base}`;
+
+    // було: `${...} ${sym} ${base}`
+    totalEl.textContent = `${fmtMoney(totals.total)} ${sym}`.trim();
   }
 
-    const cashEl = document.getElementById('holdingCashPill');
-    if (cashEl){
+  const cashEl = document.getElementById('holdingCashPill');
+  if (cashEl){
     const v = cashEl.querySelector('.hp-val');
-    if (v) v.textContent = `${fmtMoney(totals.cash)} ${sym}`;
-    }
+    if (v) v.textContent = `${fmtMoney(totals.cash)} ${sym}`.trim();
+  }
 
-    const bankEl = document.getElementById('holdingBankPill');
-    if (bankEl){
+  const bankEl = document.getElementById('holdingBankPill');
+  if (bankEl){
     const v = bankEl.querySelector('.hp-val');
-    if (v) v.textContent = `${fmtMoney(totals.bank)} ${sym}`;
-    }
-
+    if (v) v.textContent = `${fmtMoney(totals.bank)} ${sym}`.trim();
+  }
 
   const fxEl = document.getElementById('holdingFxDate');
   if (fxEl) fxEl.textContent = state.fx?.date ? `• курс: ${state.fx.date}` : '';
@@ -1827,6 +1829,7 @@ function updateHoldingCardTotalsUI(){
     }
   }
 }
+
 
 
 function renderHoldingCard(){
@@ -1885,7 +1888,7 @@ function renderHoldingCard(){
     </div>
 
     <div class="holding-amount ${cls}" id="holdingTotalAmt">
-      ${fmtMoney(totals.total)} ${sym} ${base}
+      ${fmtMoney(totals.total)} ${sym} 
     </div>
 
     <div class="holding-break">
