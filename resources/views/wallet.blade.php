@@ -46,7 +46,7 @@
   body{margin:0}
   #appSplash{position:fixed;inset:0;background:#0b0d10;z-index:99999}
 </style>
-<link rel="stylesheet" href="{{ asset('css/wallet.css') }}?v={{ filemtime(public_path('css/wallet.css')) }}">
+
 
 
 </head>
@@ -429,8 +429,6 @@
 <script>
   window.AUTH_USER = @json(auth()->user());
 </script>
-
-<script src="{{ asset('js/wallet.js') }}?v=1" defer></script>
 
 </body>
 </html>
