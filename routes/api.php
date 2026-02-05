@@ -28,35 +28,72 @@ Route::post('/entries', function (Request $request) {
         'comment'    => 'nullable|string',
     ]);
 
+    $walletId   = (int) $data['wallet_id'];
+    $entryType  = $data['entry_type'];
+    $amount     = number_format((float)$data['amount'], 2, '.', ''); // нормалізуємо
+    $commentRaw = isset($data['comment']) ? trim((string)$data['comment']) : '';
+    $comment    = ($commentRaw === '') ? null : $commentRaw;
 
-    $id = DB::table('entries')->insertGetId([
-        'wallet_id'    => $data['wallet_id'],
-        'entry_type'   => $data['entry_type'],
-        'amount'       => $data['amount'],
-        'comment'      => $data['comment'] ?? null,
-        'posting_date' => date('Y-m-d'),
-        'erp_sync_date'=> date('Y-m-d'),
-        'erp_synced_at'=> null,
-        'created_at'   => now(),
-        'updated_at'   => now(),
-    ]);
+    $today = date('Y-m-d');
+    $now   = now();
 
+    // вікно “антидубль” (повторний ретрай/подвійний клік)
+    $windowSec = 90;
 
-    // ⬅️ ОЦЕГО РАНІШЕ НЕ БУЛО
-    try {
-        app(\App\Services\ErpNextService::class)->syncEntry($id);
-    } catch (\Throwable $e) {
-        \Log::error('ERP sync failed', [
-            'entry_id' => $id,
-            'error' => $e->getMessage(),
+    $result = DB::transaction(function () use ($walletId, $entryType, $amount, $comment, $today, $now, $windowSec) {
+
+        // 🔒 блокуємо конкретний гаманець, щоб 2 паралельні запити не вставили 2 записи
+        DB::table('wallets')->where('id', $walletId)->lockForUpdate()->first();
+
+        $q = DB::table('entries')
+            ->where('wallet_id', $walletId)
+            ->where('entry_type', $entryType)
+            ->where('amount', $amount)
+            ->where('posting_date', $today)
+            ->where('created_at', '>=', $now->copy()->subSeconds($windowSec));
+
+        if ($comment === null) $q->whereNull('comment');
+        else $q->where('comment', $comment);
+
+        $existing = $q->orderByDesc('id')->first();
+
+        // ✅ дубль: не створюємо нову, повертаємо існуючу
+        if ($existing) {
+            return ['id' => $existing->id, 'duplicate' => true];
+        }
+
+        // ✅ нормальне створення
+        $id = DB::table('entries')->insertGetId([
+            'wallet_id'     => $walletId,
+            'entry_type'    => $entryType,
+            'amount'        => $amount,
+            'comment'       => $comment,
+            'posting_date'  => $today,
+            'erp_sync_date' => $today,
+            'erp_synced_at' => null,
+            'created_at'    => $now,
+            'updated_at'    => $now,
         ]);
+
+        return ['id' => $id, 'duplicate' => false];
+    });
+
+    // ERP sync робимо тільки якщо це НЕ дубль
+    if (!$result['duplicate']) {
+        try {
+            app(\App\Services\ErpNextService::class)->syncEntry($result['id']);
+        } catch (\Throwable $e) {
+            \Log::error('ERP sync failed', [
+                'entry_id' => $result['id'],
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
-
-
     return response()->json([
-        'id' => $id,
-        'ok' => true,
+        'id'        => $result['id'],
+        'ok'        => true,
+        'duplicate' => $result['duplicate'],
     ]);
 });
 

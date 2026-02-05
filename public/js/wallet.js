@@ -35,6 +35,9 @@ if (AUTH_USER.role !== 'accountant' && !AUTH_ACTOR) {
     fx: null,
     holdingCurrency: 'UAH',
     holdingOps: null,
+    entrySubmitting: false,
+    entryIdemKey: null,
+
 
     delArmedId: null,
     delTimer: null,
@@ -198,17 +201,27 @@ function checkOnline() {
   sheetEntry.querySelector('.sheet-backdrop').onclick = closeEntrySheet;
 
   // кнопка "Зберегти" в модалці операції
-  sheetConfirm.onclick = async () => {
-    const amount = Number(sheetAmount.value);
+    sheetConfirm.onclick = async () => {
+    if (state.entrySubmitting) return;           // ⛔ повторний клік
+    state.entrySubmitting = true;
+    sheetConfirm.disabled = true;
 
-    if (!amount || amount <= 0) {
-      alert('Введи суму більше 0');
-      return;
+    try {
+        const amount = Number(sheetAmount.value);
+        if (!amount || amount <= 0) {
+        alert('Введи суму більше 0');
+        return;
+        }
+
+        const ok = await submitEntry(sheetType, amount, sheetComment.value);
+        if (ok) closeEntrySheet();
+
+    } finally {
+        state.entrySubmitting = false;
+        sheetConfirm.disabled = false;
     }
+    };
 
-    const ok = await submitEntry(sheetType, amount, sheetComment.value);
-    if (ok) closeEntrySheet();
-  };
 
   let sheetType = null;
 
@@ -1031,6 +1044,9 @@ function openEntrySheet(type){
   sheetType = type;
   applyEntrySheetColor(type);
 
+  // ✅ ключ на одну "спробу створення" (збережеться навіть якщо інет залип)
+  state.entryIdemKey = makeIdempotencyKey();
+
   sheetEntryTitle.textContent =
     type === 'income' ? 'Додати дохід' : 'Додати витрату';
 
@@ -1048,8 +1064,8 @@ function openEntrySheet(type){
 
   sheetEntry.classList.remove('hidden');
   resetReceiptUI();
-
 }
+
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1060,10 +1076,14 @@ function closeEntrySheet(){
   sheetEntry.classList.add('hidden');
   sheetType = null;
   state.editingEntryId = null;
+
+  // ✅ закрили шитку — це вже інша операція
+  state.entryIdemKey = null;
+
   sheetEntry.classList.remove('entry-income', 'entry-expense');
   resetReceiptUI();
-
 }
+
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1085,24 +1105,39 @@ async function submitEntry(entry_type, amount, comment){
 
   const method = isEdit ? 'PUT' : 'POST';
 
+  // ✅ idempotency key ТІЛЬКИ для створення (POST)
+  if (!isEdit && !state.entryIdemKey) {
+    state.entryIdemKey = makeIdempotencyKey();
+  }
+
   const payload = isEdit
     ? { amount: Number(amount), comment: finalComment }
     : {
         wallet_id: state.selectedWalletId,
         entry_type,
         amount: Number(amount),
-        comment: finalComment
+        comment: finalComment,
+        client_request_id: state.entryIdemKey, // ✅
       };
 
-  const res = await fetch(url, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      'X-CSRF-TOKEN': CSRF,
-      'Accept': 'application/json',
-    },
-    body: JSON.stringify(payload)
-  });
+  let res;
+  try {
+    res = await fetch(url, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': CSRF,
+        'Accept': 'application/json',
+        ...( (!isEdit && state.entryIdemKey) ? { 'X-Idempotency-Key': state.entryIdemKey } : {} ),
+      },
+      body: JSON.stringify(payload)
+    });
+  } catch (e) {
+    // 🔥 Оце і є "поганий інет": запит міг піти, а відповідь не дійшла.
+    // НЕ міняємо ключ, щоб повторний клік “Зберегти” не створив дубль.
+    alert('Звʼязок поганий. Натисни "Зберегти" ще раз, я не створю дубль.');
+    return false;
+  }
 
   if (!res.ok) {
     const txt = await res.text();
@@ -1112,43 +1147,36 @@ async function submitEntry(entry_type, amount, comment){
 
   entryFeedback(entry_type);
 
-
-
-
-  // 1) Витягуємо id створеної операції (тільки для POST)
+  // 1) Дістаємо id (для POST і для idempotency теж)
   let createdId = null;
-  if (!isEdit) {
-    try {
-      const data = await res.json();
-      createdId = data?.id ?? data?.entry?.id ?? null;
-    } catch (e) {
-      // якщо бек повернув не JSON — тоді createdId буде null
-    }
-  }
+  try {
+    const data = await res.json();
+    createdId = data?.id ?? data?.entry?.id ?? null;
+  } catch {}
 
-  // 2) Якщо є фото і це нова операція — завантажуємо чек
+  // ✅ якщо операція створилась/підтвердилась — ключ можна обнулити
+  if (!isEdit) state.entryIdemKey = null;
+
+  // ... далі твій код з receipt upload (як був)
+  // важливо: createdId тепер буде однаковий навіть при повторі
+
+  // 2) upload receipt (твій існуючий блок лишаємо)
   if (!isEdit && state.pendingReceiptFile) {
-
     if (!createdId) {
       alert('Операцію створено, але сервер не повернув id. Треба щоб POST /api/entries повертав JSON {id: ...}.');
-      // не валимо всю операцію, просто без фото
     } else {
       const form = new FormData();
       form.append('file', state.pendingReceiptFile);
 
       const up = await fetch(`/api/entries/${createdId}/receipt`, {
         method: 'POST',
-        headers: {
-          'X-CSRF-TOKEN': CSRF,
-          'Accept': 'application/json',
-        },
+        headers: { 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' },
         body: form
       });
 
       if (!up.ok) {
         const txt = await up.text();
         alert('Чек не завантажився: ' + (txt || up.status));
-        // операцію не відміняємо, просто фото не прикріпилось
       } else {
         resetReceiptUI();
       }
@@ -1161,6 +1189,7 @@ async function submitEntry(entry_type, amount, comment){
   await loadWallets();
   return true;
 }
+
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1360,6 +1389,15 @@ function dayKeyLocal(d = new Date()){
   const dd = String(d.getDate()).padStart(2,'0');
   return `${y}-${m}-${dd}`;
 }
+
+// =======================
+// Anti-duplicate: idempotency key + submit lock
+// =======================
+function makeIdempotencyKey(){
+  if (window.crypto?.randomUUID) return crypto.randomUUID();
+  return 'k_' + Date.now() + '_' + Math.random().toString(16).slice(2);
+}
+
 
 function scheduleDailyFxRefresh(){
   const planNext = () => {
