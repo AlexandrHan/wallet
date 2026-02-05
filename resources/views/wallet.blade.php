@@ -22,6 +22,17 @@
 
   <title>SolarGlass</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    (function () {
+      try {
+        if (sessionStorage.getItem('sg_splash_shown') === '1') {
+          document.documentElement.classList.add('no-splash');
+        }
+      } catch (e) {}
+    })();
+  </script>
+
+
 
 <style>
   /* ================== THEME ================== */
@@ -61,6 +72,10 @@
 .sheet-panel select optgroup{
   background: #0b0d10;
   color: #9aa6bc;
+}
+
+html.no-splash #appSplash{
+  display: none !important;
 }
 
 
@@ -1411,6 +1426,12 @@ html{
 }
 
 /* ================= HOLDING CARD ================= */
+/* тільки плавність для перемикача валюти */
+.segmented.holding-mode button{
+  transition: background-color .18s ease, color .18s ease, border-color .18s ease;
+}
+
+
 .holding-card{
   margin-top:14px;
   padding:16px 18px;
@@ -2537,7 +2558,13 @@ card.innerHTML = `
 function hideSplash(){
   const el = document.getElementById('appSplash');
   if (!el) return;
+
   el.classList.add('hide');
+
+  try{
+    sessionStorage.setItem('sg_splash_shown', '1');   // ✅ запам’ятали в цій вкладці
+    document.documentElement.classList.add('no-splash'); // ✅ на всякий
+  } catch (e) {}
 }
 
 
@@ -3343,6 +3370,11 @@ function renderHoldingStatsUI(){
   const box = document.getElementById('holdingStatsBox');
   if (!box || box.classList.contains('hidden')) return;
 
+  const monthEl = document.getElementById('hStatsMonth');
+  const incomeBtn = document.getElementById('hStatsIncome');
+  const expenseBtn = document.getElementById('hStatsExpense');
+  if (!monthEl || !incomeBtn || !expenseBtn) return;
+
   const ym = document.getElementById('hStatsMonth')?.value || '';
   const type = (document.getElementById('hStatsIncome')?.classList.contains('active')) ? 'income' : 'expense';
 
@@ -3469,6 +3501,46 @@ function computeHoldingTotals(base){
   return { cash, bank, total: cash + bank, missing: [...missing] };
 }
 
+function updateHoldingCardTotalsUI(){
+  const base = state.holdingCurrency || 'UAH';
+  const hasFx = !!state.fx;
+
+  const totals = (base === 'UAH' || hasFx)
+    ? computeHoldingTotals(base)
+    : {cash:0, bank:0, total:0, missing:[]};
+
+  const sym = CURRENCY_SYMBOLS[base] ?? '';
+  const cls = totals.total >= 0 ? 'pos' : 'neg';
+
+  const totalEl = document.getElementById('holdingTotalAmt');
+  if (totalEl){
+    totalEl.classList.remove('pos','neg');
+    totalEl.classList.add(cls);
+    totalEl.textContent = `${fmtMoney(totals.total)} ${sym} ${base}`;
+  }
+
+  const cashEl = document.getElementById('holdingCashPill');
+  if (cashEl) cashEl.textContent = `💵 Cash: ${fmtMoney(totals.cash)} ${sym}`;
+
+  const bankEl = document.getElementById('holdingBankPill');
+  if (bankEl) bankEl.textContent = `🏦 Bank: ${fmtMoney(totals.bank)} ${sym}`;
+
+  const fxEl = document.getElementById('holdingFxDate');
+  if (fxEl) fxEl.textContent = state.fx?.date ? `• курс: ${state.fx.date}` : '';
+
+  const warnEl = document.getElementById('holdingWarn');
+  if (warnEl){
+    if (totals.missing.length){
+      warnEl.classList.remove('hidden');
+      warnEl.innerHTML = `⚠️ Немає курсу для: <b>${totals.missing.join(', ')}</b>`;
+    } else {
+      warnEl.classList.add('hidden');
+      warnEl.innerHTML = '';
+    }
+  }
+}
+
+
 function renderHoldingCard(){
   const el = document.getElementById('holdingCard');
   if (!el) return;
@@ -3494,7 +3566,7 @@ function renderHoldingCard(){
       </div>
 
       <div class="row" style="margin-top:12px;">
-        <button type="button" class="btn btn-stat-sg" id="toggleHoldingStats">📊 Статистика</button>
+        <button type="button" class="btn" style="width:100%;" id="toggleHoldingStats">📊 Статистика</button>
       </div>
     `;
 
@@ -3516,7 +3588,7 @@ function renderHoldingCard(){
         <div class="holding-title">SG Holding</div>
         <div class="holding-sub">
           Загальний баланс по всіх рахунках
-          ${state.fx?.date ? `• курс: ${state.fx.date}` : ''}
+          <span id="holdingFxDate">${state.fx?.date ? `• курс: ${state.fx.date}` : ''}</span>
         </div>
       </div>
 
@@ -3529,13 +3601,13 @@ function renderHoldingCard(){
       </div>
     </div>
 
-    <div class="holding-amount ${cls}">
+    <div class="holding-amount ${cls}" id="holdingTotalAmt">
       ${fmtMoney(totals.total)} ${sym} ${base}
     </div>
 
     <div class="holding-break">
-      <div class="holding-pill">💵 Cash: ${fmtMoney(totals.cash)} ${sym}</div>
-      <div class="holding-pill">🏦 Bank: ${fmtMoney(totals.bank)} ${sym}</div>
+      <div class="holding-pill" id="holdingCashPill">💵 Cash: ${fmtMoney(totals.cash)} ${sym}</div>
+      <div class="holding-pill" id="holdingBankPill">🏦 Bank: ${fmtMoney(totals.bank)} ${sym}</div>
       <button class="btn mini" id="holdingRefreshFx">↻ Курс</button>
     </div>
 
@@ -3543,15 +3615,13 @@ function renderHoldingCard(){
       <button type="button" class="btn" id="toggleHoldingStats">📊 Статистика</button>
     </div>
 
-    ${totals.missing.length ? `
-      <div class="holding-warn">
-        ⚠️ Немає курсу для: <b>${totals.missing.join(', ')}</b>
-      </div>
-    ` : ''}
+    <div class="holding-warn ${totals.missing.length ? '' : 'hidden'}" id="holdingWarn">
+      ⚠️ Немає курсу для: <b>${totals.missing.join(', ')}</b>
+    </div>
   `;
 
-  bindHoldingCardActions(); // ⬅️ важливо
-}
+    bindHoldingCardActions(); // ⬅️ важливо
+  }
 
 
 function bindHoldingCardActions(){
@@ -3561,12 +3631,23 @@ function bindHoldingCardActions(){
     refreshBtn.onclick = async (e) => {
       e.preventDefault();
       await loadFx(true);
-      renderHoldingCard();
-      renderHoldingStatsUI?.(); // якщо відкрита статистика, хай теж оновиться
-      renderHoldingAccountsStatsUI();
+
+      // якщо картка в "спрощеному" режимі без сегмента — тоді повний рендер потрібен
+      if (!document.getElementById('holdingCurSeg')) {
+        renderHoldingCard();
+        return;
+      }
+
+      const box = document.getElementById('holdingStatsBox');
+      if (box && !box.classList.contains('hidden')) {
+        renderHoldingStatsUI();
+        renderHoldingAccountsStatsUI?.();
+      }
+
 
     };
   }
+
 
   // 2) перемикач валюти (UAH/USD/EUR)
   const seg = document.getElementById('holdingCurSeg');
@@ -3576,17 +3657,27 @@ function bindHoldingCardActions(){
       if (!btn) return;
 
       const cur = btn.dataset.hcur;
-      if (!cur) return;
+      if (!cur || cur === state.holdingCurrency) return;
 
       state.holdingCurrency = cur;
 
+      // плавно перемкнути active (без перерендеру)
+      seg.querySelectorAll('button[data-hcur]').forEach(b => {
+        b.classList.toggle('active', b.dataset.hcur === cur);
+      });
+
+      // якщо валюта не UAH — потрібен курс
       if (cur !== 'UAH') await loadFx(true);
 
-      renderHoldingCard();
-      renderHoldingStatsUI?.(); // перерахувати статистику, якщо відкрита
-      renderHoldingAccountsStatsUI();
+      // оновлюємо тільки цифри
+      updateHoldingCardTotalsUI();
+
+      // якщо статистика відкрита — теж оновимо
+      renderHoldingStatsUI?.();
+      renderHoldingAccountsStatsUI?.();
     };
   }
+
 
   // 3) кнопка “📊 Статистика”
   const statsBtn = document.getElementById('toggleHoldingStats');
