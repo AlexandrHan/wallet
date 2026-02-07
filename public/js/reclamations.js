@@ -163,6 +163,30 @@
           </div>
         `;
       }
+      // показ вже завантажених фото
+      if (stepData?.files?.length) {
+
+        extraEl.innerHTML += `
+          <div class="card" style="margin-top:10px;">
+            <div class="muted" style="margin-bottom:8px;">Завантажені фото</div>
+            <div class="step-photos"></div>
+          </div>
+        `;
+
+        const box = extraEl.querySelector('.step-photos');
+
+        stepData.files.forEach(path => {
+          const url = '/storage/' + path;
+
+        box.innerHTML += `
+          <a href="${url}" data-img-viewer>
+            <img src="${url}" class="step-photo-preview">
+          </a>
+        `;
+
+        });
+      }
+
 
       // =========================
       // special UIs (переписують extraEl повністю)
@@ -329,8 +353,10 @@
       const onPointerDown = (e) => {
         if (modal.classList.contains('hidden')) return;
 
-        const tag = e.target?.tagName?.toLowerCase();
-        if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+        // ⛔ НЕ стартуємо свайп, якщо клік по будь-якому інтерактиву
+        if (e.target.closest('button, a, input, textarea, select, label, [role="button"], .segmented, .toggle')) {
+          return;
+        }
 
         dragging = true;
         startY = e.clientY;
@@ -575,8 +601,58 @@
       location.reload();
     });
 
+
     return true;
   }
+
+  function initImageViewer(){
+    const viewer = document.getElementById('imgViewer');
+    const img = document.getElementById('imgViewerImg');
+    if (!viewer || !img) return;
+
+    const open = (src) => {
+      img.src = src;
+      viewer.classList.remove('hidden');
+      document.documentElement.classList.add('no-scroll');
+      document.body.classList.add('no-scroll');
+    };
+
+    const close = () => {
+      viewer.classList.add('hidden');
+      img.src = '';
+      document.documentElement.classList.remove('no-scroll');
+      document.body.classList.remove('no-scroll');
+    };
+
+    // делегований клік по всім фото
+    document.addEventListener('click', (e) => {
+      const a = e.target.closest('a[data-img-viewer]');
+      if (!a) return;
+
+      e.preventDefault();
+      const src = a.getAttribute('href');
+      if (src) open(src);
+    });
+
+    // закриття: клік по фону або кнопці
+    viewer.addEventListener('click', (e) => {
+      // закриваємо по кліку на фон, хрестик або будь-де поза картинкою
+      if (
+        e.target.closest('.img-viewer-close') ||
+        e.target.classList.contains('img-viewer-backdrop') ||
+        (!e.target.closest('.img-viewer-img') && !e.target.closest('#imgViewerImg'))
+      ) {
+        close();
+      }
+    });
+
+
+    // Esc
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !viewer.classList.contains('hidden')) close();
+    });
+  }
+
 
   // =========================
   // Client history accordion
@@ -626,6 +702,8 @@
     initStepsModal();
     initClientHistory();
     initIndexSearchPanel(); 
+    initImageViewer();
+
   });
 
     function initIndexSearchPanel(){

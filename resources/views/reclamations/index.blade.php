@@ -165,93 +165,75 @@
       </div>
     @else
       @foreach($items as $item)
-        @php
-          $labels = [
-            'reported' => 'Дані клієнта',
-            'dismantled' => 'Демонтували',
-            'where_left' => 'Де залишили',
-            'shipped_to_service' => 'Відправили на ремонт',
-            'service_received' => 'Сервіс отримав',
-            'repaired_shipped_back' => 'Відремонтували та відправили',
-            'installed' => 'Встановили',
-            'loaner_return' => 'Повернення підмінного',
-            'closed' => 'Завершили',
-          ];
 
-          $order = array_keys($labels);
+    @php
+      $labels = [
+        'reported' => 'Дані клієнта',
+        'dismantled' => 'Демонтували',
+        'where_left' => 'Де залишили',
+        'shipped_to_service' => 'Відправили на ремонт',
+        'service_received' => 'Сервіс отримав',
+        'repaired_shipped_back' => 'Відремонтували та відправили',
+        'installed' => 'Встановили',
+        'loaner_return' => 'Повернення підмінного',
+        'closed' => 'Завершили',
+      ];
 
-          $isDone = function($s){
-            return $s && (
-              $s->done_date ||
-              ($s->note && trim($s->note) !== '') ||
-              ($s->ttn && trim($s->ttn) !== '') ||
-              (is_array($s->files) && count($s->files))
-            );
-          };
+      $order = array_keys($labels);
 
-          // поточний/останній активний етап = останній заповнений по порядку
-          $currentKey = null;
-          $currentDate = null;
+      $stepsByKey = $item->steps->keyBy('step_key');
 
-          foreach ($order as $k) {
-            $s = $item->steps->firstWhere('step_key', $k);
-            if ($isDone($s)) {
-              $currentKey = $k;
-              $currentDate = $s->done_date ? \Illuminate\Support\Carbon::parse($s->done_date)->format('d.m.Y') : null;
-            }
-          }
+      $isDone = function($key) use ($stepsByKey) {
+        $s = $stepsByKey->get($key);
+        if (!$s) return false;
 
-          $currentLabel = $currentKey ? ($labels[$currentKey] ?? $currentKey) : 'Не розпочато';
-          $currentDateText = $currentDate ?: ($item->reported_at ? $item->reported_at->format('d.m.Y') : '—');
+        return !empty($s->done_date)
+          || (is_string($s->note) && trim($s->note) !== '')
+          || (is_string($s->ttn)  && trim($s->ttn)  !== '')
+          || (is_array($s->files) && count($s->files) > 0);
+      };
 
-          // колір рамки
-          $shipped = $item->steps->firstWhere('step_key', 'shipped_to_service');
-          $hasShipped = $isDone($shipped);
+      // 1) Активний етап: останній виконаний по ПОРЯДКУ
+      $activeKey = null;
+      foreach ($order as $k) {
+        if ($isDone($k)) $activeKey = $k;
+      }
 
-          if ($item->status === 'done') {
-            $borderClass = 'card-done';      // зелена
-          } elseif ($hasShipped) {
-            $borderClass = 'card-shipped';   // жовта
-          } else {
-            $borderClass = 'card-pre';       // червона
-          }
+      // якщо ще нічого не робили
+      if (!$activeKey) $activeKey = 'reported';
 
-          $statusClass = $item->status === 'done' ? 'status-done' : 'status-open';
-          $statusText  = $item->status === 'done' ? 'Завершено' : 'В роботі';
+      $activeLabel = $labels[$activeKey] ?? $activeKey;
 
-          $filesCount = $item->steps->sum(fn($s) => is_array($s->files) ? count($s->files) : 0);
-          $notesCount = $item->steps->filter(fn($s) => $s->note && trim($s->note) !== '')->count();
-          $dateText = $currentDateText;
+      // 2) Дата для картки: дата активного етапу, інакше дата звернення, інакше —
+      $activeStep = $stepsByKey->get($activeKey);
+      $dateText = null;
 
-        @endphp
-        @php
-          // порядок етапів та назви (під твою show.blade.php)
-          $stepsMap = [
-            'reported' => 'Дані клієнта',
-            'dismantled' => 'Демонтували',
-            'where_left' => 'Де залишили',
-            'shipped_to_service' => 'Відправили НП на ремонт',
-            'service_received' => 'Сервіс отримав',
-            'repaired_shipped_back' => 'Відремонтували та відправили',
-            'installed' => 'Встановили',
-            'loaner_return' => 'Повернення підмінного',
-            'closed' => 'Завершили',
-          ];
+      if ($activeStep && !empty($activeStep->done_date)) {
+        $dateText = \Illuminate\Support\Carbon::parse($activeStep->done_date)->format('d.m.Y');
+      } elseif ($item->reported_at) {
+        $dateText = $item->reported_at->format('d.m.Y');
+      } else {
+        $dateText = '—';
+      }
 
-          // беремо останній "заповнений" step (date/note/ttn/files)
-          $activeStep = $item->steps
-            ->filter(function($s){
-              $hasFiles = is_array($s->files) && count($s->files);
-              return $s->done_date || (trim((string)$s->note) !== '') || (trim((string)$s->ttn) !== '') || $hasFiles;
-            })
-            ->sortBy(function($s){
-              return $s->done_date ? strtotime($s->done_date) : 0;
-            })
-            ->last();
+      // 3) Колір рамки: green > yellow > red
+      $doneClosed = ($item->status === 'done') || $isDone('closed');
+      $doneRepaired = $isDone('repaired_shipped_back');
 
-          $activeKey = $activeStep?->step_key ?? 'reported';
-          $activeLabel = $stepsMap[$activeKey] ?? $activeKey;
-        @endphp
+      if ($doneClosed) {
+        $borderClass = 'card-done';      // зелена
+      } elseif ($doneRepaired) {
+        $borderClass = 'card-shipped';   // жовта (залишаємо твій клас, щоб CSS не міняти)
+      } else {
+        $borderClass = 'card-pre';       // червона
+      }
+
+      // (опціонально) лічильники
+      $filesCount = $item->steps->sum(fn($s) => is_array($s->files) ? count($s->files) : 0);
+      $notesCount = $item->steps->filter(fn($s) => is_string($s->note) && trim($s->note) !== '')->count();
+    @endphp
+
+       
 
 
 
@@ -299,8 +281,40 @@
 
 
 
+
 </main>
 
+<script>
+  (function () {
+    const viewer = document.getElementById('imgViewer');
+    const img = document.getElementById('imgViewerImg');
+    if (!viewer || !img) return;
+
+    function closeViewer() {
+      viewer.classList.add('hidden');
+      viewer.setAttribute('aria-hidden', 'true');
+      img.src = '';
+      document.body.style.overflow = '';
+    }
+
+    // Закриття: клік по фону або по хрестику
+    viewer.addEventListener('click', (e) => {
+      if (
+        e.target.classList.contains('img-viewer-backdrop') ||
+        e.target.classList.contains('img-viewer-close')
+      ) {
+        closeViewer();
+      }
+    });
+
+    // Закриття: Esc
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !viewer.classList.contains('hidden')) {
+        closeViewer();
+      }
+    });
+  })();
+</script>
 
 
 </body>

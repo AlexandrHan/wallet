@@ -80,7 +80,7 @@
     $need = ($k === 'installed' && (!$s || !$s->note || trim($s->note) === '')); // "встановили" без комента = критично
     $cls = $need ? 'step-need' : ($isDone ? 'step-done' : 'step-empty');
 
-    $badge = $need ? '⚠️ увага' : ($isDone ? '✅ виконано' : '⏳ очікує');
+    $badge = $need ? '⚠️ відсутній фідбек' : ($isDone ? '✅ виконано' : '⏳ очікує');
     $sub = $s?->done_date
   ? $s->done_date->format('d.m.Y')
   : ($isDone ? 'заповнено' : 'натисни щоб заповнити');
@@ -116,11 +116,23 @@
       @endif
 
       @if($s?->files && count($s->files))
-        <div class="step-row">
-          <div class="muted">Файли</div>
-          <div class="right"><b>{{ count($s->files) }}</b></div>
+
+
+        <div class="step-photos" style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+          @foreach($s->files as $path)
+            @php $url = Storage::disk('public')->url($path); @endphp
+
+            <a href="{{ $url }}" data-img-viewer style="display:block;">
+              <img
+                src="{{ $url }}"
+                alt="Фото"
+                style="width:84px;height:84px;object-fit:cover;border-radius:14px;border:1px solid rgba(255,255,255,.10);"
+              >
+            </a>
+          @endforeach
         </div>
       @endif
+
     </div>
     </div>
   </div>
@@ -201,3 +213,15 @@
 
 
 @endsection
+
+
+
+<div id="imgViewer" class="img-viewer hidden" aria-hidden="true">
+  <div class="img-viewer-backdrop"></div>
+
+  <button type="button" class="img-viewer-close" aria-label="Закрити">✕</button>
+
+  <img id="imgViewerImg" class="img-viewer-img" alt="Фото рекламації" />
+
+  <div class="img-viewer-hint muted">Клік або Esc щоб закрити</div>
+</div>

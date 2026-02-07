@@ -630,36 +630,38 @@
 
   /* твій inset-контур */
   box-shadow:
-    0 0 0 1px rgb(140, 0, 0) inset,
+  /* твій inset-контур */
+    0 0 0 1px rgba(165, 165, 165, 0.393) inset,
 
     /* м'яка iOS тінь назовні */
-    0 10px 28px rgba(120, 120, 120, 0.28),
-    0 2px 8px rgba(0,0,0,.22);
+    0 8px 12px rgba(35, 35, 35, 0.329),
+    0 2px 8px rgba(42, 42, 42, 0.112);
 }
 
 .reclam-card.card-shipped{
-  border-color: rgba(237, 242, 102, 0.4);
+  border-color: rgba(93, 218, 97, 0.4);
 
   /* твій inset-контур */
+  /* твій inset-контур */
   box-shadow:
-    0 0 0 1px rgba(238, 255, 1, 0.536) inset,
+    0 0 0 1px rgba(165, 165, 165, 0.393) inset,
 
     /* м'яка iOS тінь назовні */
-    0 10px 28px rgba(120, 120, 120, 0.28),
-    0 2px 8px rgba(0,0,0,.22);
+    0 8px 12px rgba(35, 35, 35, 0.329),
+    0 2px 8px rgba(42, 42, 42, 0.112);
 }
 
 /* iOS-like glow + inset ring */
 .reclam-card.card-done{
-  border-color: rgba(102, 242, 167, 0);
+  border-color: rgba(122, 122, 122, 0.41);
 
   /* твій inset-контур */
   box-shadow:
-    0 0 0 1px rgba(58, 160, 105, 0) inset,
+    0 0 0 1px rgba(165, 165, 165, 0.393) inset,
 
     /* м'яка iOS тінь назовні */
-    0 10px 28px rgba(120, 120, 120, 0),
-    0 2px 8px rgba(0, 0, 0, 0);
+    0 8px 12px rgba(35, 35, 35, 0.329),
+    0 2px 8px rgba(42, 42, 42, 0.112);
 }
 
 /* hide scrollbars in modal (scroll works) */
@@ -678,5 +680,124 @@
 .red{
   color: #ff0000;
   font-weight: 700;
-  font-size: 18px;
+  font-size: 16px;
+} 
+
+.step-photos{
+  display:grid;
+  grid-template-columns: repeat(3,1fr);
+  gap:8px;
+}
+
+.step-photo-preview{
+  width:100%;
+  aspect-ratio:1/1;
+  object-fit:cover;
+  border-radius:10px;
+  cursor:pointer;
+}
+
+.img-viewer.hidden{ display:none; }
+
+.img-viewer{
+  position:fixed;
+  inset:0;
+  z-index:9999;
+}
+
+.img-viewer-backdrop{
+  position:absolute;
+  inset:0;
+  background:rgba(0,0,0,.92);
+}
+
+.img-viewer-img{
+  position:absolute;
+  inset:0;
+  margin:auto;
+  max-width:100vw;
+  max-height:100vh;
+  object-fit:contain;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  user-select:none;
+  -webkit-user-drag:none;
+}
+
+.img-viewer-close{
+  position:absolute;
+  top: calc(12px + env(safe-area-inset-top));
+  right: calc(12px + env(safe-area-inset-right));
+  border:0;
+  background:rgba(255,255,255,.08);
+  color:#fff;
+  font-size:18px;
+  width:40px;
+  height:40px;
+  border-radius:12px;
+  cursor:pointer;
+  backdrop-filter: blur(12px);
+}
+
+.img-viewer-hint{
+  position:absolute;
+  left:0; right:0;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  text-align:center;
+  font-size:12px;
+  opacity:.8;
+  pointer-events:none;
+}
+
+/* прибрати скрол при відкритті */
+html.no-scroll, body.no-scroll{ overflow:hidden !important; }
+
+.img-viewer{
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.img-viewer.hidden{ display:none; }
+
+.img-viewer-backdrop{
+  position:absolute;
+  inset:0;
+  background: rgba(0,0,0,.92);
+}
+
+.img-viewer-img{
+  position: relative;
+  z-index: 2;
+  max-width: 96vw;
+  max-height: 86vh;
+  object-fit: contain;
+  border-radius: 14px;
+}
+
+.img-viewer-close{
+  position: absolute;
+  z-index: 3;
+  top: 14px;
+  right: 14px;
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(255,255,255,.10);
+  color: #fff;
+  font-size: 20px;
+}
+
+.img-viewer-hint{
+  position:absolute;
+  z-index: 3;
+  bottom: 16px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 12px;
+  opacity: .85;
 }
