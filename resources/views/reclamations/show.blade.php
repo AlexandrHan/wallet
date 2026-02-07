@@ -61,7 +61,7 @@
       <div class="right">
         <b>{{ $reclamation->has_loaner ? 'В наявності' : 'Відсутній' }}</b>
         @if(!$reclamation->has_loaner)
-          <span class="red">• {{ $reclamation->loaner_ordered ? 'замовили' : 'не замовляли' }}</span>
+          <span class="red">• {{ $reclamation->loaner_ordered ? 'Замовили' : 'Не замовляли' }}</span>
         @endif
       </div>
     </div>
@@ -125,6 +125,7 @@
             <a href="{{ $url }}" data-img-viewer style="display:block;">
               <img
                 src="{{ $url }}"
+                class="step-photo-preview"
                 alt="Фото"
                 style="width:84px;height:84px;object-fit:cover;border-radius:14px;border:1px solid rgba(255,255,255,.10);"
               >

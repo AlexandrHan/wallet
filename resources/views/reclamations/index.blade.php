@@ -288,26 +288,59 @@
   (function () {
     const viewer = document.getElementById('imgViewer');
     const img = document.getElementById('imgViewerImg');
+    const closeBtn = viewer?.querySelector('.img-viewer-close');
+    const backdrop = viewer?.querySelector('.img-viewer-backdrop');
+
     if (!viewer || !img) return;
 
-    function closeViewer() {
+    let lastFocusEl = null;
+
+    function openViewer(src){
+      lastFocusEl = document.activeElement;
+
+      img.src = src;
+      viewer.classList.remove('hidden');
+      viewer.setAttribute('aria-hidden', 'false');
+
+      // фокус на хрестик (щоб Esc/Tab були логічні)
+      closeBtn?.focus({ preventScroll: true });
+    }
+
+    function closeViewer(){
+      // важливо: зняти фокус з кнопки, перш ніж ховати батька
+      document.activeElement?.blur();
+
       viewer.classList.add('hidden');
       viewer.setAttribute('aria-hidden', 'true');
       img.src = '';
-      document.body.style.overflow = '';
+
+      // повернути фокус туди, де був
+      if (lastFocusEl && typeof lastFocusEl.focus === 'function') {
+        lastFocusEl.focus({ preventScroll: true });
+      }
+      lastFocusEl = null;
     }
 
-    // Закриття: клік по фону або по хрестику
-    viewer.addEventListener('click', (e) => {
-      if (
-        e.target.classList.contains('img-viewer-backdrop') ||
-        e.target.classList.contains('img-viewer-close')
-      ) {
-        closeViewer();
-      }
+    // 1) делегований клік по фотках (використай data-img-viewer)
+    document.addEventListener('click', (e) => {
+      const a = e.target.closest('a[data-img-viewer]');
+      if (!a) return;
+
+      e.preventDefault();
+      const src = a.getAttribute('href');
+      if (src) openViewer(src);
     });
 
-    // Закриття: Esc
+    // 2) закриття по хрестику
+    closeBtn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      closeViewer();
+    });
+
+    // 3) закриття по фону
+    backdrop?.addEventListener('click', closeViewer);
+
+    // 4) Esc
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !viewer.classList.contains('hidden')) {
         closeViewer();

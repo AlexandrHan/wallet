@@ -636,16 +636,10 @@
 
     // закриття: клік по фону або кнопці
     viewer.addEventListener('click', (e) => {
-      // закриваємо по кліку на фон, хрестик або будь-де поза картинкою
-      if (
-        e.target.closest('.img-viewer-close') ||
-        e.target.classList.contains('img-viewer-backdrop') ||
-        (!e.target.closest('.img-viewer-img') && !e.target.closest('#imgViewerImg'))
-      ) {
+      if (e.target.classList.contains('img-viewer-backdrop') || e.target.closest('.img-viewer-close')) {
         close();
       }
     });
-
 
     // Esc
     window.addEventListener('keydown', (e) => {
