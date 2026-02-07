@@ -14,10 +14,12 @@
   ];
 @endphp
 
-<main class="wrap page" data-reclamation-id="{{ $reclamation->id }}">
+<main class="wrap page reclamations-show" data-reclamation-id="{{ $reclamation->id }}">
+
   <div class="row content">
-    <div style="font-weight:900;">{{ $reclamation->code }}</div>
+    
     <a href="{{ route('reclamations.index') }}" class="btn right back">← Назад</a>
+    <div style="font-weight:900;">{{ $reclamation->code }}</div>
   </div>
 
   <div class="card" style="margin-top:14px;">
@@ -131,8 +133,9 @@
       <div id="stepExtra" style="margin-top:10px;"></div>
 
       <div class="row" style="margin-top:12px;">
-        <button type="button" class="btn" id="stepClose">Закрити</button>
+       
         <button type="button" class="btn primary right" id="stepSave">Зберегти</button>
+        <button type="button" class="btn" id="stepClose">Закрити</button> 
       </div>
     </div>
   </div>

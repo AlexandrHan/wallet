@@ -2450,7 +2450,7 @@ document.addEventListener('click', () => {
 
 
 
-  function initPirateDelete(){
+function initPirateDelete(){
   document.querySelectorAll('.account-card.account-cash').forEach(card => {
 
     if (card._pirateBound) return;
@@ -2458,123 +2458,167 @@ document.addEventListener('click', () => {
 
     card._pirateBound = true;
 
+    const HOLD_MS = 6000;
+
     let pressTimer = null;
+    let tickTimer  = null;
     let stage = 0;
 
     const skull = card.querySelector('.pirate-skull');
     const text  = card.querySelector('.pirate-text');
 
     let suppressClick = false;
+    let holding = false;
 
-    const start = () => {
+    function reset(){
+      stage = 0;
+      holding = false;
       suppressClick = false;
 
+      if (pressTimer) clearTimeout(pressTimer);
+      if (tickTimer) clearInterval(tickTimer);
+      pressTimer = null;
+      tickTimer = null;
+
+      card.classList.remove('stage-1','stage-2','stage-3');
+      text.textContent = '';
+    }
+
+    function startHold(){
+      if (stage > 0) return; // якщо вже “озброєно” — не стартуємо заново
+
+      suppressClick = true;   // ⛔ блокуємо відкриття рахунку поки тримаємо
+      holding = true;
+
+      let left = Math.ceil(HOLD_MS / 1000);
+
+      // одразу покажемо інструкцію
+      text.textContent = `Тримай ${left} сек…`;
+
+      // кожну секунду оновлюємо текст
+      tickTimer = setInterval(() => {
+        if (!holding) return;
+        left = Math.max(0, left - 1);
+        text.textContent = left > 0 ? `Тримай ${left} сек…` : 'Готово…';
+      }, 1000);
+
+      // через 8 сек вмикаємо stage-1 (показуємо череп)
       pressTimer = setTimeout(() => {
+        if (!holding) return;
+
         stage = 1;
-        suppressClick = true; // ⛔ блокуємо відкриття рахунку
         card.classList.add('stage-1');
         text.textContent = 'Видалити рахунок?';
 
-        // автоскасування через 3 сек
+        // після “озброєння” можна дозволити кліки по картці,
+        // але твій click-handler нижче все одно зробить reset якщо треба
+        suppressClick = true;
+
+        // автоскасування через 3 сек (як у тебе було)
         setTimeout(() => {
           if (stage === 1) reset();
         }, 3000);
 
-      }, 700);
-    };
+      }, HOLD_MS);
+    }
 
-    const stop = () => {
-      clearTimeout(pressTimer);
-    };
+    function stopHold(){
+      // якщо не дотягнув до stage-1 — просто скидаємо
+      holding = false;
 
-
-
-    card.addEventListener('mousedown', start);
-    card.addEventListener('touchstart', start);
-    card.addEventListener('mouseup', stop);
-    card.addEventListener('mouseleave', stop);
-    card.addEventListener('touchend', stop);
-    card.addEventListener('click', (e) => {
-
-      // ⛔ якщо клік по черепу — НЕ ЧІПАЄМО
-      if (e.target.closest('.pirate-skull')) {
-        return;
+      if (stage === 0) {
+        reset();
+      } else {
+        // якщо stage вже 1+ — просто зупиняємо таймери утримання
+        if (pressTimer) clearTimeout(pressTimer);
+        if (tickTimer) clearInterval(tickTimer);
+        pressTimer = null;
+        tickTimer = null;
       }
+    }
+
+    // ✅ Pointer events: і мишка, і тач одним набором
+    card.addEventListener('pointerdown', (e) => {
+      // тільки primary (щоб не було 2 пальці/колесо)
+      if (e.isPrimary === false) return;
+      // якщо натиснули прямо на череп — не стартуємо холд
+      if (e.target.closest('.pirate-skull')) return;
+
+      startHold();
+    });
+
+    card.addEventListener('pointerup', stopHold);
+    card.addEventListener('pointercancel', stopHold);
+    card.addEventListener('pointerleave', stopHold);
+
+    // якщо юзер почав скролити/тягнути — скидаємо
+    card.addEventListener('pointermove', (e) => {
+      if (!holding || stage !== 0) return;
+      // маленький поріг, щоб випадковий мікрорух не зривав
+      const dx = Math.abs(e.movementX || 0);
+      const dy = Math.abs(e.movementY || 0);
+      if (dx + dy > 8) stopHold();
+    });
+
+    // твій захист від випадкового відкриття
+    card.addEventListener('click', (e) => {
+      // ⛔ якщо клік по черепу — НЕ ЧІПАЄМО
+      if (e.target.closest('.pirate-skull')) return;
 
       if (suppressClick) {
         e.preventDefault();
         e.stopImmediatePropagation();
-        suppressClick = false;
+        suppressClick = false; // один раз “з’їли” клік
         return;
       }
 
-      if (stage > 0) {
-        reset();
+      if (stage > 0) reset();
+    }, true);
+
+    // ⬇️ нижче лишаєш ТВОЮ логіку skull.onclick (stage 1→2→3→4→delete)
+    skull.onclick = (e) => {
+      e.stopPropagation();
+
+      if (stage === 1) {
+        stage = 2;
+        card.classList.remove('stage-1');
+        card.classList.add('stage-2');
+
+        text.innerHTML = `Ти гарно подумав?<br>Відновлення буде неможливе.`;
+        return;
       }
 
-    }, true); // capture
+      if (stage === 2) {
+        stage = 3;
+        let seconds = 10;
 
+        card.classList.add('stage-3');
+        skull.style.pointerEvents = 'none';
 
+        const countdown = setInterval(() => {
+          text.innerHTML = `Зачекай ${seconds} сек...<br>Після цього можна видалити`;
+          seconds--;
 
+          if (seconds < 0) {
+            clearInterval(countdown);
+            stage = 4;
+            skull.style.pointerEvents = 'auto';
+            text.innerHTML = 'Тепер можна видалити ☠️';
+          }
+        }, 1000);
 
-    function reset(){ 
-      stage = 0;
-      suppressClick = false;
-      card.classList.remove('stage-1','stage-2');
-      text.textContent = '';
-    }
+        return;
+      }
 
-
-
-
-skull.onclick = (e) => {
-  e.stopPropagation();
-
-  // STAGE 1 → STAGE 2 (попередження)
-  if (stage === 1) {
-    stage = 2;
-    card.classList.remove('stage-1');
-    card.classList.add('stage-2');
-
-    text.innerHTML = `
-      Ти гарно подумав?<br>
-      Відновлення буде неможливе.
-    `;
-    return;
-  }
-
-    // STAGE 2 → STAGE 3 (таймер 10 сек)
-    if (stage === 2) {
-      stage = 3;
-      let seconds = 10;
-
-      card.classList.add('stage-3');
-      skull.style.pointerEvents = 'none';
-
-      const countdown = setInterval(() => {
-        text.innerHTML = `Зачекай ${seconds} сек...<br>Після цього можна видалити`;
-        seconds--;
-
-        if (seconds < 0) {
-          clearInterval(countdown);
-          stage = 4;
-          skull.style.pointerEvents = 'auto';
-          text.innerHTML = 'Тепер можна видалити ☠️';
-        }
-      }, 1000);
-
-      return;
-    }
-
-    // STAGE 4 → ВИДАЛЕННЯ
-    if (stage === 4) {
-      deleteAccount(card);
-      reset();
-    }
-  };
+      if (stage === 4) {
+        deleteAccount(card);
+        reset();
+      }
+    };
 
   });
 }
+
 
 
 function deleteAccount(card){

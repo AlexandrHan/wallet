@@ -97,9 +97,9 @@
 
 
 
-  <div class="row content topbar" style="align-items:center;">
-    <div style="font-weight:900;">Рекламації</div>
-    <a href="{{ route('reclamations.new') }}" class="btn primary right">+ Додати рекламацію</a>
+  <div class="row content topbar" style="display:flex;justify-content:center;align-items:center;">
+
+    <a href="{{ route('reclamations.new') }}" class="btn primary right">Створити нову рекламацію</a>
   </div>
   
 

@@ -16,10 +16,12 @@
   --radius-xl:22px;
   --radius-lg:18px;
   --radius-pill:999px;
+  
+  --header-h: 78px;
+  color-scheme: dark;
 }
 
-/* Підказка браузеру: темна схема (впливає на нативні контролли) */
-:root{ color-scheme: dark; }
+
 
 /* Select у sheet: базовий вигляд */
 .sheet-panel select{
@@ -233,7 +235,8 @@ header .wrap{
 main,
 .content,
 .app{
-  padding-top: calc(6rem + env(safe-area-inset-top));
+  padding-top: calc(var(--header-h) + env(safe-area-inset-top));
+  padding-bottom: 18px;
 }
 
 /* ================== LAYOUT ================== */
