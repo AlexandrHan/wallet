@@ -48,6 +48,7 @@
   border-radius: 20px; /* у polish було 20 */
   border: 1px solid rgba(255,255,255,.10);
   background: rgba(255,255,255,.045);
+  margin-bottom: 5%;
 }
 
 .reclam-top{

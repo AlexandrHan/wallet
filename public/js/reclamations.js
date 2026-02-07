@@ -164,6 +164,11 @@
             <input id="rPhone" class="btn" placeholder="+380..." />
           </div>
 
+                    <div class="card" style="margin-top:10px;">
+            <div class="muted" style="margin-bottom:8px;">Серійний номер</div>
+            <input id="rSerialNumber" class="btn" placeholder="Напр. DEY-8K-39420" />
+          </div>
+
           <div class="card" style="margin-top:10px;">
             <div class="muted" style="margin-bottom:8px;">Опис проблеми</div>
             <textarea id="rProblem" class="btn" placeholder="Що зламалось / що не працює" style="min-height:90px;"></textarea>
@@ -399,6 +404,7 @@
         const last_name   = (document.getElementById('rLastName')?.value || '').trim();
         const city        = (document.getElementById('rCity')?.value || '').trim();
         const phone       = (document.getElementById('rPhone')?.value || '').trim();
+        const serial_number = (document.getElementById('rSerialNumber')?.value || '').trim();
         const problem     = (document.getElementById('rProblem')?.value || '').trim();
 
         const hasLoanerBtn = extraEl?.querySelector('[data-loaner].active');
@@ -406,7 +412,7 @@
 
         const loaner_ordered = document.getElementById('rLoanerOrdered')?.value || '0';
 
-        payload = { reported_at, last_name, city, phone, problem, has_loaner, loaner_ordered };
+        payload = { reported_at, last_name, city, phone, serial_number, problem, has_loaner, loaner_ordered };
       } else {
         payload = {
           done_date: dateEl?.value || null,

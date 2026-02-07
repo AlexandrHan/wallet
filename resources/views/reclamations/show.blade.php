@@ -25,12 +25,29 @@
   <div class="card" style="margin-top:14px;">
     <div class="reclam-row">
       <div class="muted">Клієнт</div>
-      <div class="right"><b>{{ $reclamation->last_name }}</b> • {{ $reclamation->city }} • {{ $reclamation->phone }}</div>
+      <div class="right client-meta">
+        <div><b>{{ $reclamation->last_name }}</b></div>
+      </div>
     </div>
+
+    <div class="reclam-row">
+      <div class="muted">Населений пункт</div>
+      <div class="right client-meta">
+        <div class="muted">{{ $reclamation->city }}</div>
+      </div>
+    </div>
+    <div class="reclam-row">
+      <div class="muted">Телефон</div>
+      <div class="right client-meta">
+        <div class="mono">{{ $reclamation->phone }}</div>
+      </div>
+    </div>
+
     <div class="reclam-row">
       <div class="muted">Серійник</div>
       <div class="right"><span class="mono">{{ $reclamation->serial_number }}</span></div>
     </div>
+
     @if($reclamation->problem)
       <div class="reclam-row">
         <div class="muted">Проблема</div>
@@ -41,7 +58,7 @@
     <div class="reclam-row">
       <div class="muted">Підмінний</div>
       <div class="right">
-        <b>{{ $reclamation->has_loaner ? 'Є' : 'Нема' }}</b>
+        <b>{{ $reclamation->has_loaner ? 'В наявності' : 'Відсутній' }}</b>
         @if(!$reclamation->has_loaner)
           <span class="muted">• {{ $reclamation->loaner_ordered ? 'замовили' : 'не замовляли' }}</span>
         @endif
@@ -60,7 +77,7 @@
     $need = ($k === 'installed' && (!$s || !$s->note || trim($s->note) === '')); // "встановили" без комента = критично
     $cls = $need ? 'step-need' : ($isDone ? 'step-done' : 'step-empty');
 
-    $badge = $need ? '⚠️ треба' : ($isDone ? '✅ готово' : '⏳ очікує');
+    $badge = $need ? '⚠️ увага' : ($isDone ? '✅ виконано' : '⏳ очікує');
     $sub = $s?->done_date
   ? $s->done_date->format('d.m.Y')
   : ($isDone ? 'заповнено' : 'натисни щоб заповнити');

@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Storage;
 class ReclamationController extends Controller
 {
     private array $stepKeys = [
+        'reported',
         'dismantled',            // демонтували (дата + що зробили)
         'where_left',            // де залишили (склад/відправили)
         'shipped_to_service',    // відправили НП (ТТН)
@@ -22,7 +23,13 @@ class ReclamationController extends Controller
 
     public function index()
     {
-        $items = Reclamation::orderByDesc('id')->limit(50)->get();
+        $items = Reclamation::with('steps')
+            ->whereNotNull('last_name')
+            ->where('last_name', '!=', '')
+            ->orderByDesc('id')
+            ->limit(50)
+            ->get();
+
         return view('reclamations.index', compact('items'));
     }
 
@@ -34,14 +41,16 @@ class ReclamationController extends Controller
     public function store(Request $r)
     {
         $data = $r->validate([
-            'reported_at' => ['required','date'],
-            'last_name' => ['required','string','max:120'],
-            'city' => ['required','string','max:120'],
-            'phone' => ['required','string','max:40'],
-            'has_loaner' => ['required','in:0,1'],
-            'loaner_ordered' => ['nullable','in:0,1'],
-            'serial_number' => ['required','string','max:120'],
+        'reported_at'    => ['nullable', 'date'],
+        'problem'        => ['nullable', 'string'],
+        'last_name'      => ['required', 'string', 'max:120'],
+        'city'           => ['required', 'string', 'max:120'],
+        'phone'          => ['required', 'string', 'max:40'],
+        'serial_number'  => ['required', 'string', 'max:120'],
+        'has_loaner'     => ['required', 'in:0,1'],
+        'loaner_ordered' => ['nullable', 'in:0,1'],
         ]);
+
 
         $nextId = (int)(Reclamation::max('id') ?? 0) + 1;
         $code = 'R-' . str_pad((string)$nextId, 5, '0', STR_PAD_LEFT);
@@ -82,37 +91,44 @@ class ReclamationController extends Controller
 
         $step = $reclamation->steps->firstWhere('step_key', $stepKey);
         abort_if(!$step, 404);
+
+
+
         // ===== reported: редагування даних клієнта / звернення =====
-if ($stepKey === 'reported') {
+        if ($stepKey === 'reported') {
 
-    $data = $r->validate([
-        'reported_at' => ['nullable', 'date'],
-        'problem' => ['nullable', 'string'],
-        'last_name' => ['required', 'string', 'max:120'],
-        'city' => ['required', 'string', 'max:120'],
-        'phone' => ['required', 'string', 'max:40'],
-        'has_loaner' => ['required', 'in:0,1'],
-        'loaner_ordered' => ['nullable', 'in:0,1'],
-    ]);
+            $data = $r->validate([
+                'reported_at'    => ['nullable', 'date'],
+                'problem'        => ['nullable', 'string'],
+                'last_name'      => ['required', 'string', 'max:120'],
+                'city'           => ['required', 'string', 'max:120'],
+                'phone'          => ['required', 'string', 'max:40'],
+                'serial_number'  => ['required', 'string', 'max:120'],
+                'has_loaner'     => ['required', 'in:0,1'],
+                'loaner_ordered' => ['nullable', 'in:0,1'],
+            ]);
 
-    $reclamation->reported_at = $data['reported_at'] ?? $reclamation->reported_at;
-    $reclamation->last_name = $data['last_name'];
-    $reclamation->city = $data['city'];
-    $reclamation->phone = $data['phone'];
-    $reclamation->has_loaner = ($data['has_loaner'] === '1');
-    $reclamation->loaner_ordered = ($data['has_loaner'] === '0')
-        ? (($data['loaner_ordered'] ?? '0') === '1')
-        : false;
+            $reclamation->reported_at   = $data['reported_at'] ?? $reclamation->reported_at;
+            $reclamation->last_name     = $data['last_name'];
+            $reclamation->city          = $data['city'];
+            $reclamation->phone         = $data['phone'];
+            $reclamation->serial_number = $data['serial_number'];
+            $reclamation->problem       = $data['problem'] ?? null;
 
-    $reclamation->save();
-    $reclamation->problem = $data['problem'] ?? null;
-    // відмітимо step як "заповнений" (чисто для UI)
-    $step->done_date = now()->toDateString();
-    $step->note = 'Дані оновлено';
-    $step->save();
+            $reclamation->has_loaner = ($data['has_loaner'] === '1');
+            $reclamation->loaner_ordered = ($data['has_loaner'] === '0')
+                ? (($data['loaner_ordered'] ?? '0') === '1')
+                : false;
 
-    return response()->json(['ok' => true]);
-}
+            $reclamation->save();
+
+            $step->done_date = now()->toDateString();
+            $step->note = 'Дані оновлено';
+            $step->save();
+
+            return response()->json(['ok' => true]);
+        }
+
 
 
         $data = $r->validate([
@@ -143,6 +159,16 @@ if ($stepKey === 'reported') {
                 ? 'Підмінний повернули на склад'
                 : 'Підмінний повернули постачальнику';
         }
+        // якщо в етапі з’явилися будь-які дані, а дати нема — ставимо сьогодні
+        $hasAny = false;
+
+        if (isset($data['note']) && trim((string)$data['note']) !== '') $hasAny = true;
+        if (isset($data['ttn'])  && trim((string)$data['ttn'])  !== '') $hasAny = true;
+
+        if ($hasAny && !$step->done_date) {
+            $data['done_date'] = now()->toDateString();
+        }
+
 
         $step->fill([
             'done_date' => $data['done_date'] ?? $step->done_date,
@@ -176,6 +202,10 @@ if ($stepKey === 'reported') {
         $files[] = $path;
 
         $step->files = $files;
+        if (!$step->done_date) {
+            $step->done_date = now()->toDateString();
+        }
+
         $step->save();
 
         return response()->json([

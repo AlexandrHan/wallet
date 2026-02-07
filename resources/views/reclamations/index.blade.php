@@ -105,44 +105,72 @@
 
 
 
-  <a href="{{ route('reclamations.show', 21) }}" class="card reclam-card reclam-link">
-    <div class="reclam-top">
-      <div class="reclam-title">
-        <div class="reclam-id">R-00021</div>
-        <div class="reclam-sub">Клієнт: <b>Іваненко</b></div>
+    @if($items->isEmpty())
+      <div class="reclamations-empty">
+        <div style="font-weight:900;">Поки немає рекламацій</div>
+        <div class="muted" style="margin-top:6px;">Натисни “Створити нову рекламацію”.</div>
       </div>
+    @else
+      @foreach($items as $item)
+        @php
+          // файли: рахуємо по всіх steps
+          $filesCount = $item->steps->sum(fn($s) => is_array($s->files) ? count($s->files) : 0);
 
-      <div class="reclam-status status-open">В роботі</div>
-    </div>
+          // "коменти": поки беремо кількість steps з note (можеш потім зробити окрему таблицю comments)
+          $notesCount = $item->steps->filter(fn($s) => $s->note && trim($s->note) !== '')->count();
 
-    <div class="reclam-body">
-      <div class="reclam-row">
-        <div class="muted">Товар</div>
-        <div class="right"><b>Інвертор Deye 8kW</b></div>
-      </div>
+          // статус бейдж
+          $statusClass = $item->status === 'done' ? 'status-done' : 'status-open';
+          $statusText  = $item->status === 'done' ? 'Завершено' : 'В роботі';
 
-      <div class="reclam-row">
-        <div class="muted">Серійник</div>
-        <div class="right">SN: <span class="mono">DEY-8K-39420</span></div>
-      </div>
+          $dateText = $item->reported_at ? $item->reported_at->format('d.m.Y') : '—';
+        @endphp
 
-      <div class="reclam-row">
-        <div class="muted">Дата</div>
-        <div class="right">05.02.2026</div>
-      </div>
+        <a href="{{ route('reclamations.show', $item->id) }}" class="card reclam-card reclam-link">
+          <div class="reclam-top">
+            <div class="reclam-title">
+              <div class="reclam-id">{{ $item->code }}</div>
+              <div class="reclam-sub">
+                Клієнт: <b>{{ $item->last_name ?: '—' }}</b>
+              </div>
+            </div>
 
-      <div class="reclam-row">
-        <div class="muted">Суть</div>
-        <div class="right">Не стартує після монтажу</div>
-      </div>
-    </div>
+            <div class="reclam-status {{ $statusClass }}">{{ $statusText }}</div>
+          </div>
 
-    <div class="reclam-footer">
-      <div class="reclam-pill">📎 2 файли</div>
-      <div class="reclam-pill">💬 5 коментів</div>
-      <div class="reclam-arrow">→</div>
-    </div>
-  </a>
+          <div class="reclam-body">
+            <div class="reclam-row">
+              <div class="muted">Серійник</div>
+              <div class="right">SN: <span class="mono">{{ $item->serial_number ?: '—' }}</span></div>
+            </div>
+
+            <div class="reclam-row">
+              <div class="muted">Нас. пункт</div>
+              <div class="right"><b>{{ $item->city ?: '—' }}</b></div>
+            </div>
+
+            <div class="reclam-row">
+              <div class="muted">Дата</div>
+              <div class="right">{{ $dateText }}</div>
+            </div>
+
+            @if($item->problem)
+              <div class="reclam-row">
+                <div class="muted">Суть</div>
+                <div class="right">{{ $item->problem }}</div>
+              </div>
+            @endif
+          </div>
+
+          <div class="reclam-footer">
+            <div class="reclam-pill">📎 {{ $filesCount }} файли</div>
+            <div class="reclam-pill">💬 {{ $notesCount }} нотатки</div>
+            <div class="reclam-arrow">→</div>
+          </div>
+        </a>
+      @endforeach
+    @endif
+
 
 
 </main>
