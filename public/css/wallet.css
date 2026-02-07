@@ -66,6 +66,11 @@ html.no-splash #appSplash{
   visibility: hidden;
 }
 
+#holdingTotalAmt{
+  color:#cacaca !important;
+  text-shadow: 0 10px 26px rgba(0,0,0,.55), 0 1px 0 rgba(255,255,255,.08);
+}
+
 .splash-logo {
   width: 320px;
   max-width: 40vw;

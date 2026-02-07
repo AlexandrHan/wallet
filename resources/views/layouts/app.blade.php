@@ -16,27 +16,40 @@
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.bunny.net">
         <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
+        <link rel="stylesheet" href="/css/wallet.css?v={{ filemtime(public_path('css/wallet.css')) }}">
+        <link rel="stylesheet" href="/css/reclamations.css?v={{ filemtime(public_path('css/reclamations.css')) }}">
+
+        <script src="/js/header.js?v={{ filemtime(public_path('js/header.js')) }}" defer></script>
+        <script src="/js/reclamations.js?v={{ filemtime(public_path('js/reclamations.js')) }}" defer></script>
+        <link rel="manifest" href="/manifest.webmanifest?v={{ filemtime(public_path('manifest.webmanifest')) }}">
+        <meta name="theme-color" content="#0b0d10">
+
+        <style>
+        :root{ color-scheme: dark; }
+        html{ background:#0b0d10; }
+        body{ margin:0; }
+        #appSplash{ position:fixed; inset:0; background:#0b0d10; z-index:99999; }
+        </style>
+
 
         <!-- Scripts -->
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     </head>
-    <body class="font-sans antialiased">
-        <div class="min-h-screen bg-gray-100">
-            @include('layouts.navigation')
+    <body>
+    <div class="app-bg"></div>
 
-            <!-- Page Heading -->
-            @isset($header)
-                <header class="bg-white shadow">
-                    <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-                        {{ $header }}
-                    </div>
-                </header>
-            @endisset
-
-            <!-- Page Content -->
-            <main>
-                {{ $slot }}
-            </main>
+    <div id="appSplash">
+        <div class="splash-logo">
+        <img src="/img/holding.png" alt="SolarGlass">
         </div>
+    </div>
+
+    {{-- твій хедер (той що з бургером) --}}
+    @include('partials.sg_header')
+
+    <main class="wrap reclamations-main">
+        @yield('content')
+    </main>
     </body>
+
 </html>

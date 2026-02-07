@@ -1,0 +1,223 @@
+<?php
+namespace App\Http\Controllers;
+
+use App\Models\Reclamation;
+use App\Models\ReclamationStep;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
+
+class ReclamationController extends Controller
+{
+    private array $stepKeys = [
+        'dismantled',            // демонтували (дата + що зробили)
+        'where_left',            // де залишили (склад/відправили)
+        'shipped_to_service',    // відправили НП (ТТН)
+        'service_received',      // сервіс отримав (дата)
+        'repaired_shipped_back', // відремонтували і відправили (ТТН)
+        'installed',             // встановили (фото + обов’язк. коментар)
+        'loaner_return',         // підмінний повернули (склад/постачальнику)
+        'closed',                // завершили (дата)
+    ];
+
+    public function index()
+    {
+        $items = Reclamation::orderByDesc('id')->limit(50)->get();
+        return view('reclamations.index', compact('items'));
+    }
+
+    public function create()
+    {
+        return view('reclamations.create');
+    }
+
+    public function store(Request $r)
+    {
+        $data = $r->validate([
+            'reported_at' => ['required','date'],
+            'last_name' => ['required','string','max:120'],
+            'city' => ['required','string','max:120'],
+            'phone' => ['required','string','max:40'],
+            'has_loaner' => ['required','in:0,1'],
+            'loaner_ordered' => ['nullable','in:0,1'],
+            'serial_number' => ['required','string','max:120'],
+        ]);
+
+        $nextId = (int)(Reclamation::max('id') ?? 0) + 1;
+        $code = 'R-' . str_pad((string)$nextId, 5, '0', STR_PAD_LEFT);
+
+        $rec = Reclamation::create([
+            'code' => $code,
+            'reported_at' => $data['reported_at'],
+            'last_name' => $data['last_name'],
+            'city' => $data['city'],
+            'phone' => $data['phone'],
+            'has_loaner' => $data['has_loaner'] === '1',
+            'loaner_ordered' => ($data['has_loaner'] === '0') ? (($data['loaner_ordered'] ?? '0') === '1') : false,
+            'serial_number' => $data['serial_number'],
+            'status' => 'open',
+            'created_by' => Auth::id(),
+        ]);
+
+        // створюємо всі етапи наперед (порожні)
+        foreach ($this->stepKeys as $k) {
+            ReclamationStep::create([
+                'reclamation_id' => $rec->id,
+                'step_key' => $k,
+            ]);
+        }
+
+        return redirect()->route('reclamations.show', $rec->id);
+    }
+
+    public function show(Reclamation $reclamation)
+    {
+        $reclamation->load('steps');
+        return view('reclamations.show', compact('reclamation'));
+    }
+
+    public function saveStep(Request $r, Reclamation $reclamation, string $stepKey)
+    {
+        $reclamation->load('steps');
+
+        $step = $reclamation->steps->firstWhere('step_key', $stepKey);
+        abort_if(!$step, 404);
+        // ===== reported: редагування даних клієнта / звернення =====
+if ($stepKey === 'reported') {
+
+    $data = $r->validate([
+        'reported_at' => ['nullable', 'date'],
+        'problem' => ['nullable', 'string'],
+        'last_name' => ['required', 'string', 'max:120'],
+        'city' => ['required', 'string', 'max:120'],
+        'phone' => ['required', 'string', 'max:40'],
+        'has_loaner' => ['required', 'in:0,1'],
+        'loaner_ordered' => ['nullable', 'in:0,1'],
+    ]);
+
+    $reclamation->reported_at = $data['reported_at'] ?? $reclamation->reported_at;
+    $reclamation->last_name = $data['last_name'];
+    $reclamation->city = $data['city'];
+    $reclamation->phone = $data['phone'];
+    $reclamation->has_loaner = ($data['has_loaner'] === '1');
+    $reclamation->loaner_ordered = ($data['has_loaner'] === '0')
+        ? (($data['loaner_ordered'] ?? '0') === '1')
+        : false;
+
+    $reclamation->save();
+    $reclamation->problem = $data['problem'] ?? null;
+    // відмітимо step як "заповнений" (чисто для UI)
+    $step->done_date = now()->toDateString();
+    $step->note = 'Дані оновлено';
+    $step->save();
+
+    return response()->json(['ok' => true]);
+}
+
+
+        $data = $r->validate([
+            'done_date' => ['nullable','date'],
+            'note' => ['nullable','string'],
+            'ttn' => ['nullable','string','max:80'],
+            'where_left' => ['nullable','in:warehouse,service'], // тільки для where_left
+            'loaner_return_to' => ['nullable','in:warehouse,supplier'], // тільки для loaner_return
+        ]);
+
+        // rules специфічні:
+        if ($stepKey === 'installed') {
+            // обов’язковий коментар на "встановили"
+            if (!isset($data['note']) || trim($data['note']) === '') {
+                return response()->json(['ok'=>false,'message'=>'Коментар обовʼязковий на етапі "Встановили"'], 422);
+            }
+        }
+
+        // запишемо note з варіантами (де залишили / куди повернули) простим текстом
+        if ($stepKey === 'where_left' && isset($data['where_left'])) {
+            $data['note'] = ($data['where_left'] === 'warehouse')
+                ? 'Залишили на складі'
+                : 'Відправили на ремонт';
+        }
+
+        if ($stepKey === 'loaner_return' && isset($data['loaner_return_to'])) {
+            $data['note'] = ($data['loaner_return_to'] === 'warehouse')
+                ? 'Підмінний повернули на склад'
+                : 'Підмінний повернули постачальнику';
+        }
+
+        $step->fill([
+            'done_date' => $data['done_date'] ?? $step->done_date,
+            'note' => $data['note'] ?? $step->note,
+            'ttn' => $data['ttn'] ?? $step->ttn,
+        ])->save();
+
+        // якщо закрили
+        if ($stepKey === 'closed' && $step->done_date) {
+            $reclamation->status = 'done';
+            $reclamation->save();
+        }
+
+        return response()->json(['ok'=>true]);
+    }
+
+    public function upload(Request $r, Reclamation $reclamation)
+    {
+        $r->validate([
+            'step_key' => ['required','string'],
+            'file' => ['required','file','max:10240'], // 10MB
+        ]);
+
+        $reclamation->load('steps');
+        $step = $reclamation->steps->firstWhere('step_key', $r->string('step_key')->toString());
+        abort_if(!$step, 404);
+
+        $path = $r->file('file')->store("reclamations/{$reclamation->id}", 'public');
+
+        $files = $step->files ?? [];
+        $files[] = $path;
+
+        $step->files = $files;
+        $step->save();
+
+        return response()->json([
+            'ok' => true,
+            'path' => $path,
+            'url' => Storage::disk('public')->url($path),
+        ]);
+    }
+    public function new()
+{
+    $nextId = (int)(Reclamation::max('id') ?? 0) + 1;
+    $code = 'R-' . str_pad((string)$nextId, 5, '0', STR_PAD_LEFT);
+
+    $rec = Reclamation::create([
+        'code' => $code,
+        'status' => 'open',
+        'created_by' => auth()->id(),
+    ]);
+
+    // Створюємо всі етапи одразу (порожні)
+    $keys = [
+        'reported',              // базові дані (дата/ПІБ/місто/телефон/підмінний)
+        'photos',                // фото/файли рекламації
+        'serial',                // серійник
+        'dismantled',            // демонтували (дата + опис)
+        'where_left',            // де залишили (склад/відправили)
+        'shipped_to_service',    // відправили НП (ТТН)
+        'service_received',      // сервіс отримав (дата)
+        'repaired_shipped_back', // відремонтували і відправили (ТТН)
+        'installed',             // встановили (фото + коментар обовʼязковий)
+        'loaner_return',         // підмінний (куди)
+        'closed',                // завершили (дата)
+    ];
+
+    foreach ($keys as $k) {
+        \App\Models\ReclamationStep::create([
+            'reclamation_id' => $rec->id,
+            'step_key' => $k,
+        ]);
+    }
+
+    return redirect()->route('reclamations.show', $rec->id);
+}
+
+}

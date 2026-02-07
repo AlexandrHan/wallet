@@ -1797,7 +1797,8 @@ function updateHoldingCardTotalsUI(){
   if (totalEl){
     totalEl.classList.remove('pos','neg');
     totalEl.classList.add(cls);
-    totalEl.textContent = `${fmtMoney(totals.total)} ${sym} ${base}`;
+    totalEl.textContent = `${fmtMoney(totals.total)} ${sym}`;
+
   }
 
     const cashEl = document.getElementById('holdingCashPill');
@@ -1885,7 +1886,7 @@ function renderHoldingCard(){
     </div>
 
     <div class="holding-amount ${cls}" id="holdingTotalAmt">
-      ${fmtMoney(totals.total)} ${sym} ${base}
+      ${fmtMoney(totals.total)} ${sym} 
     </div>
 
     <div class="holding-break">

@@ -1,0 +1,560 @@
+
+/* =============================
+   FIX: wallet.css adds padding-top to main/.content/.app
+   For reclamations pages we control spacing ourselves
+============================= */
+
+.reclamations-main{
+  /* наш контроль відступу під fixed header */
+  padding-top: calc(78px + env(safe-area-inset-top)) !important;
+  padding-bottom: 18px;
+}
+
+/* прибираємо зайвий padding зверху, який wallet.css додає .content */
+.reclamations-main .content{
+  padding-top: 0 !important;
+}
+
+/* якщо у тебе є .app контейнер навколо — теж без зайвого відступу */
+.reclamations-main.app{
+  padding-top: calc(78px + env(safe-area-inset-top)) !important;
+}
+
+/* мобілка */
+@media (max-width: 768px){
+  .reclamations-main{
+    padding-top: calc(72px + env(safe-area-inset-top)) !important;
+  }
+}
+
+/* Верхній ряд одразу під хедером */
+.topbar{
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+.btn{
+  color: rgb(20, 20, 20);
+  text-decoration: none;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.back{
+  background: rgba(102,242,168,.35);
+  color: #fff;
+  border: 1px solid #767676b9;
+  border-radius:12px;
+}
+
+/* ===== LIST CARDS (index) ===== */
+.reclam-card{
+  padding: 14px 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.04);
+}
+
+.reclam-top{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom: 10px;
+}
+
+.reclam-id{
+  font-weight: 900;
+  font-size: 15px;
+  letter-spacing: .2px;
+}
+.reclam-sub{
+  margin-top: 4px;
+  font-size: 12px;
+  opacity: .78;
+  overflow-wrap:anywhere;
+}
+
+.reclam-status{
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.06);
+  white-space: nowrap;
+}
+
+.status-open{
+  color:#66f2a8;
+  border-color:rgba(102,242,168,.35);
+  background:rgba(102,242,168,.10);
+}
+.status-wait{
+  color:#ffb86c;
+  border-color:rgba(255,184,108,.35);
+  background:rgba(255,184,108,.10);
+}
+.status-done{
+  color:#4c7dff;
+  border-color:rgba(76,125,255,.35);
+  background:rgba(76,125,255,.10);
+}
+
+.reclam-body{
+  border-top: 1px solid rgba(255,255,255,.08);
+  padding-top: 8px;
+}
+.reclam-row{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  padding: 6px 0;
+}
+.reclam-row .right{
+  text-align:right;
+  max-width: 62%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.mono{
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.reclam-footer{
+  margin-top: 10px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.reclam-pill{
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.10);
+  font-size: 12px;
+  font-weight: 800;
+  opacity: .95;
+}
+.reclam-arrow{
+  margin-left:auto;
+  opacity:.7;
+  font-weight:900;
+  font-size: 18px;
+}
+
+.reclam-link{
+  display:block;
+  text-decoration:none;
+  color:inherit;
+  transition: transform .08s ease, background .15s ease, border-color .15s ease;
+}
+.reclam-link:active{ transform: scale(.99); }
+@media (hover:hover){
+  .reclam-link:hover{
+    background: rgba(255,255,255,.07);
+    border-color: rgba(255,255,255,.14);
+  }
+}
+
+/* ===== EMPTY PLACEHOLDER ===== */
+.reclamations-empty{
+  margin-top: 14px;
+  border: 1px dashed rgba(255,255,255,.14);
+  border-radius: 18px;
+  padding: 16px;
+  background: rgba(255,255,255,.04);
+  min-height: 200px;
+}
+
+/* ===============================
+   PIPELINE (detail page)
+   таймлайн, чекпоінти, скляні карточки
+================================ */
+
+.pipeline{
+  margin-top: 14px;
+  display:flex;
+  flex-direction:column;
+  gap: 10px;
+}
+
+/* контейнер етапу */
+.step{
+  display:flex;
+  gap: 12px;
+  align-items: stretch;
+}
+
+/* ліва "лінія" таймлайну */
+.step-line{
+  width: 24px;
+  position: relative;
+  flex: 0 0 24px;
+}
+.step-line::before{
+  content:"";
+  position:absolute;
+  left: 11px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: rgba(255,255,255,.10);
+  border-radius: 2px;
+}
+.step-dot{
+  position:absolute;
+  left: 6px;
+  top: 18px;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid rgba(255,255,255,.22);
+  background: rgba(255,255,255,.06);
+  box-shadow: 0 0 0 6px rgba(255,255,255,.03);
+}
+
+/* сама карточка етапу */
+.step-card{
+  cursor: pointer;
+  flex: 1 1 auto;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.04);
+  transition: background .15s ease, border-color .15s ease, transform .08s ease;
+}
+
+@media (hover:hover){
+  .step-card:hover{
+    background: rgba(255,255,255,.06);
+    border-color: rgba(255,255,255,.16);
+  }
+}
+
+.step-card:active{ transform: scale(.99); }
+
+.step-head{
+  display:flex;
+  align-items:flex-start;
+  gap:12px;
+}
+.step-left{
+  min-width:0;
+  flex: 1 1 auto;
+}
+.step-title{
+  font-weight: 900;
+  font-size: 15px;
+  letter-spacing: .2px;
+}
+.step-sub{
+  margin-top: 4px;
+  font-size: 12px;
+  opacity: .78;
+  overflow-wrap:anywhere;
+}
+
+.step-right{
+  flex: 0 0 auto;
+  text-align:right;
+}
+
+.step-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.06);
+  white-space: nowrap;
+}
+
+.step-body{
+  margin-top: 10px;
+  border-top: 1px solid rgba(255,255,255,.08);
+  padding-top: 8px;
+  display:flex;
+  flex-direction:column;
+  gap: 8px;
+}
+.step-row{
+  display:flex;
+  justify-content:space-between;
+  gap: 12px;
+}
+.step-row .right{
+  text-align:right;
+  max-width: 70%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+/* кнопка в етапі */
+.step-btn{
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  font-weight: 900;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.06);
+  color: inherit;
+}
+
+/* ===== STATES (color + dot) ===== */
+.step-empty .step-badge{ opacity:.85; }
+
+.step-done .step-card{
+  border-color: rgba(102,242,168,.28);
+  background: rgba(102,242,168,.06);
+}
+.step-done .step-badge{
+  color:#66f2a8;
+  border-color: rgba(102,242,168,.35);
+  background: rgba(102,242,168,.10);
+}
+.step-done .step-dot{
+  border-color: rgba(102,242,168,.65);
+  background: rgba(102,242,168,.20);
+  box-shadow: 0 0 0 6px rgba(102,242,168,.08);
+}
+
+.step-need .step-card{
+  border-color: rgba(255,184,108,.30);
+  background: rgba(255,184,108,.06);
+}
+.step-need .step-badge{
+  color:#ffb86c;
+  border-color: rgba(255,184,108,.35);
+  background: rgba(255,184,108,.10);
+}
+.step-need .step-dot{
+  border-color: rgba(255,184,108,.70);
+  background: rgba(255,184,108,.20);
+  box-shadow: 0 0 0 6px rgba(255,184,108,.08);
+}
+
+/* останній етап: не тягнемо лінію вниз */
+.step:last-child .step-line::before{
+  bottom: 22px;
+}
+
+ /* =========================
+   RECL UI POLISH (override)
+   робимо щільно і рівно
+========================= */
+
+/* загальний ритм сторінки */
+.reclamations-main{
+  padding-top: calc(72px + env(safe-area-inset-top)) !important;
+  padding-bottom: 18px;
+}
+
+/* картки: щільніше і контрастніше */
+.card.reclam-card,
+.step-card{
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.045);
+  border-radius: 20px;
+}
+
+/* список рекламацій */
+.reclam-card{ padding: 14px 14px; }
+.reclam-top{ margin-bottom: 8px; gap: 10px; }
+.reclam-id{ font-size: 15px; }
+.reclam-sub{ font-size: 12px; opacity: .78; }
+.reclam-body{ padding-top: 10px; }
+.reclam-row{ padding: 6px 0; }
+.reclam-footer{ margin-top: 10px; }
+
+/* badges однакового розміру */
+.reclam-status,
+.step-badge{
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+/* ===== PIPELINE: таймлайн красивіше ===== */
+.pipeline{ gap: 10px; }
+
+/* Лінія таймлайну менш “жирна”, рівніша */
+.step{ gap: 12px; }
+.step-line{ width: 18px; flex: 0 0 18px; }
+.step-line::before{
+  left: 8px;
+  width: 2px;
+  background: rgba(255,255,255,.08);
+}
+.step-dot{
+  left: 3px;
+  top: 18px;
+  width: 12px;
+  height: 12px;
+  border-width: 2px;
+  box-shadow: 0 0 0 5px rgba(255,255,255,.03);
+}
+
+/* Карточка етапу щільніше */
+.step-card{ padding: 14px 14px; }
+.step-head{ gap: 10px; }
+.step-title{ font-size: 15px; }
+.step-sub{ font-size: 12px; opacity: .75; }
+.step-body{
+  margin-top: 10px;
+  padding-top: 10px;
+  gap: 8px;
+}
+
+/* Права частина: кнопка акуратна і не "пухка" */
+.step-right{ min-width: 118px; }
+.step-btn{
+  margin-top: 10px;
+  width: 100%;
+  height: 36px;
+  border-radius: 14px;
+  font-weight: 900;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.06);
+}
+
+/* На мобілці кнопка і badge в один рядок, без перекосів */
+@media (max-width: 520px){
+  .step-right{ min-width: 110px; }
+}
+
+/* ===== MODAL: зробити як sheet, інпути на всю ширину ===== */
+#stepModal .modal-panel{
+  max-width: 520px;
+  width: 100%;
+  border-radius: 22px;
+}
+
+#stepModal .modal-body{
+  padding-top: 6px;
+}
+
+/* всі поля у модалці як нормальні контролли */
+#stepModal input.btn,
+#stepModal textarea.btn{
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.10);
+}
+
+/* textarea не “квадратна” */
+#stepModal textarea.btn{
+  min-height: 120px !important;
+  resize: vertical;
+}
+
+/* segmented всередині modal: однакова висота */
+#stepModal .segmented{
+  width: 100%;
+  border-radius: 18px;
+  padding: 6px;
+}
+#stepModal .segmented button{
+  height: 40px;
+  border-radius: 14px;
+  font-weight: 900;
+}
+
+/* кнопки внизу модалки: рівні */
+#stepModal .row .btn{
+  height: 40px;
+  border-radius: 16px;
+}
+ 
+
+/* =========================
+   MODAL FIX: центр + скрол
+   ========================= */
+
+/* фон модалки: центруємо панель */
+.modal{
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  padding: 14px; /* щоб не прилипало до країв */
+}
+
+/* якщо у тебе hidden = display:none; ок, але підстрахуємось */
+.modal.hidden{ display:none !important; }
+
+/* панель: максимум по висоті екрана, всередині буде скрол */
+.modal-panel{
+  width: min(560px, 100%);
+  max-height: calc(100vh - 28px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow: hidden;              /* header/body керують прокруткою */
+  display: flex;
+  flex-direction: column;
+
+  border-radius: 22px;
+}
+
+/* header залишається зверху, body скролиться */
+.modal-header{
+  flex: 0 0 auto;
+}
+
+.modal-body{
+  flex: 1 1 auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: calc(14px + env(safe-area-inset-bottom));
+}
+
+/* якщо в body багато елементів - зробимо красивіший ритм */
+.modal-body > * + *{
+  margin-top: 10px;
+}
+
+/* щоб input/textarea не розповзались */
+.modal-body .btn,
+.modal-body input,
+.modal-body textarea,
+.modal-body select{
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* мобілка: панель майже на весь екран, але НЕ 100% (щоб виглядало як "sheet") */
+@media (max-width: 768px){
+  .modal{
+    align-items: flex-end; /* як у моб застосунках */
+    padding: 10px;
+  }
+
+  .modal-panel{
+    width: 100%;
+    max-height: calc(100vh - 10px - env(safe-area-inset-top));
+    border-radius: 22px;
+  }
+}
+.modal-panel{ margin: 0 !important; }
+
+/* swipe down support */
+.modal-panel{
+  touch-action: pan-y;
+  will-change: transform;
+}
+.modal-panel.dragging{
+  transition: none !important;
+}
+
+
+

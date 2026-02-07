@@ -9,7 +9,8 @@ use App\Models\BankAccount;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use App\Models\BankTransactionRaw;
-use App\Http\Controllers\ReclamationsController;
+use App\Http\Controllers\ReclamationController; 
+
 
 //////////////////////////////////////////////////////////////////////////////////////
 
@@ -776,10 +777,29 @@ return response()->json($rows);
 
 
 
-Route::get('/reclamations', [ReclamationsController::class, 'index'])
-  ->middleware(['auth'])
-  ->name('reclamations.index');
 
+
+
+
+
+
+
+
+
+Route::middleware('auth')->prefix('reclamations')->name('reclamations.')->group(function () {
+    Route::get('/', [ReclamationController::class, 'index'])->name('index');
+
+    // new ОБОВʼЯЗКОВО вище ніж /{reclamation}
+    Route::get('/new', [ReclamationController::class, 'new'])->name('new');
+
+    Route::get('/create', [ReclamationController::class, 'create'])->name('create');
+    Route::post('/', [ReclamationController::class, 'store'])->name('store');
+
+    Route::get('/{reclamation}', [ReclamationController::class, 'show'])->name('show');
+
+    Route::post('/{reclamation}/steps/{stepKey}', [ReclamationController::class, 'saveStep'])->name('steps.save');
+    Route::post('/{reclamation}/upload', [ReclamationController::class, 'upload'])->name('upload');
+});
 
 
 
