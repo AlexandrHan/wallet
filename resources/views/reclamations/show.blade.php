@@ -22,7 +22,8 @@
     <div style="font-weight:900;">{{ $reclamation->code }}</div>
   </div>
 
-  <div class="card" style="margin-top:14px;">
+  <div class="card client-card" id="clientCard" style="margin-top:14px; cursor:pointer;">
+
     <div class="reclam-row">
       <div class="muted">Клієнт</div>
       <div class="right client-meta">
@@ -65,6 +66,8 @@
       </div>
     </div>
   </div>
+  <div id="clientHistory" class="card history-card hidden" style="margin-top:10px;"></div>
+
 
   <div class="card" style="margin-top:14px;">
     <div style="font-weight:900; margin-bottom:10px;">Етапи</div>

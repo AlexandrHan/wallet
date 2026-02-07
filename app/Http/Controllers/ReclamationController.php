@@ -6,6 +6,8 @@ use App\Models\ReclamationStep;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use App\Models\ReclamationLog;
+
 
 class ReclamationController extends Controller
 {
@@ -49,6 +51,7 @@ class ReclamationController extends Controller
         'serial_number'  => ['required', 'string', 'max:120'],
         'has_loaner'     => ['required', 'in:0,1'],
         'loaner_ordered' => ['nullable', 'in:0,1'],
+        'close' => ['nullable','in:0,1'],
         ]);
 
 
@@ -125,6 +128,23 @@ class ReclamationController extends Controller
             $step->done_date = now()->toDateString();
             $step->note = 'Дані оновлено';
             $step->save();
+            ReclamationLog::create([
+                'reclamation_id' => $reclamation->id,
+                'user_id' => Auth::id(),
+                'step_key' => 'reported',
+                'action' => 'step_update',
+                'payload' => [
+                    'reported_at' => $reclamation->reported_at?->format('Y-m-d'),
+                    'last_name' => $reclamation->last_name,
+                    'city' => $reclamation->city,
+                    'phone' => $reclamation->phone,
+                    'serial_number' => $reclamation->serial_number,
+                    'problem' => $reclamation->problem,
+                    'has_loaner' => (bool)$reclamation->has_loaner,
+                    'loaner_ordered' => (bool)$reclamation->loaner_ordered,
+                ],
+            ]);
+
 
             return response()->json(['ok' => true]);
         }
@@ -137,7 +157,38 @@ class ReclamationController extends Controller
             'ttn' => ['nullable','string','max:80'],
             'where_left' => ['nullable','in:warehouse,service'], // тільки для where_left
             'loaner_return_to' => ['nullable','in:warehouse,supplier'], // тільки для loaner_return
+            'close' => ['nullable','in:0,1'],
         ]);
+
+        if ($stepKey === 'closed' && isset($data['close'])) {
+    if ($data['close'] === '1') {
+        $step->done_date = $step->done_date ?? now()->toDateString();
+        $step->note = 'Закрито';
+        $step->save();
+
+        $reclamation->status = 'done';
+        $reclamation->save();
+    } else {
+        $step->done_date = null;
+        $step->note = null;
+        $step->ttn = null;
+        $step->save();
+
+        $reclamation->status = 'open';
+        $reclamation->save();
+    }
+
+    ReclamationLog::create([
+        'reclamation_id' => $reclamation->id,
+        'user_id' => Auth::id(),
+        'step_key' => 'closed',
+        'action' => 'close_toggle',
+        'payload' => ['close' => $data['close'], 'done_date' => $step->done_date],
+    ]);
+
+    return response()->json(['ok'=>true]);
+}
+
 
         // rules специфічні:
         if ($stepKey === 'installed') {
@@ -176,6 +227,20 @@ class ReclamationController extends Controller
             'ttn' => $data['ttn'] ?? $step->ttn,
         ])->save();
 
+
+        ReclamationLog::create([
+            'reclamation_id' => $reclamation->id,
+            'user_id' => Auth::id(),
+            'step_key' => $stepKey,
+            'action' => 'step_update',
+            'payload' => [
+                'done_date' => $step->done_date,
+                'ttn' => $step->ttn,
+                'note' => $step->note,
+            ],
+        ]);
+
+
         // якщо закрили
         if ($stepKey === 'closed' && $step->done_date) {
             $reclamation->status = 'done';
@@ -207,6 +272,8 @@ class ReclamationController extends Controller
         }
 
         $step->save();
+
+        
 
         return response()->json([
             'ok' => true,
@@ -249,5 +316,21 @@ class ReclamationController extends Controller
 
     return redirect()->route('reclamations.show', $rec->id);
 }
+
+public function history(Reclamation $reclamation)
+{
+    $logs = \App\Models\ReclamationLog::with('user')
+        ->where('reclamation_id', $reclamation->id)
+        ->orderByDesc('id')
+        ->limit(200)
+        ->get();
+
+
+    // Повертаємо компактний html, щоб легко вставити в show без шаблонів
+    $html = view('reclamations.partials.history', compact('logs'))->render();
+
+    return response()->json(['html' => $html]);
+}
+
 
 }

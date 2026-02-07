@@ -82,11 +82,11 @@
 
     const titleEl = document.getElementById('stepTitle');
 
-    // wrappers (must exist in modal html; ok if null)
+    // wrappers
     const dateWrap = document.getElementById('dateWrap');
     const ttnWrap  = document.getElementById('ttnWrap');
 
-    // inputs (must exist; ok if null)
+    // inputs
     const dateEl = document.getElementById('stepDate');
     const ttnEl  = document.getElementById('stepTTN');
     const noteEl = document.getElementById('stepNote');
@@ -119,26 +119,39 @@
 
       // default show/hide
       const cfg = {
-        reported:              { date:false, ttn:false, note:false },
-        dismantled:            { date:true,  ttn:false, note:true  },
-        where_left:            { date:false, ttn:false, note:false },
-        shipped_to_service:    { date:false, ttn:true,  note:true  },
-        service_received:      { date:true,  ttn:false, note:true  },
-        repaired_shipped_back: { date:false, ttn:true,  note:true  },
-        installed:             { date:false, ttn:false, note:true  },
-        loaner_return:         { date:false, ttn:false, note:false },
-        closed:                { date:true,  ttn:false, note:true  },
+        reported:              { date:false, ttn:false, note:false, photos:false },
+        dismantled:            { date:true,  ttn:false, note:true,  photos:true  },
+        where_left:            { date:false, ttn:false, note:false, photos:false },
+        shipped_to_service:    { date:false, ttn:true,  note:true,  photos:false },
+        service_received:      { date:true,  ttn:false, note:true,  photos:true  },
+        repaired_shipped_back: { date:false, ttn:true,  note:true,  photos:true  },
+        installed:             { date:false, ttn:false, note:true,  photos:true  },
+        loaner_return:         { date:false, ttn:false, note:false, photos:false },
+        closed:                { date:false, ttn:false, note:false, photos:false },
       };
 
-      const c = cfg[stepKey] || { date:true, ttn:true, note:true };
+      const c = cfg[stepKey] || { date:true, ttn:true, note:true, photos:false };
 
       if (dateWrap) dateWrap.classList.toggle('hidden', !c.date);
       if (ttnWrap)  ttnWrap.classList.toggle('hidden', !c.ttn);
       if (noteEl)   noteEl.classList.toggle('hidden', !c.note);
 
-      // special UIs
+      // photos UI (не затираємо special UIs, тому тільки додаємо, якщо extraEl ще не переписаний)
+      if (extraEl && c.photos) {
+        extraEl.innerHTML += `
+          <div class="card" style="margin-top:10px;">
+            <div class="muted" style="margin-bottom:8px;">Фото</div>
+            <input id="stepPhoto" type="file" accept="image/*" capture="environment" class="btn" />
+            <button type="button" id="stepPhotoUpload" class="btn primary" style="margin-top:10px; width:100%;">Додати фото</button>
+            <div id="stepPhotoMsg" class="muted" style="margin-top:8px;"></div>
+          </div>
+        `;
+      }
+
+      // =========================
+      // special UIs (переписують extraEl повністю)
+      // =========================
       if (stepKey === 'reported' && extraEl) {
-        // hide standard
         dateWrap?.classList.add('hidden');
         ttnWrap?.classList.add('hidden');
         noteEl?.classList.add('hidden');
@@ -164,7 +177,7 @@
             <input id="rPhone" class="btn" placeholder="+380..." />
           </div>
 
-                    <div class="card" style="margin-top:10px;">
+          <div class="card" style="margin-top:10px;">
             <div class="muted" style="margin-bottom:8px;">Серійний номер</div>
             <input id="rSerialNumber" class="btn" placeholder="Напр. DEY-8K-39420" />
           </div>
@@ -215,6 +228,27 @@
             <div class="segmented" style="width:100%;">
               <button type="button" data-loaner-ret="warehouse" class="active">На склад</button>
               <button type="button" data-loaner-ret="supplier">Постачальнику</button>
+            </div>
+          </div>
+        `;
+      }
+
+      if (stepKey === 'closed' && extraEl) {
+        dateWrap?.classList.add('hidden');
+        ttnWrap?.classList.add('hidden');
+        noteEl?.classList.add('hidden');
+
+        extraEl.innerHTML = `
+          <div class="card" style="margin-top:10px;">
+            <div class="muted" style="margin-bottom:8px;">Закрити рекламацію</div>
+
+            <div class="segmented" style="width:100%;">
+              <button type="button" data-close="1" class="active">Так</button>
+              <button type="button" data-close="0">Ні</button>
+            </div>
+
+            <div class="muted" style="font-size:12px; margin-top:8px;">
+              “Так” поставить статус “Завершено” і дату закриття.
             </div>
           </div>
         `;
@@ -315,26 +349,23 @@
     // Open/close by click
     // =========================
     document.addEventListener('click', (e) => {
-      // close
       if (e.target.closest('#stepClose') || e.target.classList.contains('modal-backdrop')) {
         closeModal();
         return;
       }
 
-      // open by clicking step card
       const stepWrap = e.target.closest('.step[data-step]');
       if (stepWrap) {
         const stepKey = stepWrap.getAttribute('data-step');
         const label = stepWrap.querySelector('.step-title')?.textContent?.trim() || 'Етап';
         if (stepKey) openModal(label, stepKey);
-        return;
       }
     });
 
     // =========================
-    // Modal interactions (segmented + toggle)
+    // Modal interactions (segmented + toggle + upload)
     // =========================
-    modal.addEventListener('click', (e) => {
+    modal.addEventListener('click', async (e) => {
       // where_left segmented
       const w = e.target.closest('[data-where]');
       if (w) {
@@ -351,6 +382,14 @@
         lr.classList.add('active');
       }
 
+      // closed segmented
+      const cbtn = e.target.closest('[data-close]');
+      if (cbtn) {
+        const seg = cbtn.closest('.segmented');
+        seg?.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+        cbtn.classList.add('active');
+      }
+
       // reported: has loaner segmented
       const loanerBtn = e.target.closest('[data-loaner]');
       if (loanerBtn) {
@@ -365,7 +404,6 @@
         const needOrder = loanerBtn.getAttribute('data-loaner') === '0';
         wrap?.classList.toggle('hidden', !needOrder);
 
-        // reset toggle if "Є"
         if (!needOrder) {
           if (hidden) hidden.value = '0';
           if (tgl) tgl.setAttribute('aria-pressed', 'false');
@@ -379,6 +417,46 @@
         tgl.setAttribute('aria-pressed', pressed ? 'false' : 'true');
         const hidden = document.getElementById('rLoanerOrdered');
         if (hidden) hidden.value = pressed ? '0' : '1';
+      }
+
+      // Upload photo (кнопка)
+      const upBtn = e.target.closest('#stepPhotoUpload');
+      if (upBtn) {
+        if (!currentStep) return;
+
+        const fileInput = document.getElementById('stepPhoto');
+        const msg = document.getElementById('stepPhotoMsg');
+        const file = fileInput?.files?.[0];
+
+        if (!file) {
+          if (msg) msg.textContent = 'Вибери фото';
+          return;
+        }
+
+        upBtn.disabled = true;
+        if (msg) msg.textContent = 'Завантаження…';
+
+        const fd = new FormData();
+        fd.append('step_key', currentStep);
+        fd.append('file', file);
+
+        const res = await fetch(window.RECL.uploadUrl, {
+          method: 'POST',
+          headers: { 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' },
+          body: fd,
+        });
+
+        upBtn.disabled = false;
+
+        if (!res.ok) {
+          let text = 'Помилка завантаження';
+          try { text = (await res.json())?.message || text; } catch (err) {}
+          if (msg) msg.textContent = text;
+          return;
+        }
+
+        if (msg) msg.textContent = 'Готово ✅';
+        setTimeout(() => location.reload(), 250);
       }
     });
 
@@ -396,6 +474,13 @@
 
       const loanerSegBtn = extraEl?.querySelector('[data-loaner-ret].active');
       if (loanerSegBtn) loaner_return_to = loanerSegBtn.getAttribute('data-loaner-ret');
+
+      // close toggle (тільки для closed)
+      let close = null;
+      if (currentStep === 'closed') {
+        const closeBtn = extraEl?.querySelector('[data-close].active');
+        close = closeBtn ? closeBtn.getAttribute('data-close') : '1';
+      }
 
       let payload;
 
@@ -420,6 +505,7 @@
           note: noteEl?.classList.contains('hidden') ? null : (noteEl?.value || null),
           where_left,
           loaner_return_to,
+          close, // важливо для closed
         };
       }
 
@@ -437,7 +523,7 @@
 
       if (!res.ok) {
         let msg = 'Помилка збереження';
-        try { msg = (await res.json())?.message || msg; } catch (e) {}
+        try { msg = (await res.json())?.message || msg; } catch (err) {}
         alert(msg);
         return;
       }
@@ -449,12 +535,52 @@
   }
 
   // =========================
+  // Client history accordion
+  // =========================
+  function initClientHistory(){
+    const card = document.getElementById('clientCard');
+    const box  = document.getElementById('clientHistory');
+    if (!card || !box || !window.RECL?.id) return;
+
+    let loaded = false;
+    let open = false;
+
+    const toggle = async () => {
+      open = !open;
+      box.classList.toggle('hidden', !open);
+
+      if (open && !loaded) {
+        box.innerHTML = '<div class="muted">Завантаження…</div>';
+
+        const res = await fetch(`/reclamations/${window.RECL.id}/history`, {
+          headers: { 'Accept': 'application/json' }
+        });
+
+        if (!res.ok) {
+          box.innerHTML = '<div class="muted">Не вдалося завантажити історію.</div>';
+          return;
+        }
+
+        const data = await res.json();
+        box.innerHTML = data.html || '<div class="muted">Історія порожня.</div>';
+        loaded = true;
+      }
+    };
+
+    card.addEventListener('click', (e) => {
+      e.preventDefault();
+      toggle();
+    });
+  }
+
+  // =========================
   // Boot
   // =========================
   document.addEventListener('DOMContentLoaded', () => {
     hideSplash();
     initCreateWizard();
     initStepsModal();
+    initClientHistory();
   });
 
 })();

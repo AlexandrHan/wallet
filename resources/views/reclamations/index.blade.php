@@ -113,20 +113,96 @@
     @else
       @foreach($items as $item)
         @php
-          // файли: рахуємо по всіх steps
-          $filesCount = $item->steps->sum(fn($s) => is_array($s->files) ? count($s->files) : 0);
+          $labels = [
+            'reported' => 'Дані клієнта',
+            'dismantled' => 'Демонтували',
+            'where_left' => 'Де залишили',
+            'shipped_to_service' => 'Відправили на ремонт',
+            'service_received' => 'Сервіс отримав',
+            'repaired_shipped_back' => 'Відремонтували та відправили',
+            'installed' => 'Встановили',
+            'loaner_return' => 'Повернення підмінного',
+            'closed' => 'Завершили',
+          ];
 
-          // "коменти": поки беремо кількість steps з note (можеш потім зробити окрему таблицю comments)
-          $notesCount = $item->steps->filter(fn($s) => $s->note && trim($s->note) !== '')->count();
+          $order = array_keys($labels);
 
-          // статус бейдж
+          $isDone = function($s){
+            return $s && (
+              $s->done_date ||
+              ($s->note && trim($s->note) !== '') ||
+              ($s->ttn && trim($s->ttn) !== '') ||
+              (is_array($s->files) && count($s->files))
+            );
+          };
+
+          // поточний/останній активний етап = останній заповнений по порядку
+          $currentKey = null;
+          $currentDate = null;
+
+          foreach ($order as $k) {
+            $s = $item->steps->firstWhere('step_key', $k);
+            if ($isDone($s)) {
+              $currentKey = $k;
+              $currentDate = $s->done_date ? \Illuminate\Support\Carbon::parse($s->done_date)->format('d.m.Y') : null;
+            }
+          }
+
+          $currentLabel = $currentKey ? ($labels[$currentKey] ?? $currentKey) : 'Не розпочато';
+          $currentDateText = $currentDate ?: ($item->reported_at ? $item->reported_at->format('d.m.Y') : '—');
+
+          // колір рамки
+          $shipped = $item->steps->firstWhere('step_key', 'shipped_to_service');
+          $hasShipped = $isDone($shipped);
+
+          if ($item->status === 'done') {
+            $borderClass = 'card-done';      // зелена
+          } elseif ($hasShipped) {
+            $borderClass = 'card-shipped';   // жовта
+          } else {
+            $borderClass = 'card-pre';       // червона
+          }
+
           $statusClass = $item->status === 'done' ? 'status-done' : 'status-open';
           $statusText  = $item->status === 'done' ? 'Завершено' : 'В роботі';
 
-          $dateText = $item->reported_at ? $item->reported_at->format('d.m.Y') : '—';
+          $filesCount = $item->steps->sum(fn($s) => is_array($s->files) ? count($s->files) : 0);
+          $notesCount = $item->steps->filter(fn($s) => $s->note && trim($s->note) !== '')->count();
+          $dateText = $currentDateText;
+
+        @endphp
+        @php
+          // порядок етапів та назви (під твою show.blade.php)
+          $stepsMap = [
+            'reported' => 'Дані клієнта',
+            'dismantled' => 'Демонтували',
+            'where_left' => 'Де залишили',
+            'shipped_to_service' => 'Відправили НП на ремонт',
+            'service_received' => 'Сервіс отримав',
+            'repaired_shipped_back' => 'Відремонтували та відправили',
+            'installed' => 'Встановили',
+            'loaner_return' => 'Повернення підмінного',
+            'closed' => 'Завершили',
+          ];
+
+          // беремо останній "заповнений" step (date/note/ttn/files)
+          $activeStep = $item->steps
+            ->filter(function($s){
+              $hasFiles = is_array($s->files) && count($s->files);
+              return $s->done_date || (trim((string)$s->note) !== '') || (trim((string)$s->ttn) !== '') || $hasFiles;
+            })
+            ->sortBy(function($s){
+              return $s->done_date ? strtotime($s->done_date) : 0;
+            })
+            ->last();
+
+          $activeKey = $activeStep?->step_key ?? 'reported';
+          $activeLabel = $stepsMap[$activeKey] ?? $activeKey;
         @endphp
 
-        <a href="{{ route('reclamations.show', $item->id) }}" class="card reclam-card reclam-link">
+
+
+        <a href="{{ route('reclamations.show', $item->id) }}" class="card reclam-card reclam-link {{ $borderClass }}">
           <div class="reclam-top">
             <div class="reclam-title">
               <div class="reclam-id">{{ $item->code }}</div>
@@ -140,9 +216,10 @@
 
           <div class="reclam-body">
             <div class="reclam-row">
-              <div class="muted">Серійник</div>
-              <div class="right">SN: <span class="mono">{{ $item->serial_number ?: '—' }}</span></div>
+              <div class="muted">Етап</div>
+              <div class="right"><b>{{ $activeLabel }}</b></div>
             </div>
+
 
             <div class="reclam-row">
               <div class="muted">Нас. пункт</div>
@@ -156,7 +233,7 @@
 
             @if($item->problem)
               <div class="reclam-row">
-                <div class="muted">Суть</div>
+                <div class="muted">Проблема</div>
                 <div class="right">{{ $item->problem }}</div>
               </div>
             @endif

@@ -509,3 +509,74 @@
   background: rgba(102,242,168,.35);
   border-color: rgba(102,242,168,.35);
 }
+
+.history-card.hidden{ display:none !important; }
+
+/* history: дозволяємо перенос і не даємо вилізти */
+.history-item{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  padding:10px 0;
+  border-top:1px solid rgba(255,255,255,.08);
+  align-items:flex-start;
+}
+.history-item:first-child{ border-top:0; padding-top:0; }
+
+.history-title{ font-size:13px; }
+.history-sub{ font-size:12px; opacity:.75; margin-top:2px; }
+
+.history-left{ min-width:0; flex: 1 1 auto; }
+.history-right{
+  flex: 0 1 55%;
+  text-align:right;
+
+  /* було nowrap + ellipsis — прибираємо */
+  white-space: normal;
+  overflow: hidden;
+  text-overflow: unset;
+
+  /* головне: перенос довгих рядків */
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Рамки по статусу прогресу */
+.reclam-card.card-pre{
+  border-color: rgb(255, 0, 0);
+
+  /* твій inset-контур */
+  box-shadow:
+    0 0 0 1px rgb(140, 0, 0) inset,
+
+    /* м'яка iOS тінь назовні */
+    0 10px 28px rgba(120, 120, 120, 0.28),
+    0 2px 8px rgba(0,0,0,.22);
+}
+
+.reclam-card.card-shipped{
+  border-color: rgba(237, 242, 102, 0.4);
+
+  /* твій inset-контур */
+  box-shadow:
+    0 0 0 1px rgba(238, 255, 1, 0.536) inset,
+
+    /* м'яка iOS тінь назовні */
+    0 10px 28px rgba(120, 120, 120, 0.28),
+    0 2px 8px rgba(0,0,0,.22);
+}
+
+/* iOS-like glow + inset ring */
+.reclam-card.card-done{
+  border-color: rgba(102, 242, 167, 0);
+
+  /* твій inset-контур */
+  box-shadow:
+    0 0 0 1px rgba(58, 160, 105, 0) inset,
+
+    /* м'яка iOS тінь назовні */
+    0 10px 28px rgba(120, 120, 120, 0),
+    0 2px 8px rgba(0, 0, 0, 0);
+}
+
+

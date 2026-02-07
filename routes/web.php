@@ -802,6 +802,8 @@ Route::middleware('auth')->prefix('reclamations')->name('reclamations.')->group(
 });
 
 
+Route::get('/reclamations/{reclamation}/history', [\App\Http\Controllers\ReclamationController::class, 'history'])
+    ->name('reclamations.history');
 
 
 require __DIR__.'/auth.php';

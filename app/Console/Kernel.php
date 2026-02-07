@@ -31,6 +31,9 @@ class Kernel extends ConsoleKernel
             ->dailyAt('23:40');
 
         $schedule->command('erp:sync-cash-entries')->dailyAt('23:00');
+        
+        $schedule->command('reclamations:prune-files')->dailyAt('03:30');
+
     }
 
 
