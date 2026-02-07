@@ -96,12 +96,65 @@
 <main class="wrap reclamations-main">
 
 
-
-  <div class="row content topbar" style="display:flex;justify-content:center;align-items:center;">
-
-    <a href="{{ route('reclamations.new') }}" class="btn primary right">Створити нову рекламацію</a>
+  <div class="row content topbar topbar-actions">
+    <a href="{{ route('reclamations.new') }}" class="btn create-reclam">Створити рекламацію</a> 
+    <button type="button" class="btn" id="searchToggleBtn">🔎 Пошук</button>
+       
   </div>
-  
+
+  <div id="searchPanel" class="search-panel hidden">
+  <form method="GET" action="{{ route('reclamations.index') }}" class="search-form">
+
+    <input
+      class="btn"
+      type="text"
+      name="q"
+      placeholder="Пошук по прізвищу…"
+      value="{{ request('q') }}"
+      autocomplete="off"
+    />
+
+    {{-- 3 кнопки-статуси --}}
+    <input type="hidden" name="status" id="statusInput" value="{{ request('status') }}">
+
+    <div class="status-filters" id="statusFilters">
+      <button type="button" class="btn pill {{ request('status')==='accepted' ? 'active' : '' }}" data-status="accepted">
+        Прийняли заявку
+      </button>
+      <button type="button" class="btn pill {{ request('status')==='shipped' ? 'active' : '' }}" data-status="shipped">
+        Відправили на ремонт
+      </button>
+
+    </div>
+
+    {{-- dropdown етапів --}}
+    @php
+      $stepsMap = [
+        '' => 'Пошук по етапах',
+        'reported' => 'Дані клієнта',
+        'dismantled' => 'Демонтували',
+        'where_left' => 'Де залишили',
+        'shipped_to_service' => 'Відправили НП на ремонт',
+        'service_received' => 'Сервіс отримав',
+        'repaired_shipped_back' => 'Відремонтували та відправили',
+        'installed' => 'Встановили',
+        'loaner_return' => 'Повернення підмінного',
+        'closed' => 'Завершили',
+      ];
+      $selStep = request('step','');
+    @endphp
+
+    <select name="step" class="btn">
+      @foreach($stepsMap as $k => $label)
+        <option value="{{ $k }}" {{ $selStep===$k ? 'selected' : '' }}>{{ $label }}</option>
+      @endforeach
+    </select>
+
+    <button type="submit" class="btn primary">Знайти</button>
+    <a href="{{ route('reclamations.index') }}" class="btn">Скинути фільтри</a>
+  </form>
+
+  </div>
 
 
 
@@ -205,21 +258,17 @@
         <a href="{{ route('reclamations.show', $item->id) }}" class="card reclam-card reclam-link {{ $borderClass }}">
           <div class="reclam-top">
             <div class="reclam-title">
-              <div class="reclam-id">{{ $item->code }}</div>
+
               <div class="reclam-sub">
-                Клієнт: <b>{{ $item->last_name ?: '—' }}</b>
+                <b>{{ $item->last_name ?: '—' }}</b>
               </div>
             </div>
 
-            <div class="reclam-status {{ $statusClass }}">{{ $statusText }}</div>
+            <div class="reclam-status status-open">{{ $activeLabel }}</div>
+
           </div>
 
           <div class="reclam-body">
-            <div class="reclam-row">
-              <div class="muted">Етап</div>
-              <div class="right"><b>{{ $activeLabel }}</b></div>
-            </div>
-
 
             <div class="reclam-row">
               <div class="muted">Нас. пункт</div>

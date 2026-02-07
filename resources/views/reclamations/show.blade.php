@@ -19,7 +19,7 @@
   <div class="row content">
     
     <a href="{{ route('reclamations.index') }}" class="btn right back">← Назад</a>
-    <div style="font-weight:900;">{{ $reclamation->code }}</div>
+
   </div>
 
   <div class="card client-card" id="clientCard" style="margin-top:14px; cursor:pointer;">
@@ -52,7 +52,7 @@
     @if($reclamation->problem)
       <div class="reclam-row">
         <div class="muted">Проблема</div>
-        <div class="right">{{ $reclamation->problem }}</div>
+        <div class="right wraptext">{{ $reclamation->problem }}</div>
       </div>
     @endif
 
@@ -61,7 +61,7 @@
       <div class="right">
         <b>{{ $reclamation->has_loaner ? 'В наявності' : 'Відсутній' }}</b>
         @if(!$reclamation->has_loaner)
-          <span class="muted">• {{ $reclamation->loaner_ordered ? 'замовили' : 'не замовляли' }}</span>
+          <span class="red">• {{ $reclamation->loaner_ordered ? 'замовили' : 'не замовляли' }}</span>
         @endif
       </div>
     </div>
@@ -141,14 +141,14 @@
 
     <div class="modal-body">
       <div id="dateWrap">
-        <input id="stepDate" class="btn" type="date" />
+        <input id="stepDate" class="btn btn-modal" type="date" />
       </div>
 
       <div id="ttnWrap" style="margin-top:10px;">
-        <input id="stepTTN" class="btn" placeholder="ТТН (якщо потрібно)" />
+        <input id="stepTTN" class="btn btn-modal" placeholder="ТТН (якщо потрібно)" />
       </div>
 
-      <textarea id="stepNote" class="btn" placeholder="Коментар / опис" style="margin-top:10px; min-height:90px;"></textarea>
+      <textarea id="stepNote" class="btn btn-modal" placeholder="Коментар / опис" style="margin-top:10px; min-height:90px;"></textarea>
 
       <div id="stepExtra" style="margin-top:10px;"></div>
 
@@ -161,11 +161,43 @@
   </div>
 </div>
 
+@php
+  $recPayload = [
+    'reported_at' => optional($reclamation->reported_at)->format('Y-m-d'),
+    'last_name' => $reclamation->last_name,
+    'city' => $reclamation->city,
+    'phone' => $reclamation->phone,
+    'serial_number' => $reclamation->serial_number,
+    'problem' => $reclamation->problem,
+    'has_loaner' => (bool) $reclamation->has_loaner,
+    'loaner_ordered' => (bool) $reclamation->loaner_ordered,
+    'status' => $reclamation->status,
+  ];
+
+  $stepsPayload = $reclamation->steps
+    ->keyBy('step_key')
+    ->map(function ($s) {
+      return [
+        'done_date' => optional($s->done_date)->format('Y-m-d'),
+        'ttn' => $s->ttn,
+        'note' => $s->note,
+        'files' => $s->files ?? [],
+      ];
+    })
+    ->toArray();
+@endphp
+
+
 <script>
   window.RECL = {
     id: {{ $reclamation->id }},
     saveUrl: @json(route('reclamations.steps.save', ['reclamation'=>$reclamation->id, 'stepKey'=>'__STEP__'])),
     uploadUrl: @json(route('reclamations.upload', ['reclamation'=>$reclamation->id])),
+
+    rec: @json($recPayload),
+    steps: @json($stepsPayload),
   };
 </script>
+
+
 @endsection

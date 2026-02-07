@@ -9,16 +9,83 @@
 
 /* Загальний ритм сторінки */
 .reclamations-main{
-  padding-top: calc(72px + env(safe-area-inset-top)) !important;
+  padding-top: calc(84px + env(safe-area-inset-top)) !important;
   padding-bottom: 18px;
 }
 
 /* мобілка: якщо треба більше місця під fixed header */
 @media (max-width: 768px){
   .reclamations-main{
-    padding-top: calc(72px + env(safe-area-inset-top)) !important; /* залишив так само, без дубля логіки */
+    padding-top: calc(84px + env(safe-area-inset-top)) !important; /* залишив так само, без дубля логіки */
   }
 }
+
+.topbar{
+  display: flex;
+}
+
+.topbar-actions{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+}
+
+.search-panel{
+  margin-top: 10px;
+  margin-bottom: 10px;
+  padding: 12px;
+  border-radius: 20px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.045);
+}
+
+#searchToggleBtn{
+  border-radius: 10px;
+}
+
+.create-reclam{
+  text-align: center;
+  border-radius: 10px;
+  background: rgba(255,255,255,.08);
+}
+
+.search-panel.hidden{ display:none; }
+
+.search-form{
+  display:flex;
+  gap:10px;
+  align-items:center;
+}
+
+.search-form input.btn{ flex: 1 1 auto; }
+
+.status-filters{
+  display:flex;
+  justify-content: space-between;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.btn.pill{
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.06);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.btn.pill.active{
+  box-shadow: 0 0 0 2px rgb(102, 242, 167) inset;
+}
+
+
+@media (max-width: 520px){
+  .search-form{ flex-direction:column; align-items:stretch; }
+}
+
 
 /* Верхній ряд одразу під хедером */
 .topbar{
@@ -28,9 +95,15 @@
 
 /* кнопки */
 .btn{
+  text-align: center;
   text-decoration: none;
   font-size: 16px;
   font-weight: 700;
+  border-radius: 12px;
+}
+
+.btn-modal{
+  text-align: left;
 }
 
 .back{
@@ -66,9 +139,9 @@
 }
 
 .reclam-sub{
-  margin-top: 4px;
-  font-size: 12px;
-  opacity: .78;
+
+  font-size: 16px;
+  
   overflow-wrap:anywhere;
 }
 
@@ -125,6 +198,16 @@
   text-overflow:ellipsis;
   white-space:nowrap;
 }
+
+/* Для довгих текстів типу "Суть" — не обрізаємо, а переносимо */
+.reclam-row .right.wraptext{
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  max-width: 62%;
+  word-break: break-word;
+}
+
 
 .mono{
   font-variant-numeric: tabular-nums;
@@ -431,14 +514,14 @@
   padding: 6px;
 }
 #stepModal .segmented button{
-  height: 40px;
+  height: 50px;
   border-radius: 14px;
   font-weight: 900;
   color: #fff;
 }
 
 #stepModal .row .btn{
-  height: 40px;
+  height: 50px;
   border-radius: 16px;
 }
 
@@ -579,4 +662,21 @@
     0 2px 8px rgba(0, 0, 0, 0);
 }
 
+/* hide scrollbars in modal (scroll works) */
+.modal-panel,
+.modal-body{
+  scrollbar-width: none;          /* Firefox */
+  -ms-overflow-style: none;       /* IE/Edge legacy */
+}
 
+.modal-panel::-webkit-scrollbar,
+.modal-body::-webkit-scrollbar{
+  width: 0;
+  height: 0;
+}
+
+.red{
+  color: #ff0000;
+  font-weight: 700;
+  font-size: 18px;
+}

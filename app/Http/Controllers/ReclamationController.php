@@ -25,15 +25,53 @@ class ReclamationController extends Controller
 
     public function index()
     {
-        $items = Reclamation::with('steps')
+        $q = trim((string)request('q'));
+
+        $query = Reclamation::with('steps')
             ->whereNotNull('last_name')
-            ->where('last_name', '!=', '')
-            ->orderByDesc('id')
-            ->limit(50)
-            ->get();
+            ->where('last_name', '!=', '');
+
+        if ($q !== '') {
+            $query->where('last_name', 'like', "%{$q}%");
+        }
+        $status = request('status');
+        $step = request('step');
+
+        if ($status === 'done') {
+            $query->where('status', 'done');
+        }
+
+        if ($status === 'accepted') {
+            // “прийняли заявку” = є last_name (вже є) або reported done_date
+            $query->whereHas('steps', function($qq){
+                $qq->where('step_key', 'reported')->whereNotNull('done_date');
+            });
+        }
+
+        if ($status === 'shipped') {
+            // “відправили на ремонт” = shipped_to_service done_date
+            $query->whereHas('steps', function($qq){
+                $qq->where('step_key', 'shipped_to_service')->whereNotNull('done_date');
+            });
+        }
+
+        if ($step) {
+            $query->whereHas('steps', function($qq) use ($step){
+                $qq->where('step_key', $step)
+                ->where(function($x){
+                    $x->whereNotNull('done_date')
+                        ->orWhere('note','!=','')
+                        ->orWhere('ttn','!=','');
+                });
+            });
+        }
+
+
+        $items = $query->orderByDesc('id')->limit(50)->get();
 
         return view('reclamations.index', compact('items'));
     }
+
 
     public function create()
     {

@@ -112,10 +112,26 @@
       currentStep = stepKey;
       if (titleEl) titleEl.textContent = label || 'Етап';
 
-      if (dateEl) dateEl.value = '';
-      if (ttnEl) ttnEl.value = '';
-      if (noteEl) noteEl.value = '';
       if (extraEl) extraEl.innerHTML = '';
+
+      const stepData = window.RECL?.steps?.[stepKey] || null;
+
+      // не затираємо, а підставляємо з БД
+      if (dateEl) dateEl.value = stepData?.done_date || '';
+      if (ttnEl)  ttnEl.value  = stepData?.ttn || '';
+      if (noteEl) noteEl.value = stepData?.note || '';
+
+
+
+
+
+      // звичайні поля (для більшості етапів)
+      if (stepData) {
+        if (dateEl && stepData.done_date) dateEl.value = stepData.done_date;
+        if (ttnEl && stepData.ttn) ttnEl.value = stepData.ttn;
+        if (noteEl && stepData.note) noteEl.value = stepData.note;
+      }
+
 
       // default show/hide
       const cfg = {
@@ -159,32 +175,32 @@
         extraEl.innerHTML = `
           <div class="card" style="margin-top:10px;">
             <div class="muted" style="margin-bottom:8px;">Дата звернення</div>
-            <input id="rReportedAt" class="btn" type="date" />
+            <input id="rReportedAt" class="btn btn-modal" type="date" />
           </div>
 
           <div class="card" style="margin-top:10px;">
             <div class="muted" style="margin-bottom:8px;">Прізвище</div>
-            <input id="rLastName" class="btn" placeholder="Напр. Іваненко" />
+            <input id="rLastName" class="btn btn-modal" placeholder="Напр. Іваненко" />
           </div>
 
           <div class="card" style="margin-top:10px;">
             <div class="muted" style="margin-bottom:8px;">Населений пункт</div>
-            <input id="rCity" class="btn" placeholder="Напр. Черкаси" />
+            <input id="rCity" class="btn btn-modal" placeholder="Напр. Черкаси" />
           </div>
 
           <div class="card" style="margin-top:10px;">
             <div class="muted" style="margin-bottom:8px;">Телефон</div>
-            <input id="rPhone" class="btn" placeholder="+380..." />
+            <input id="rPhone" class="btn btn-modal" placeholder="+380..." />
           </div>
 
           <div class="card" style="margin-top:10px;">
             <div class="muted" style="margin-bottom:8px;">Серійний номер</div>
-            <input id="rSerialNumber" class="btn" placeholder="Напр. DEY-8K-39420" />
+            <input id="rSerialNumber" class="btn btn-modal" placeholder="Напр. DEY-8K-39420" />
           </div>
 
           <div class="card" style="margin-top:10px;">
             <div class="muted" style="margin-bottom:8px;">Опис проблеми</div>
-            <textarea id="rProblem" class="btn" placeholder="Що зламалось / що не працює" style="min-height:90px;"></textarea>
+            <textarea id="rProblem" class="btn btn-modal" placeholder="Що зламалось / що не працює" style="min-height:90px;"></textarea>
           </div>
 
           <div class="card" style="margin-top:10px;">
@@ -207,6 +223,34 @@
             <input type="hidden" id="rLoanerOrdered" value="0" />
           </div>
         `;
+        // prefill reported inputs
+          const r = window.RECL?.rec || {};
+          document.getElementById('rReportedAt') && (document.getElementById('rReportedAt').value = r.reported_at || '');
+          document.getElementById('rLastName') && (document.getElementById('rLastName').value = r.last_name || '');
+          document.getElementById('rCity') && (document.getElementById('rCity').value = r.city || '');
+          document.getElementById('rPhone') && (document.getElementById('rPhone').value = r.phone || '');
+          document.getElementById('rSerialNumber') && (document.getElementById('rSerialNumber').value = r.serial_number || '');
+          document.getElementById('rProblem') && (document.getElementById('rProblem').value = r.problem || '');
+
+          // segmented has_loaner
+          const loanerSeg = extraEl.querySelector('.segmented');
+          if (loanerSeg) {
+            loanerSeg.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+            const want = (r.has_loaner ? '1' : '0');
+            const activeBtn = loanerSeg.querySelector(`[data-loaner="${want}"]`);
+            activeBtn?.classList.add('active');
+
+            const wrap = document.getElementById('rLoanerOrderWrap');
+            const hidden = document.getElementById('rLoanerOrdered');
+            const tgl = document.getElementById('rLoanerOrderToggle');
+
+            const needOrder = want === '0';
+            wrap?.classList.toggle('hidden', !needOrder);
+
+            if (hidden) hidden.value = r.loaner_ordered ? '1' : '0';
+            if (tgl) tgl.setAttribute('aria-pressed', r.loaner_ordered ? 'true' : 'false');
+          }
+
       }
 
       if (stepKey === 'where_left' && extraEl) {
@@ -581,6 +625,39 @@
     initCreateWizard();
     initStepsModal();
     initClientHistory();
+    initIndexSearchPanel(); 
   });
+
+    function initIndexSearchPanel(){
+      const toggleBtn = document.getElementById('searchToggleBtn');
+      const panel = document.getElementById('searchPanel');
+      if (!toggleBtn || !panel) return;
+
+      const statusWrap = document.getElementById('statusFilters');
+      const statusInput = document.getElementById('statusInput');
+
+      statusWrap?.addEventListener('click', (e) => {
+        const pill = e.target.closest('[data-status]');
+        if (!pill) return;
+
+        const val = pill.getAttribute('data-status');
+
+        const isActive = pill.classList.contains('active');
+        statusWrap.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+
+        if (isActive) {
+          if (statusInput) statusInput.value = '';
+        } else {
+          pill.classList.add('active');
+          if (statusInput) statusInput.value = val;
+        }
+      });
+
+      toggleBtn.addEventListener('click', () => {
+        panel.classList.toggle('hidden');
+      });
+    }
+
+
 
 })();
