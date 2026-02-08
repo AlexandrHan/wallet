@@ -1980,6 +1980,8 @@ const OWNER_LABELS = {
   hlushchenko: 'Глущенко',
   accountant: 'Бухгалтер',
   foreman: 'Прораб',
+  serviceman_1: 'Savenkov',
+  serviceman_2: 'Malinin',
   shared: 'Спільне',
 };
 
@@ -2875,7 +2877,10 @@ function updateExchange(source = 'from'){
 window.openStaffCash = function () {
 
   const staffWallets = state.wallets.filter(w =>
-    w.owner === 'accountant' || w.owner === 'foreman'
+    w.owner === 'accountant' ||
+    w.owner === 'foreman' ||
+    w.owner === 'serviceman_1' ||
+    w.owner === 'serviceman_2'
   );
 
   const list = document.getElementById('staffCashList');
