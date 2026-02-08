@@ -137,7 +137,7 @@
 <div id="holdingCard" class="card {{ auth()->user()->role === 'owner' ? '' : 'hidden' }}"></div>
 
 
-</div>
+
 
 <div id="holdingStatsBox" class="hidden" style="margin-top:14px;">
 
