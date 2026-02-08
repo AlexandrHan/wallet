@@ -801,3 +801,252 @@ html.no-scroll, body.no-scroll{ overflow:hidden !important; }
   font-size: 12px;
   opacity: .85;
 }
+
+
+/* =========================
+   DESKTOP: красивий пошук/фільтр (мобілку не чіпаємо)
+========================= */
+@media (min-width: 980px){
+
+  /* сама панель */
+  .search-panel{
+    max-width: 1040px;
+    margin: 12px auto 16px;
+    padding: 18px 18px;
+    border-radius: 22px;
+    background: rgba(255,255,255,.055);
+    border: 1px solid rgba(255,255,255,.12);
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,.04) inset,
+      0 10px 22px rgba(0,0,0,.25);
+  }
+
+  /* форма на десктопі */
+  .search-form{
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    align-items: stretch;
+  }
+
+  /* поле пошуку (q) */
+  .search-form input[name="q"].btn{
+    height: 48px;
+    padding: 0 14px;
+    border-radius: 16px;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.12);
+  }
+
+  /* дві колонки: left / right */
+  .search-grid{
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 14px;
+    align-items: start;
+  }
+
+  .search-left{
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .search-fields select.btn{
+    height: 48px;
+    padding: 0 14px;
+    border-radius: 16px;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.12);
+  }
+
+  /* кнопки зліва в ряд */
+  .search-actions{
+    display: flex;
+    gap: 10px;
+  }
+
+  .search-actions .btn{
+    height: 46px;
+    border-radius: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 14px;
+    border: 1px solid rgba(255,255,255,.12);
+    background: rgba(255,255,255,.06);
+  }
+
+  .search-actions .btn.primary{
+    flex: 1 1 auto;
+    font-weight: 900;
+  }
+
+  .search-actions a.btn{
+    flex: 0 0 170px;
+    opacity: .95;
+  }
+
+  /* права колонка: статусні кнопки як “пульт” */
+  .search-right{
+    position: sticky;
+    top: calc(92px + env(safe-area-inset-top));
+  }
+
+  .search-right .status-filters{
+    width: 100%;
+    margin: 0;
+    padding: 12px;
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,.10);
+    background: rgba(255,255,255,.035);
+    gap: 10px;
+  }
+
+  .search-right .status-filters .btn.pill{
+    width: 100%;
+    height: 46px;
+    border-radius: 14px;
+    font-size: 13px;
+    letter-spacing: .2px;
+  }
+
+  /* легкий “телеграмний” фокус */
+  .search-panel .btn:focus,
+  .search-panel input:focus,
+  .search-panel select:focus{
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(102,242,168,.30);
+    border-color: rgba(102,242,168,.35);
+  }
+
+  /* hover тільки на девайсах з hover */
+  @media (hover:hover){
+    .search-actions .btn:hover,
+    .search-form input[name="q"].btn:hover,
+    .search-fields select.btn:hover{
+      background: rgba(255,255,255,.075);
+      border-color: rgba(255,255,255,.18);
+    }
+  }
+}
+
+
+@media (min-width: 980px){
+
+  .search-panel{
+    max-width: 1040px;
+    margin: 12px auto 16px;
+    padding: 18px 18px;
+    border-radius: 22px;
+    background: rgba(255,255,255,.055);
+    border: 1px solid rgba(255,255,255,.12);
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,.04) inset,
+      0 10px 22px rgba(0,0,0,.25);
+  }
+
+  .search-form{
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    align-items: stretch;
+  }
+
+  .search-form input[name="q"].btn{
+    height: 48px;
+    padding: 0 14px;
+    border-radius: 16px;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.12);
+  }
+
+  .search-grid{
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 14px;
+    align-items: start;
+  }
+
+  .search-left{
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .search-fields select.btn{
+    height: 48px;
+    padding: 0 14px;
+    border-radius: 16px;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.12);
+  }
+
+  .search-actions{
+    display: flex;
+    gap: 10px;
+  }
+
+  .search-actions .btn{
+    height: 46px;
+    border-radius: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 14px;
+    border: 1px solid rgba(255,255,255,.12);
+    background: rgba(255,255,255,.06);
+  }
+
+  .search-actions .btn.primary{
+    flex: 1 1 auto;
+    font-weight: 900;
+  }
+
+  .search-actions a.btn{
+    flex: 0 0 170px;
+    opacity: .95;
+  }
+
+  .search-right{
+    position: sticky;
+    top: calc(92px + env(safe-area-inset-top));
+  }
+
+  .search-right .status-filters{
+    width: 100%;
+    margin: 0;
+    padding: 12px;
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,.10);
+    background: rgba(255,255,255,.035);
+    gap: 10px;
+  }
+
+  .search-right .status-filters .btn.pill{
+    width: 100%;
+    height: 46px;
+    border-radius: 14px;
+    font-size: 13px;
+    letter-spacing: .2px;
+  }
+
+  .search-panel .btn:focus,
+  .search-panel input:focus,
+  .search-panel select:focus{
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(102,242,168,.30);
+    border-color: rgba(102,242,168,.35);
+  }
+
+  @media (hover:hover){
+    .search-actions .btn:hover,
+    .search-form input[name="q"].btn:hover,
+    .search-fields select.btn:hover{
+      background: rgba(255,255,255,.075);
+      border-color: rgba(255,255,255,.18);
+    }
+  }
+}
