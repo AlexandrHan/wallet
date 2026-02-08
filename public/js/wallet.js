@@ -1834,12 +1834,13 @@ function renderHoldingCard(){
   const el = document.getElementById('holdingCard');
   if (!el) return;
 
-  // робітнику не показуємо холдинг
-  if (AUTH_USER.role === 'worker'){
+  // холдинг бачить ТІЛЬКИ owner
+  if (AUTH_USER.role !== 'owner'){
     el.classList.add('hidden');
     return;
   }
   el.classList.remove('hidden');
+
 
   const base = state.holdingCurrency || 'UAH';
 
@@ -2009,9 +2010,10 @@ function getHoldingAccountsList(filter){
 
   // CASH
   const wallets =
-    (AUTH_USER.role === 'worker')
-      ? state.wallets.filter(w => w.owner === AUTH_USER.actor)
-      : state.wallets;
+    (AUTH_USER.role === 'owner')
+      ? state.wallets
+      : state.wallets.filter(w => w.owner === AUTH_USER.actor);
+
 
   if (filter !== 'bank'){
     wallets
@@ -2033,7 +2035,7 @@ function getHoldingAccountsList(filter){
   }
 
   // BANK
-  if (AUTH_USER.role !== 'worker' && filter !== 'cash'){
+  if (AUTH_USER.role === 'owner' && filter !== 'cash'){
     (state.bankAccounts || []).forEach(b => {
       const original = Number(b.balance || 0);
       const conv = convertAmount(original, b.currency || 'UAH', base);

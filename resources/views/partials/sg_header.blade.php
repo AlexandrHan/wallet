@@ -16,7 +16,10 @@
 
         <div id="burgerMenu" class="burger-menu hidden">
           <a href="/profile" class="burger-item">🔐 Адмінка / пароль</a>
-          <a href="{{ url('/') }}" class="burger-item">💼 Гаманець</a>
+          @if(auth()->user()->role !== 'SunFix')
+            <a href="{{ url('/') }}" class="burger-item">💼 Гаманець</a>
+          @endif
+
           <a href="{{ route('reclamations.index') }}" class="burger-item">🧾 Рекламації</a>
 
           <div class="burger-actions">

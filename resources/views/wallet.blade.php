@@ -76,7 +76,9 @@
 
         <div id="burgerMenu" class="burger-menu hidden">
             <a href="/profile" class="burger-item">🔐 Адмінка / пароль</a>
-            <a href="{{ route('reclamations.index') }}" class="burger-item">🧾 Рекламації</a>
+            @if(auth()->user()->role !== 'accountant')
+              <a href="{{ route('reclamations.index') }}" class="burger-item">🧾 Рекламації</a>
+            @endif
 
         <div id="staffCashBtn" class="menu-item burger-item hidden" onclick="openStaffCash()">
           👥 КЕШ співробітників
@@ -131,24 +133,10 @@
     </div>
 
 <!-- SG HOLDING CARD -->
-<div id="holdingCard" class="card" style="margin-top:14px;">
-  <div class="card-top" style="align-items:flex-start; gap:12px;">
-    <div style="min-width:0">
-      <div class="muted" style="opacity:.85">SG Holding</div>
-      <div class="big" id="holdingTotal">—</div>
-      <div class="muted" id="holdingSub" style="opacity:.7; margin-top:6px;">кеш + банк</div>
-    </div>
 
-    <div class="segmented" id="holdingCurSeg" style="margin-top:0; width:210px; margin-left:auto;">
-      <button type="button" data-hcur="UAH" class="active">UAH</button>
-      <button type="button" data-hcur="USD">USD</button>
-      <button type="button" data-hcur="EUR">EUR</button>
-    </div>
-  </div>
+<div id="holdingCard" class="card {{ auth()->user()->role === 'owner' ? '' : 'hidden' }}"></div>
 
-  <div class="row" style="margin-top:12px;">
-    <button type="button" class="btn" id="toggleHoldingStats"style="width:100%;">📊 Детальна статистика</button>
-  </div>
+
 </div>
 
 <div id="holdingStatsBox" class="hidden" style="margin-top:14px;">

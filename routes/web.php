@@ -1,811 +1,707 @@
 <?php
 
+use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Http\Request;
+
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\WalletController;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Route;
-use App\Models\BankAccount;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Storage;
+use App\Http\Controllers\ReclamationController;
+
 use App\Models\BankTransactionRaw;
-use App\Http\Controllers\ReclamationController; 
+
+Route::middleware(['auth', 'only.reclamations'])->group(function () {
+
+    /*
+    |--------------------------------------------------------------------------
+    | WEB pages
+    |--------------------------------------------------------------------------
+    */
 
 
-//////////////////////////////////////////////////////////////////////////////////////
 
-//////////////////////////////////////////////////////////////////////////////////////
+    Route::get('/', function () {
+        $bankAccounts = \App\Models\BankAccount::where('is_active', true)->get();
 
-Route::get('/', function () {
+        return view('wallet', [
+            'bankAccounts' => $bankAccounts,
+        ]);
+    })->name('home');
 
-    $bankAccounts = \App\Models\BankAccount::where('is_active', true)->get();
+    // Breeze після логіну веде на dashboard, а ми перекидаємо на /
+    Route::get('/dashboard', fn () => redirect('/'))->name('dashboard');
 
-    return view('wallet', [   // твій застосунок
-        'bankAccounts' => $bankAccounts,
-    ]);
+    // Налаштування (якщо хочеш окрему сторінку)
+    Route::get('/settings', fn () => view('dashboard'))->name('settings');
 
-})->middleware(['auth'])->name('home');
-
-//////////////////////////////////////////////////////////////////////////////////////
-
-//////////////////////////////////////////////////////////////////////////////////////
+    // Wallet page (як у тебе)
+    Route::get('/wallet', [WalletController::class, 'index'])->name('wallet.index');
 
 
-// Breeze після логіну веде на dashboard, а ми перекидаємо на /
-Route::get('/dashboard', function () {
-    return redirect('/');
-})->middleware(['auth', 'verified'])->name('dashboard');
+    /*
+    |--------------------------------------------------------------------------
+    | Profile (Breeze)
+    |--------------------------------------------------------------------------
+    */
+    Route::prefix('profile')->group(function () {
+        // можна і без prefix, але так компактніше; маршрути залишаться /profile
+    });
 
-//////////////////////////////////////////////////////////////////////////////////////
-
-//////////////////////////////////////////////////////////////////////////////////////
-
-// Налаштування (якщо хочеш окрему сторінку)
-Route::get('/settings', function () {
-    return view('dashboard');
-})->middleware(['auth'])->name('settings');
-
-//////////////////////////////////////////////////////////////////////////////////////
-
-//////////////////////////////////////////////////////////////////////////////////////
-
-// Профіль (зміна пароля і т.д. у Breeze зазвичай тут)
-Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
-});
-
-//////////////////////////////////////////////////////////////////////////////////////
-
-//////////////////////////////////////////////////////////////////////////////////////
-
-/**
- * API (залишаємо в web.php, бо ти так уже підняв /api/* і воно працює)
- */
-Route::middleware(['auth'])->prefix('api')->group(function () {
-
-    Route::post('/wallets', function (Request $request) {
-
-        $data = $request->validate([
-            'name' => 'required|string',
-            'currency' => 'required|in:UAH,USD,EUR',
-        ]);
-
-        $owner = auth()->user()->actor;
-
-        $id = DB::table('wallets')->insertGetId([
-            'name' => $data['name'],
-            'currency' => $data['currency'],
-            'type' => 'cash',
-            'owner' => $owner,
-            'is_active' => 1,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        return response()->json([
-            'id' => $id,
-            'owner' => $owner,
-        ]);
-    });
-
-});
-
-//////////////////////////////////////////////////////////////////////////////////////
-
-//////////////////////////////////////////////////////////////////////////////////////
 
 
-Route::get('/wallet', [WalletController::class, 'index'])
-    ->middleware('auth')
-    ->name('wallet.index');
+    /*
+    |--------------------------------------------------------------------------
+    | API (у тебе воно в web.php і з auth, лишаємо так само)
+    |--------------------------------------------------------------------------
+    */
+    Route::prefix('api')->group(function () {
 
+        // create cash wallet
+        Route::post('/wallets', function (Request $request) {
 
-//////////////////////////////////////////////////////////////////////////////////////
-
-//////////////////////////////////////////////////////////////////////////////////////
-
-Route::post('/api/bank/csv-preview', function (\Illuminate\Http\Request $request) {
-
-    if (!$request->hasFile('file')) {
-        return response()->json(['error' => 'No file'], 400);
-    }
-
-    $file = $request->file('file');
-
-    $content = file_get_contents($file->getRealPath());
-
-    // Укргазбанк = Windows-1251
-    $content = mb_convert_encoding($content, 'UTF-8', 'Windows-1251');
-
-    $lines = explode("\n", trim($content));
-    $header = str_getcsv(array_shift($lines), ';');
-
-    $rows = [];
-    foreach ($lines as $line) {
-        if (!trim($line)) continue;
-
-        $cols = str_getcsv($line, ';');
-        $row = [];
-
-        foreach ($header as $i => $key) {
-            $row[$key] = $cols[$i] ?? null;
-        }
-
-        $rows[] = $row;
-    }
-
-    return response()->json([
-        'columns' => $header,
-        'rows' => array_slice($rows, 0, 20), // preview 20 рядків
-    ]);
-})->middleware('auth');
-
- 
-//////////////////////////////////////////////////////////////////////////////////////
-
-//////////////////////////////////////////////////////////////////////////////////////
-
-Route::get('/debug/ukrgasbank', function () {
-
-    $token = config('services.ukrgasbank.token');
-
-    if (!$token) {
-        return '❌ Token not found';
-    }
-
-    $response = Http::withToken($token)
-        ->get('https://my.ukrgasbank.com/api/v3/accounts');
-
-    return [
-        'status' => $response->status(),
-        'body'   => $response->json(),
-    ];
-})->middleware('auth');
-
-
-
-
-
-
-    Route::get('/api/bank/balance', function () {
-        $rows = \App\Models\BankTransactionRaw::where('bank_code', 'ukrgasbank')->get();
-
-        $balance = 0;
-
-        foreach ($rows as $r) {
-            // ukrgasbank: 1 = income, 2 = expense
-            if ((string)$r->dk === '1') {
-                $balance += (float)$r->amount;
-            } else {
-                $balance -= (float)$r->amount;
-            }
-        }
-
-        return [
-            'currency' => 'UAH',
-            'balance'  => round($balance, 2),
-            'count'    => $rows->count(),
-        ];
-    })->middleware('auth');
-
-
-    Route::get('/debug/ukrgasbank/import', function () {
-
-        $token = config('services.ukrgasbank.token');
-        if (!$token) return '❌ Token not found';
-
-        $response = Http::withToken($token)
-            ->get('https://my.ukrgasbank.com/api/v1/ugb/external/transaction-history', [
-                'dateFrom' => now()->subDays(7)->format('Y-m-d'),
-                'dateTo'   => now()->format('Y-m-d'),
+            $data = $request->validate([
+                'name' => 'required|string',
+                'currency' => 'required|in:UAH,USD,EUR',
             ]);
 
-        if (!$response->ok()) {
-            return ['status' => $response->status()];
-        }
+            $owner = auth()->user()->actor;
 
-        $rows = $response->json()['rows'] ?? [];
-        $inserted = 0;
-        $skipped = 0;
+            $id = DB::table('wallets')->insertGetId([
+                'name' => $data['name'],
+                'currency' => $data['currency'],
+                'type' => 'cash',
+                'owner' => $owner,
+                'is_active' => 1,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
 
-        foreach ($rows as $r) {
+            return response()->json([
+                'id' => $id,
+                'owner' => $owner,
+            ]);
+        });
 
-            $hash = sha1(
-                'ukrgasbank|' .
-                ($r['operDate'] ?? '') . '|' .
-                ($r['dk'] ?? '') . '|' .
-                ($r['amount'] ?? '') . '|' .
-                ($r['purpose'] ?? '') . '|' .
-                ($r['counterparty'] ?? '')
+        /*
+        |--------------------------
+        | CSV preview/import
+        |--------------------------
+        */
+        Route::post('/bank/csv-preview', function (Request $request) {
+
+            if (!$request->hasFile('file')) {
+                return response()->json(['error' => 'No file'], 400);
+            }
+
+            $file = $request->file('file');
+            $content = file_get_contents($file->getRealPath());
+
+            // Укргазбанк = Windows-1251
+            $content = mb_convert_encoding($content, 'UTF-8', 'Windows-1251');
+
+            $lines  = explode("\n", trim($content));
+            $header = str_getcsv(array_shift($lines), ';');
+
+            $rows = [];
+            foreach ($lines as $line) {
+                if (!trim($line)) continue;
+
+                $cols = str_getcsv($line, ';');
+                $row = [];
+
+                foreach ($header as $i => $key) {
+                    $row[$key] = $cols[$i] ?? null;
+                }
+
+                $rows[] = $row;
+            }
+
+            return response()->json([
+                'columns' => $header,
+                'rows' => array_slice($rows, 0, 20),
+            ]);
+        });
+
+        Route::post('/bank/csv-import', function (Request $request) {
+
+            if (!$request->hasFile('file')) {
+                return response()->json(['error' => 'No file'], 400);
+            }
+
+            $file = $request->file('file');
+
+            $content = mb_convert_encoding(
+                file_get_contents($file->getRealPath()),
+                'UTF-8',
+                'Windows-1251'
             );
 
-            if (BankTransactionRaw::where('hash', $hash)->exists()) {
-                $skipped++;
-                continue;
+            $lines  = preg_split("/\r\n|\n|\r/", trim($content));
+            $header = str_getcsv(array_shift($lines), ';');
+
+            $inserted = 0;
+            $skipped  = 0;
+
+            foreach ($lines as $line) {
+                if (!trim($line)) continue;
+
+                $cols = str_getcsv($line, ';');
+                if (count($cols) < count($header)) continue;
+
+                $row = [];
+                foreach ($header as $i => $key) {
+                    $row[$key] = $cols[$i] ?? null;
+                }
+
+                $hash = sha1(
+                    'ukrgasbank|' .
+                    ($row['DATA_D'] ?? '') . '|' .
+                    ($row['DK'] ?? '') . '|' .
+                    ($row['SUM_PD_NOM'] ?? '') . '|' .
+                    ($row['PURPOSE'] ?? '') . '|' .
+                    ($row['NAME_KOR'] ?? '')
+                );
+
+                if (BankTransactionRaw::where('hash', $hash)->exists()) {
+                    $skipped++;
+                    continue;
+                }
+
+                BankTransactionRaw::create([
+                    'bank_code'      => 'ukrgasbank',
+                    'operation_date' => $row['DATA_D'] ?? null,
+                    'dk'             => (string)($row['DK'] ?? null),
+                    'amount'         => (float)($row['SUM_PD_NOM'] ?? 0),
+                    'currency'       => 'UAH',
+                    'counterparty'   => $row['NAME_KOR'] ?? null,
+                    'purpose'        => $row['PURPOSE'] ?? null,
+                    'raw'            => $row,
+                    'hash'           => $hash,
+                ]);
+
+                $inserted++;
             }
 
-            BankTransactionRaw::create([
-                'bank_code'      => 'ukrgasbank',
-                'account_iban'   => $r['iban'] ?? null,
-                'external_id'    => $r['id'] ?? null,
-                'hash'           => $hash,
-                'operation_date' => $r['operDate'] ?? null,
-                'dk'             => $r['dk'] ?? null,
-                'amount'         => $r['amount'] ?? null,
-                'currency'       => $r['currency'] ?? null,
-                'counterparty'   => $r['counterparty'] ?? null,
-                'purpose'        => $r['purpose'] ?? null,
-                'raw'            => $r,
-            ]);
-
-            $inserted++;
-        }
-
-        return [
-            'total'    => count($rows),
-            'inserted' => $inserted,
-            'skipped'  => $skipped,
-        ];
-    })->middleware('auth');
-
-
-
-
-    Route::get('/debug/ukrgasbank/transactions', function () {
-
-        $token = config('services.ukrgasbank.token');
-
-        if (!$token) {
-            return '❌ Token not found';
-        }
-
-        $response = Http::withToken($token)
-            ->get('https://my.ukrgasbank.com/api/v1/ugb/external/transaction-history', [
-                'dateFrom' => now()->subDays(7)->format('Y-m-d'),
-                'dateTo'   => now()->format('Y-m-d'),
-            ]);
-
-        return [
-            'status' => $response->status(),
-            'body'   => $response->json(),
-        ];
-    })->middleware('auth');
-
-
-
-Route::get('/api/bank/transactions', function () {
-
-    $rows = BankTransactionRaw::query()
-        ->where('bank_code', 'ukrgasbank')
-
-        ->orderBy('operation_date', 'desc')
-        ->orderBy('id', 'desc')
-        ->limit(200)
-        ->get([
-            'id',
-            'operation_date',
-            'dk',
-            'amount',
-            'currency',
-            'counterparty',
-            'purpose',
-        ]);
-
-    return response()->json($rows);
-});
-
-
-
-
-Route::post('/api/bank/csv-import', function (Request $request) {
-
-    if (!$request->hasFile('file')) {
-        return response()->json(['error' => 'No file'], 400);
-    }
-
-    $file = $request->file('file');
-
-    $content = mb_convert_encoding(
-        file_get_contents($file->getRealPath()),
-        'UTF-8',
-        'Windows-1251'
-    );
-
-    $lines = preg_split("/\r\n|\n|\r/", trim($content));
-    $header = str_getcsv(array_shift($lines), ';');
-
-    $inserted = 0;
-    $skipped = 0;
-
-    foreach ($lines as $line) {
-        if (!trim($line)) continue;
-
-        $cols = str_getcsv($line, ';');
-        if (count($cols) < count($header)) continue;
-
-        $row = [];
-        foreach ($header as $i => $key) {
-            $row[$key] = $cols[$i] ?? null;
-        }
-
-        $hash = sha1(
-            'ukrgasbank|' .
-            ($row['DATA_D'] ?? '') . '|' .
-            ($row['DK'] ?? '') . '|' .
-            ($row['SUM_PD_NOM'] ?? '') . '|' .
-            ($row['PURPOSE'] ?? '') . '|' .
-            ($row['NAME_KOR'] ?? '')
-        );
-
-        if (BankTransactionRaw::where('hash', $hash)->exists()) {
-            $skipped++;
-            continue;
-        }
-
-        BankTransactionRaw::create([
-            'bank_code'      => 'ukrgasbank',
-            'operation_date' => $row['DATA_D'] ?? null,
-            'dk'             => (string)($row['DK'] ?? null),
-            'amount'         => (float)($row['SUM_PD_NOM'] ?? 0),
-            'currency'       => 'UAH',
-            'counterparty'   => $row['NAME_KOR'] ?? null,
-            'purpose'        => $row['PURPOSE'] ?? null,
-            'raw'            => $row,
-            'hash'           => $hash,
-        ]);
-
-        $inserted++;
-    }
-
-    return [
-        'inserted' => $inserted,
-        'skipped'  => $skipped,
-    ];
-})->middleware('auth');
-
-//////////////////////////////////////////////////////////////////////////////////////
-
-//////////////////////////////////////////////////////////////////////////////////////
-
-Route::get('/api/bank/accounts', function () {
-
-    $response = Http::withToken(config('services.ukrgasbank.token'))
-        ->get('https://my.ukrgasbank.com/api/v3/accounts');
-
-    if (!$response->ok()) {
-        return response()->json([], 500);
-    }
-
-    $rows = $response->json()['rows'] ?? [];
-
-$accounts = collect($rows)
-    ->map(function ($a) {
-
-        $balance =
-            $a['balance']['closingBalance']
-            ?? $a['balance']['balance']
-            ?? 0;
-
-        return [
-            'id'       => $a['id'],
-            'iban'     => $a['iban'],
-            'name'     => 'ТОВ "СОЛАР ІНЖЕНІРІНГ"',
-            'currency' => $a['currency'],
-            'balance'  => (float)$balance,
-            'bankCode' => 'ukrgasbank_engineering',
-        ];
-    })
-    // ✅ ЛИШЕ НЕНУЛЬОВІ
-    ->filter(fn ($a) => abs($a['balance']) > 0.01)
-    // ❌ ХОВАЄМО ОВЕРНАЙТ / ТЕХНІЧНІ (МАЛІ СУМИ)
-    ->filter(fn ($a) => abs($a['balance']) > 100)
-    ->values();
-
-
-    return response()->json($accounts);
-});
-
-
-
-
-
-Route::get('/api/bank/accounts-sggroup', function () {
-
-    $response = Http::withToken(env('UKRGASBANK_SGGROUP_TOKEN'))
-        ->get('https://my.ukrgasbank.com/api/v3/accounts');
-
-    if (!$response->ok()) {
-        return response()->json([], 500);
-    }
-
-    $rows = $response->json()['rows'] ?? [];
-
-    $accounts = collect($rows)
-        ->map(function ($a) {
-
-            $balance =
-                $a['balance']['closingBalance']
-                ?? $a['balance']['balance']
-                ?? 0;
-
             return [
-                'id'       => 'sggroup_' . $a['id'], // ⬅️ унікально
-                'iban'     => $a['iban'],
-                'name'     => 'ТОВ "СГ ГРУП"',
-                'currency' => $a['currency'],
-                'balance'  => (float)$balance,
-                'bankCode' => 'ukrgasbank_sggroup',
+                'inserted' => $inserted,
+                'skipped'  => $skipped,
             ];
-        })
-        ->filter(fn ($a) => abs($a['balance']) > 100)
-        ->values();
+        });
 
-    return response()->json($accounts);
-});
+        /*
+        |--------------------------
+        | Bank accounts
+        |--------------------------
+        */
+        Route::get('/bank/accounts', function () {
 
+            $response = Http::withToken(config('services.ukrgasbank.token'))
+                ->get('https://my.ukrgasbank.com/api/v3/accounts');
 
-Route::get('/api/bank/accounts-solarglass', function () {
+            if (!$response->ok()) {
+                return response()->json([], 500);
+            }
 
-    $response = Http::withToken(config('services.ukrgasbank_solarglass.token'))
-        ->get('https://my.ukrgasbank.com/api/v3/accounts');
+            $rows = $response->json()['rows'] ?? [];
 
-    if (!$response->ok()) {
-        return response()->json([], 500);
-    }
+            $accounts = collect($rows)
+                ->map(function ($a) {
 
-    $rows = $response->json()['rows'] ?? [];
+                    $balance = $a['balance']['closingBalance']
+                        ?? $a['balance']['balance']
+                        ?? 0;
 
-    $accounts = collect($rows)
-        ->filter(fn($a) => ($a['iban'] ?? '') === 'UA413204780000026004924944262')
-        ->map(function ($a) {
+                    return [
+                        'id'       => $a['id'],
+                        'iban'     => $a['iban'],
+                        'name'     => 'ТОВ "СОЛАР ІНЖЕНІРІНГ"',
+                        'currency' => $a['currency'],
+                        'balance'  => (float)$balance,
+                        'bankCode' => 'ukrgasbank_engineering',
+                    ];
+                })
+                ->filter(fn ($a) => abs($a['balance']) > 0.01)
+                ->filter(fn ($a) => abs($a['balance']) > 100)
+                ->values();
 
-            $balance =
-                $a['balance']['closingBalance']
-                ?? $a['balance']['balance']
-                ?? 0;
+            return response()->json($accounts);
+        });
 
-            return [
-                'id'       => 'solarglass_' . $a['id'],
-                'iban'     => $a['iban'],
-                'name'     => 'ТОВ "СОЛАР ГЛАСС"',
-                'currency' => $a['currency'],
-                'balance'  => (float)$balance,
-                'bankCode' => 'ukrgasbank_solarglass',
-            ];
-        })
-        ->values();
+        Route::get('/bank/accounts-sggroup', function () {
 
-    return response()->json($accounts);
-});
+            $response = Http::withToken(env('UKRGASBANK_SGGROUP_TOKEN'))
+                ->get('https://my.ukrgasbank.com/api/v3/accounts');
 
+            if (!$response->ok()) {
+                return response()->json([], 500);
+            }
 
+            $rows = $response->json()['rows'] ?? [];
 
-//////////////////////////////////////////////////////////////////////////////////////
-//.               Баланс Приват
-//////////////////////////////////////////////////////////////////////////////////////
+            $accounts = collect($rows)
+                ->map(function ($a) {
 
-Route::get('/api/bank/accounts-privat', function () {
+                    $balance = $a['balance']['closingBalance']
+                        ?? $a['balance']['balance']
+                        ?? 0;
 
-    $token = config('services.privatbank.token');
-    if (!$token) return response()->json([]);
+                    return [
+                        'id'       => 'sggroup_' . $a['id'],
+                        'iban'     => $a['iban'],
+                        'name'     => 'ТОВ "СГ ГРУП"',
+                        'currency' => $a['currency'],
+                        'balance'  => (float)$balance,
+                        'bankCode' => 'ukrgasbank_sggroup',
+                    ];
+                })
+                ->filter(fn ($a) => abs($a['balance']) > 100)
+                ->values();
 
-    $response = Http::withToken($token)
-        ->get('https://api.privatbank.ua/p24api/rest_fiz', [
-            'json' => '',
-            'action' => 'balance'
-        ]);
+            return response()->json($accounts);
+        });
 
-    if (!$response->ok()) {
-        return response()->json([]);
-    }
+        Route::get('/bank/accounts-solarglass', function () {
 
-    $cards = $response->json()['accounts'] ?? [];
+            $response = Http::withToken(config('services.ukrgasbank_solarglass.token'))
+                ->get('https://my.ukrgasbank.com/api/v3/accounts');
 
-    $accounts = collect($cards)
-        ->map(function ($c) {
+            if (!$response->ok()) {
+                return response()->json([], 500);
+            }
 
-            return [
-                'id'       => 'privat_' . $c['acc'],
-                'iban'     => null,
-                'name'     => 'ТОВ "СОЛАР ГЛАСС"', // ← твоя компанія
-                'currency' => $c['currency'],
-                'balance'  => (float) $c['balance'],
-                'bankCode' => 'privatbank',
-            ];
-        })
-        ->filter(fn ($a) => abs($a['balance']) > 1)
-        ->values();
+            $rows = $response->json()['rows'] ?? [];
 
-    return response()->json($accounts);
-});
+            $accounts = collect($rows)
+                ->filter(fn($a) => ($a['iban'] ?? '') === 'UA413204780000026004924944262')
+                ->map(function ($a) {
 
+                    $balance = $a['balance']['closingBalance']
+                        ?? $a['balance']['balance']
+                        ?? 0;
 
-//////////////////////////////////////////////////////////////////////////////////////
-//.               Баланс монобанк
-//////////////////////////////////////////////////////////////////////////////////////
+                    return [
+                        'id'       => 'solarglass_' . $a['id'],
+                        'iban'     => $a['iban'],
+                        'name'     => 'ТОВ "СОЛАР ГЛАСС"',
+                        'currency' => $a['currency'],
+                        'balance'  => (float)$balance,
+                        'bankCode' => 'ukrgasbank_solarglass',
+                    ];
+                })
+                ->values();
 
+            return response()->json($accounts);
+        });
 
-Route::get('/api/bank/accounts-monobank', function () {
+        // Privat accounts
+        Route::get('/bank/accounts-privat', function () {
 
-    $token = env('MONOBANK_TOKEN');
+            $token = config('services.privatbank.token');
+            if (!$token) return response()->json([]);
 
-    if (!$token) {
-        return response()->json([]);
-    }
+            $response = Http::withToken($token)
+                ->get('https://api.privatbank.ua/p24api/rest_fiz', [
+                    'json' => '',
+                    'action' => 'balance'
+                ]);
 
-    $res = Http::withHeaders([
-        'X-Token' => $token,
-    ])->get('https://api.monobank.ua/personal/client-info');
+            if (!$response->ok()) {
+                return response()->json([]);
+            }
 
-    if (!$res->ok()) {
-        return response()->json([]);
-    }
+            $cards = $response->json()['accounts'] ?? [];
 
-        $mainIban = 'UA253220010000026005310038535'; // ← ТУТ ТВОЙ ГОЛОВНИЙ
+            $accounts = collect($cards)
+                ->map(function ($c) {
+                    return [
+                        'id'       => 'privat_' . $c['acc'],
+                        'iban'     => null,
+                        'name'     => 'ТОВ "СОЛАР ГЛАСС"',
+                        'currency' => $c['currency'],
+                        'balance'  => (float)$c['balance'],
+                        'bankCode' => 'privatbank',
+                    ];
+                })
+                ->filter(fn ($a) => abs($a['balance']) > 1)
+                ->values();
 
-        $accounts = collect($res->json()['accounts'] ?? [])
-            ->filter(fn ($a) => ($a['iban'] ?? null) === $mainIban)
-            ->map(function ($a) {
+            return response()->json($accounts);
+        });
 
+        // Monobank accounts
+        Route::get('/bank/accounts-monobank', function () {
+
+            $token = env('MONOBANK_TOKEN');
+            if (!$token) return response()->json([]);
+
+            $res = Http::withHeaders([
+                'X-Token' => $token,
+            ])->get('https://api.monobank.ua/personal/client-info');
+
+            if (!$res->ok()) return response()->json([]);
+
+            $mainIban = 'UA253220010000026005310038535';
+
+            $accounts = collect($res->json()['accounts'] ?? [])
+                ->filter(fn ($a) => ($a['iban'] ?? null) === $mainIban)
+                ->map(function ($a) {
+                    return [
+                        'id'       => 'mono_' . $a['id'],
+                        'iban'     => $a['iban'],
+                        'name'     => 'ФОП КОЛІСНИК',
+                        'currency' => 'UAH',
+                        'balance'  => $a['balance'] / 100,
+                        'bankCode' => 'monobank',
+                    ];
+                })
+                ->values();
+
+            return response()->json($accounts);
+        });
+
+        /*
+        |--------------------------
+        | Transactions
+        |--------------------------
+        */
+        Route::get('/bank/transactions', function () {
+
+            $rows = BankTransactionRaw::query()
+                ->where('bank_code', 'ukrgasbank')
+                ->orderBy('operation_date', 'desc')
+                ->orderBy('id', 'desc')
+                ->limit(200)
+                ->get([
+                    'id',
+                    'operation_date',
+                    'dk',
+                    'amount',
+                    'currency',
+                    'counterparty',
+                    'purpose',
+                ]);
+
+            return response()->json($rows);
+        });
+
+        Route::get('/bank/transactions-sggroup', function (Request $request) {
+
+            $iban = $request->query('iban');
+            if (!$iban) return response()->json([], 400);
+
+            $response = Http::withToken(env('UKRGASBANK_SGGROUP_TOKEN'))
+                ->get('https://my.ukrgasbank.com/api/v1/ugb/external/transaction-history');
+
+            if (!$response->ok()) return response()->json([], 500);
+
+            $rows = $response->json()['rows'] ?? [];
+
+            $tx = collect($rows)
+                ->filter(fn ($r) =>
+                    ($r['DB_IBAN'] ?? null) === $iban ||
+                    ($r['CR_IBAN'] ?? null) === $iban
+                )
+                ->map(function ($r) {
+                    $isIncome = ($r['DK'] ?? null) == 1;
+
+                    return [
+                        'date'    => $r['DATA_D'] ?? $r['DATA_VYP'] ?? null,
+                        'amount'  => (float)($r['SUM_PD_NOM'] ?? 0) * ($isIncome ? 1 : -1),
+                        'comment' => trim($r['PURPOSE'] ?? ''),
+                        'counterparty' => $isIncome
+                            ? ($r['NAME_F'] ?? $r['NAME_KOR'] ?? '')
+                            : ($r['NAME_KOR'] ?? $r['NAME_F'] ?? ''),
+                    ];
+                })
+                ->sortByDesc('date')
+                ->values();
+
+            return response()->json($tx);
+        });
+
+        Route::get('/bank/transactions-engineering', function (Request $request) {
+
+            $iban = $request->query('iban');
+            if (!$iban) return response()->json([], 400);
+
+            $response = Http::withToken(config('services.ukrgasbank.token'))
+                ->get('https://my.ukrgasbank.com/api/v1/ugb/external/transaction-history');
+
+            if (!$response->ok()) return response()->json([], 500);
+
+            $rows = $response->json()['rows'] ?? [];
+
+            $tx = collect($rows)
+                ->filter(fn ($r) =>
+                    ($r['DB_IBAN'] ?? null) === $iban ||
+                    ($r['CR_IBAN'] ?? null) === $iban
+                )
+                ->map(function ($r) {
+                    $isIncome = ($r['DK'] ?? null) == 1;
+
+                    return [
+                        'date'    => $r['DATA_D'] ?? $r['DATA_VYP'] ?? null,
+                        'amount'  => (float)($r['SUM_PD_NOM'] ?? 0) * ($isIncome ? 1 : -1),
+                        'comment' => trim($r['PURPOSE'] ?? ''),
+                        'counterparty' => $isIncome
+                            ? ($r['NAME_F'] ?? $r['NAME_KOR'] ?? '')
+                            : ($r['NAME_KOR'] ?? $r['NAME_F'] ?? ''),
+                    ];
+                })
+                ->sortByDesc('date')
+                ->values();
+
+            return response()->json($tx);
+        });
+
+        Route::get('/bank/transactions-solarglass', function (Request $request) {
+
+            $iban = $request->query('iban');
+            if (!$iban) return response()->json([], 400);
+
+            $response = Http::withToken(config('services.ukrgasbank_solarglass.token'))
+                ->get('https://my.ukrgasbank.com/api/v1/ugb/external/transaction-history');
+
+            if (!$response->ok()) return response()->json([], 500);
+
+            $rows = $response->json()['rows'] ?? [];
+
+            $tx = collect($rows)
+                ->filter(fn ($r) =>
+                    ($r['DB_IBAN'] ?? null) === $iban ||
+                    ($r['CR_IBAN'] ?? null) === $iban
+                )
+                ->map(function ($r) {
+                    $isIncome = ($r['DK'] ?? null) == 1;
+
+                    return [
+                        'date'    => $r['DATA_D'] ?? $r['DATA_VYP'] ?? null,
+                        'amount'  => (float)($r['SUM_PD_NOM'] ?? 0) * ($isIncome ? 1 : -1),
+                        'comment' => trim($r['PURPOSE'] ?? ''),
+                        'counterparty' => $isIncome
+                            ? ($r['NAME_F'] ?? $r['NAME_KOR'] ?? '')
+                            : ($r['NAME_KOR'] ?? $r['NAME_F'] ?? ''),
+                    ];
+                })
+                ->sortByDesc('date')
+                ->values();
+
+            return response()->json($tx);
+        });
+
+        Route::get('/bank/transactions-privat', function (Request $request) {
+
+            $id = $request->query('id');
+            if (!$id) return response()->json([]);
+
+            $token = config('services.privatbank.token');
+
+            $response = Http::withToken($token)
+                ->get('https://api.privatbank.ua/p24api/rest_fiz', [
+                    'json' => '',
+                    'action' => 'transactions',
+                    'card' => $id,
+                    'date_from' => now()->subDays(30)->format('d.m.Y'),
+                    'date_to' => now()->format('d.m.Y'),
+                ]);
+
+            if (!$response->ok()) return response()->json([]);
+
+            $rows = $response->json()['transactions'] ?? [];
+
+            $tx = collect($rows)->map(function ($r) {
                 return [
-                    'id'       => 'mono_' . $a['id'],
-                    'iban'     => $a['iban'],
-                    'name'     => 'ФОП КОЛІСНИК',
-                    'currency' => 'UAH',
-                    'balance'  => $a['balance'] / 100,
-                    'bankCode' => 'monobank',
+                    'date'    => \Carbon\Carbon::createFromFormat('d.m.Y H:i:s', $r['date'])->format('Y-m-d'),
+                    'amount'  => (float)$r['amount'],
+                    'comment' => $r['description'] ?? '',
                 ];
-            })
-            ->values();
+            })->sortByDesc('date')->values();
 
-    return response()->json($accounts);
-});
+            return response()->json($tx);
+        });
 
+        Route::get('/bank/transactions-monobank', function (Request $request) {
 
-//////////////////////////////////////////////////////////////////////////////////////
-//.                транзакції укргазбанк ГРУП
-//////////////////////////////////////////////////////////////////////////////////////
+            $accountId = $request->query('id');
+            if (!$accountId) return response()->json([]);
 
-Route::get('/api/bank/transactions-sggroup', function (Request $request) {
+            $token = env('MONOBANK_TOKEN');
 
-    $iban = $request->query('iban');
+            $from = now()->subDays(30)->timestamp;
+            $to   = now()->timestamp;
 
-    if (!$iban) {
-        return response()->json([], 400);
-    }
+            $res = Http::withHeaders([
+                'X-Token' => $token,
+            ])->get("https://api.monobank.ua/personal/statement/{$accountId}/{$from}/{$to}");
 
-    $response = Http::withToken(env('UKRGASBANK_SGGROUP_TOKEN'))
-        ->get('https://my.ukrgasbank.com/api/v1/ugb/external/transaction-history', [
-            // банк сам відфільтрує по рахунку
-        ]);
+            if (!$res->ok()) return response()->json([]);
 
-    if (!$response->ok()) {
-        return response()->json([], 500);
-    }
+            $rows = collect($res->json())
+                ->map(function ($r) {
+                    return [
+                        'date'    => date('Y-m-d', $r['time']),
+                        'amount'  => $r['amount'] / 100,
+                        'comment' => $r['description'] ?? '',
+                        'counterparty' => $r['mcc'] ?? '',
+                    ];
+                })
+                ->sortByDesc('date')
+                ->values();
 
-    $rows = $response->json()['rows'] ?? [];
+            return response()->json($rows);
+        });
 
-    $tx = collect($rows)
-        ->filter(fn ($r) =>
-            ($r['DB_IBAN'] ?? null) === $iban ||
-            ($r['CR_IBAN'] ?? null) === $iban
-        )
-        ->map(function ($r) {
+        // balance calc from raw
+        Route::get('/bank/balance', function () {
+            $rows = BankTransactionRaw::where('bank_code', 'ukrgasbank')->get();
 
-            $isIncome = ($r['DK'] ?? null) == 1;
-
-            return [
-                'date'    => $r['DATA_D'] ?? $r['DATA_VYP'] ?? null,
-                'amount'  => (float) ($r['SUM_PD_NOM'] ?? 0) * ($isIncome ? 1 : -1),
-                'comment' => trim($r['PURPOSE'] ?? ''),
-                'counterparty' => $isIncome
-                    ? ($r['NAME_F'] ?? $r['NAME_KOR'] ?? '')
-                    : ($r['NAME_KOR'] ?? $r['NAME_F'] ?? ''),
-            ];
-        })
-        ->sortByDesc('date')
-        ->values();
-
-    return response()->json($tx);
-});
-
-//////////////////////////////////////////////////////////////////////////////////////
-//.                транзакції укргазбанк ІНЖЕНІРИНГ
-//////////////////////////////////////////////////////////////////////////////////////
-
-Route::get('/api/bank/transactions-engineering', function (Request $request) {
-
-    $iban = $request->query('iban');
-
-    if (!$iban) {
-        return response()->json([], 400);
-    }
-
-    $response = Http::withToken(config('services.ukrgasbank.token'))
-        ->get('https://my.ukrgasbank.com/api/v1/ugb/external/transaction-history');
-
-    if (!$response->ok()) {
-        return response()->json([], 500);
-    }
-
-    $rows = $response->json()['rows'] ?? [];
-
-    $tx = collect($rows)
-        ->filter(fn ($r) =>
-            ($r['DB_IBAN'] ?? null) === $iban ||
-            ($r['CR_IBAN'] ?? null) === $iban
-        )
-        ->map(function ($r) {
-
-            $isIncome = ($r['DK'] ?? null) == 1;
+            $balance = 0;
+            foreach ($rows as $r) {
+                if ((string)$r->dk === '1') {
+                    $balance += (float)$r->amount;
+                } else {
+                    $balance -= (float)$r->amount;
+                }
+            }
 
             return [
-                'date'    => $r['DATA_D'] ?? $r['DATA_VYP'] ?? null,
-                'amount'  => (float) ($r['SUM_PD_NOM'] ?? 0) * ($isIncome ? 1 : -1),
-                'comment' => trim($r['PURPOSE'] ?? ''),
-                'counterparty' => $isIncome
-                    ? ($r['NAME_F'] ?? $r['NAME_KOR'] ?? '')
-                    : ($r['NAME_KOR'] ?? $r['NAME_F'] ?? ''),
+                'currency' => 'UAH',
+                'balance'  => round($balance, 2),
+                'count'    => $rows->count(),
             ];
-        })
-        ->sortByDesc('date')
-        ->values();
+        });
 
-    return response()->json($tx);
-});
+    });
 
 
+    /*
+    |--------------------------------------------------------------------------
+    | Debug routes (краще захистити додатково, але лишаю як є)
+    |--------------------------------------------------------------------------
+    */
+    Route::prefix('debug')->group(function () {
 
-//////////////////////////////////////////////////////////////////////////////////////
-//.                транзакції УКРГАЗ СОЛАР ГЛАСС
-//////////////////////////////////////////////////////////////////////////////////////
+        Route::get('/ukrgasbank', function () {
 
+            $token = config('services.ukrgasbank.token');
+            if (!$token) return '❌ Token not found';
 
-Route::get('/api/bank/transactions-solarglass', function (Request $request) {
-
-    $iban = $request->query('iban');
-    if (!$iban) return response()->json([], 400);
-
-    $response = Http::withToken(config('services.ukrgasbank_solarglass.token'))
-        ->get('https://my.ukrgasbank.com/api/v1/ugb/external/transaction-history');
-
-    if (!$response->ok()) return response()->json([], 500);
-
-    $rows = $response->json()['rows'] ?? [];
-
-    $tx = collect($rows)
-        ->filter(fn ($r) =>
-            ($r['DB_IBAN'] ?? null) === $iban ||
-            ($r['CR_IBAN'] ?? null) === $iban
-        )
-        ->map(function ($r) {
-
-            $isIncome = ($r['DK'] ?? null) == 1;
+            $response = Http::withToken($token)
+                ->get('https://my.ukrgasbank.com/api/v3/accounts');
 
             return [
-                'date'    => $r['DATA_D'] ?? $r['DATA_VYP'] ?? null,
-                'amount'  => (float) ($r['SUM_PD_NOM'] ?? 0) * ($isIncome ? 1 : -1),
-                'comment' => trim($r['PURPOSE'] ?? ''),
-                'counterparty' => $isIncome
-                    ? ($r['NAME_F'] ?? $r['NAME_KOR'] ?? '')
-                    : ($r['NAME_KOR'] ?? $r['NAME_F'] ?? ''),
+                'status' => $response->status(),
+                'body'   => $response->json(),
             ];
-        })
-        ->sortByDesc('date')
-        ->values();
+        });
 
-    return response()->json($tx);
+        Route::get('/ukrgasbank/transactions', function () {
+
+            $token = config('services.ukrgasbank.token');
+            if (!$token) return '❌ Token not found';
+
+            $response = Http::withToken($token)
+                ->get('https://my.ukrgasbank.com/api/v1/ugb/external/transaction-history', [
+                    'dateFrom' => now()->subDays(7)->format('Y-m-d'),
+                    'dateTo'   => now()->format('Y-m-d'),
+                ]);
+
+            return [
+                'status' => $response->status(),
+                'body'   => $response->json(),
+            ];
+        });
+
+        Route::get('/ukrgasbank/import', function () {
+
+            $token = config('services.ukrgasbank.token');
+            if (!$token) return '❌ Token not found';
+
+            $response = Http::withToken($token)
+                ->get('https://my.ukrgasbank.com/api/v1/ugb/external/transaction-history', [
+                    'dateFrom' => now()->subDays(7)->format('Y-m-d'),
+                    'dateTo'   => now()->format('Y-m-d'),
+                ]);
+
+            if (!$response->ok()) return ['status' => $response->status()];
+
+            $rows = $response->json()['rows'] ?? [];
+            $inserted = 0;
+            $skipped  = 0;
+
+            foreach ($rows as $r) {
+
+                $hash = sha1(
+                    'ukrgasbank|' .
+                    ($r['operDate'] ?? '') . '|' .
+                    ($r['dk'] ?? '') . '|' .
+                    ($r['amount'] ?? '') . '|' .
+                    ($r['purpose'] ?? '') . '|' .
+                    ($r['counterparty'] ?? '')
+                );
+
+                if (BankTransactionRaw::where('hash', $hash)->exists()) {
+                    $skipped++;
+                    continue;
+                }
+
+                BankTransactionRaw::create([
+                    'bank_code'      => 'ukrgasbank',
+                    'account_iban'   => $r['iban'] ?? null,
+                    'external_id'    => $r['id'] ?? null,
+                    'hash'           => $hash,
+                    'operation_date' => $r['operDate'] ?? null,
+                    'dk'             => $r['dk'] ?? null,
+                    'amount'         => $r['amount'] ?? null,
+                    'currency'       => $r['currency'] ?? null,
+                    'counterparty'   => $r['counterparty'] ?? null,
+                    'purpose'        => $r['purpose'] ?? null,
+                    'raw'            => $r,
+                ]);
+
+                $inserted++;
+            }
+
+            return [
+                'total'    => count($rows),
+                'inserted' => $inserted,
+                'skipped'  => $skipped,
+            ];
+        });
+
+    });
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Reclamations (як у тебе, але вже під глобальним middleware)
+    |--------------------------------------------------------------------------
+    */
+    Route::prefix('reclamations')
+        ->name('reclamations.')
+        ->middleware(['reclamations.access'])
+        ->group(function () {
+
+            Route::get('/', [ReclamationController::class, 'index'])->name('index');
+            Route::get('/new', [ReclamationController::class, 'new'])->name('new');
+            Route::get('/create', [ReclamationController::class, 'create'])->name('create');
+            Route::post('/', [ReclamationController::class, 'store'])->name('store');
+            Route::get('/{reclamation}', [ReclamationController::class, 'show'])->name('show');
+            Route::post('/{reclamation}/steps/{stepKey}', [ReclamationController::class, 'saveStep'])->name('steps.save');
+            Route::post('/{reclamation}/upload', [ReclamationController::class, 'upload'])->name('upload');
+        });
+
+
+    // history поза prefix у тебе було, можна лишити так (або всередину group)
+    Route::get('/reclamations/{reclamation}/history', [ReclamationController::class, 'history'])
+        ->name('reclamations.history')
+        ->middleware(['reclamations.access']);
+
+
 });
 
-
-//////////////////////////////////////////////////////////////////////////////////////
-//.                транзакції ПРИВАТБАНК СОЛАР ГЛАСС
-//////////////////////////////////////////////////////////////////////////////////////
-
-Route::get('/api/bank/transactions-privat', function (Request $request) {
-
-    $id = $request->query('id');
-    if (!$id) return response()->json([]);
-
-    $token = config('services.privatbank.token');
-
-    $response = Http::withToken($token)
-        ->get('https://api.privatbank.ua/p24api/rest_fiz', [
-            'json' => '',
-            'action' => 'transactions',
-            'card' => $id,
-            'date_from' => now()->subDays(30)->format('d.m.Y'),
-            'date_to' => now()->format('d.m.Y'),
-        ]);
-
-    if (!$response->ok()) return response()->json([]);
-
-    $rows = $response->json()['transactions'] ?? [];
-
-    $tx = collect($rows)->map(function ($r) {
-        return [
-            'date'    => \Carbon\Carbon::createFromFormat('d.m.Y H:i:s', $r['date'])->format('Y-m-d'),
-            'amount'  => (float)$r['amount'],
-            'comment' => $r['description'] ?? '',
-        ];
-    })->sortByDesc('date')->values();
-
-    return response()->json($tx);
-});
-
-
-
-//////////////////////////////////////////////////////////////////////////////////////
-//.                транзакції Монобанк ФОП Колісник
-//////////////////////////////////////////////////////////////////////////////////////
-
-Route::get('/api/bank/transactions-monobank', function (Request $request) {
-
-$accountId = $request->query('id');
-if (!$accountId) return response()->json([]);
-
-$token = env('MONOBANK_TOKEN');
-
-$from = now()->subDays(30)->timestamp;
-$to   = now()->timestamp;
-
-$res = Http::withHeaders([
-    'X-Token' => $token,
-])->get("https://api.monobank.ua/personal/statement/{$accountId}/{$from}/{$to}");
-
-if (!$res->ok()) return response()->json([]);
-
-$rows = collect($res->json())
-    ->map(function ($r) {
-        return [
-            'date'    => date('Y-m-d', $r['time']),
-            'amount'  => $r['amount'] / 100,
-            'comment' => $r['description'] ?? '',
-            'counterparty' => $r['mcc'] ?? '',
-        ];
-    })
-    ->sortByDesc('date')
-    ->values();
-
-return response()->json($rows);
-
-});
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-Route::middleware('auth')->prefix('reclamations')->name('reclamations.')->group(function () {
-    Route::get('/', [ReclamationController::class, 'index'])->name('index');
-
-    // new ОБОВʼЯЗКОВО вище ніж /{reclamation}
-    Route::get('/new', [ReclamationController::class, 'new'])->name('new');
-
-    Route::get('/create', [ReclamationController::class, 'create'])->name('create');
-    Route::post('/', [ReclamationController::class, 'store'])->name('store');
-
-    Route::get('/{reclamation}', [ReclamationController::class, 'show'])->name('show');
-
-    Route::post('/{reclamation}/steps/{stepKey}', [ReclamationController::class, 'saveStep'])->name('steps.save');
-    Route::post('/{reclamation}/upload', [ReclamationController::class, 'upload'])->name('upload');
-});
-
-
-Route::get('/reclamations/{reclamation}/history', [\App\Http\Controllers\ReclamationController::class, 'history'])
-    ->name('reclamations.history');
-
-
-require __DIR__.'/auth.php';
-
-
+require __DIR__ . '/auth.php';
