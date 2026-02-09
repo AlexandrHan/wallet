@@ -185,114 +185,154 @@
     </div>
   @else
 
-    @foreach($items as $item)
+@foreach($items as $item)
 
-      @php
-        $labels = [
-          'reported' => 'Дані клієнта',
-          'dismantled' => 'Демонтували',
-          'where_left' => 'Де залишили',
-          'shipped_to_service' => 'Відправили НП на ремонт',
-          'service_received' => 'Сервіс отримав',
-          'repaired_shipped_back' => 'Відремонтували та відправили',
-          'installed' => 'Встановили',
-          'loaner_return' => 'Повернення підмінного',
-          'closed' => 'Завершили',
-        ];
+@php
 
-        $order = array_keys($labels);
+$labels = [
+    'reported' => 'Дані клієнта',
+    'dismantled' => 'Демонтували',
+    'where_left' => 'Де залишили',
+    'shipped_to_service' => 'Відправили НП на ремонт',
+    'service_received' => 'Сервіс отримав',
+    'repaired_shipped_back' => 'Відремонтували та відправили',
+    'installed' => 'Встановили',
+    'loaner_return' => 'Повернення підмінного',
+    'closed' => 'Завершили',
+];
 
-        $stepsByKey = $item->steps->keyBy('step_key');
+$order = array_keys($labels);
+$stepsByKey = $item->steps->keyBy('step_key');
 
-        $isDone = function($key) use ($stepsByKey) {
-          $s = $stepsByKey->get($key);
-          if (!$s) return false;
+$isDone = function($key) use ($stepsByKey) {
+    $s = $stepsByKey->get($key);
+    if (!$s) return false;
 
-          return !empty($s->done_date)
-            || (is_string($s->note) && trim($s->note) !== '')
-            || (is_string($s->ttn)  && trim($s->ttn)  !== '')
-            || (is_array($s->files) && count($s->files) > 0);
-        };
+    return !empty($s->done_date)
+        || (is_string($s->note) && trim($s->note) !== '')
+        || (is_string($s->ttn) && trim($s->ttn) !== '');
+};
 
-        // 1) Активний етап: останній виконаний по порядку
-        $activeKey = null;
-        foreach ($order as $k) {
-          if ($isDone($k)) $activeKey = $k;
-        }
-        if (!$activeKey) $activeKey = 'reported';
+//
+// ===== АКТИВНИЙ ЕТАП =====
+//
+$activeKey = null;
+foreach ($order as $k) {
+    if ($isDone($k)) $activeKey = $k;
+}
+if (!$activeKey) $activeKey = 'reported';
 
-        $activeLabel = $labels[$activeKey] ?? $activeKey;
+$activeLabel = $labels[$activeKey] ?? $activeKey;
 
-        // 2) Дата для картки
-        $activeStep = $stepsByKey->get($activeKey);
-        $dateText = null;
+//
+// ===== ДАТА =====
+//
+$activeStep = $stepsByKey->get($activeKey);
 
-        if ($activeStep && !empty($activeStep->done_date)) {
-          $dateText = \Illuminate\Support\Carbon::parse($activeStep->done_date)->format('d.m.Y');
-        } elseif ($item->reported_at) {
-          $dateText = $item->reported_at->format('d.m.Y');
-        } else {
-          $dateText = '—';
-        }
+if ($activeStep && $activeStep->done_date) {
+    $dateText = \Carbon\Carbon::parse($activeStep->done_date)->format('d.m.Y');
+} elseif ($item->reported_at) {
+    $dateText = $item->reported_at->format('d.m.Y');
+} else {
+    $dateText = '—';
+}
 
-        // 3) Колір рамки
-        $doneClosed = ($item->status === 'done') || $isDone('closed');
-        $doneRepaired = $isDone('repaired_shipped_back');
+//
+// ===== СТАТУС РАМКИ =====
+//
+$shipped  = $stepsByKey->get('shipped_to_service');
+$repaired = $stepsByKey->get('repaired_shipped_back');
+$closed   = $stepsByKey->get('closed');
 
-        if ($doneClosed) {
-          $borderClass = 'card-done';
-        } elseif ($doneRepaired) {
-          $borderClass = 'card-shipped';
-        } else {
-          $borderClass = 'card-pre';
-        }
+$isShipped  = $shipped && ($shipped->done_date || $shipped->ttn);
+$isRepaired = $repaired && ($repaired->done_date || $repaired->ttn);
+$isClosed   = ($closed && $closed->done_date) || $item->status === 'done';
 
-        $filesCount = $item->steps->sum(fn($s) => is_array($s->files) ? count($s->files) : 0);
-        $notesCount = $item->steps->filter(fn($s) => is_string($s->note) && trim($s->note) !== '')->count();
-      @endphp
+$borderClass = 'card-pre';
 
-      <a href="{{ route('reclamations.show', $item->id) }}"
-         class="card reclam-card reclam-link {{ $borderClass }}">
+if ($isClosed) {
+    $borderClass = 'card-done';
+}
+elseif ($isRepaired) {
+    $borderClass = 'card-repaired';
+}
+elseif ($isShipped) {
+    $borderClass = 'card-service';
+}
 
-        <div class="reclam-top">
-          <div class="reclam-title">
+//
+// ===== ЛОГОТИП (ПІСЛЯ borderClass) =====
+//
+$logo = '/img/solarglass.png';
+
+if ($borderClass === 'card-service') {
+    $logo = '/img/sunfix.png';
+}
+
+//
+// ===== ЛІЧИЛЬНИКИ =====
+//
+$filesCount = $item->steps->sum(
+    fn($s) => is_array($s->files) ? count($s->files) : 0
+);
+
+$notesCount = $item->steps
+    ->filter(fn($s) => is_string($s->note) && trim($s->note) !== '')
+    ->count();
+
+@endphp
+
+
+<a href="{{ route('reclamations.show', $item->id) }}"
+   class="card reclam-card reclam-link {{ $borderClass }}">
+
+    <div class="reclam-top">
+        <div class="reclam-title">
             <div class="reclam-sub">
-              <b>{{ $item->last_name ?: '—' }}</b>
+                <b>{{ $item->last_name ?: '—' }}</b>
             </div>
-          </div>
-
-          <div class="reclam-status status-open">{{ $activeLabel }}</div>
         </div>
 
-        <div class="reclam-body">
+        <div class="reclam-status status-open">
+            {{ $activeLabel }}
+        </div>
+    </div>
 
-          <div class="reclam-row">
+    <div class="reclam-body">
+
+        <div class="reclam-row">
             <div class="muted">Нас. пункт</div>
-            <div class="right"><b>{{ $item->city ?: '—' }}</b></div>
-          </div>
+            <div class="right">
+                <b>{{ $item->city ?: '—' }}</b>
+            </div>
+        </div>
 
-          <div class="reclam-row">
+        <div class="reclam-row">
             <div class="muted">Дата</div>
             <div class="right">{{ $dateText }}</div>
-          </div>
-
-          @if($item->problem)
-            <div class="reclam-row">
-              <div class="muted">Проблема</div>
-              <div class="right">{{ $item->problem }}</div>
-            </div>
-          @endif
         </div>
 
-        <div class="reclam-footer">
-          <div class="reclam-pill">📎 {{ $filesCount }} файли</div>
-          <div class="reclam-pill">💬 {{ $notesCount }} нотатки</div>
-          <div class="reclam-arrow">→</div>
+        @if($item->problem)
+        <div class="reclam-row">
+            <div class="muted">Проблема</div>
+            <div class="right">{{ $item->problem }}</div>
+        </div>
+        @endif
+
+    </div>
+
+    <div class="reclam-footer">
+        <div class="reclam-pill">📎 {{ $filesCount }} файли</div>
+        <div class="reclam-pill">💬 {{ $notesCount }} нотатки</div>
+        <div class="reclam-arrow">
+            <img src="{{ $logo }}" class="reclam-footer-logo">
         </div>
 
-      </a>
+    </div>
 
-    @endforeach
+</a>
+
+@endforeach
 
   @endif
 

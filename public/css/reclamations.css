@@ -218,6 +218,7 @@
   margin-top: 10px;
   display:flex;
   align-items:center;
+  justify-content: space-around;
   gap:8px;
 }
 
@@ -664,6 +665,32 @@
     0 2px 8px rgba(42, 42, 42, 0.112);
 }
 
+.reclam-card.card-service{
+  border-color: rgb(251, 255, 0);
+
+  /* твій inset-контур */
+  box-shadow:
+    0 0 0 1px rgba(165, 165, 165, 0.393) inset,
+
+    /* м'яка iOS тінь назовні */
+    0 8px 12px rgba(35, 35, 35, 0.329),
+    0 2px 8px rgba(42, 42, 42, 0.112);
+}
+
+.reclam-card.card-repaired{
+  border-color: rgba(93, 218, 97, 0.75);
+
+  /* твій inset-контур */
+  box-shadow:
+    0 0 0 1px rgba(165, 165, 165, 0.393) inset,
+
+    /* м'яка iOS тінь назовні */
+    0 8px 12px rgba(35, 35, 35, 0.329),
+    0 2px 8px rgba(42, 42, 42, 0.112);
+}
+
+
+
 /* hide scrollbars in modal (scroll works) */
 .modal-panel,
 .modal-body{
@@ -1057,4 +1084,24 @@ html.no-scroll, body.no-scroll{ overflow:hidden !important; }
   -webkit-touch-callout: none;
   touch-action: manipulation;
 }
+
+.reclam-arrow{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background: rgba(255,255,255,.06);
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.12);
+  height:32px;
+  padding: 6px;
+  opacity:.85;
+}
+
+.reclam-footer-logo{
+  height:26px;;
+  object-fit:contain;
+  pointer-events:none;
+  user-select:none;
+}
+
 
