@@ -13,6 +13,8 @@ class ReclamationController extends Controller
 {
     private array $stepKeys = [
         'reported',
+        'photos',
+        'serial',
         'dismantled',            // демонтували (дата + що зробили)
         'where_left',            // де залишили (склад/відправили)
         'shipped_to_service',    // відправили НП (ТТН)
@@ -27,9 +29,8 @@ class ReclamationController extends Controller
     {
         $q = trim((string)request('q'));
 
-        $query = Reclamation::with('steps')
-            ->whereNotNull('last_name')
-            ->where('last_name', '!=', '');
+        $query = Reclamation::with('steps');
+
 
         if ($q !== '') {
             $query->where('last_name', 'like', "%{$q}%");
@@ -116,6 +117,7 @@ class ReclamationController extends Controller
                 'step_key' => $k,
             ]);
         }
+
 
         return redirect()->route('reclamations.show', $rec->id);
     }
