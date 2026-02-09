@@ -730,6 +730,72 @@
       });
     }
 
+    (function(){
+
+  const HOLD_TIME = 10000; // 10 секунд
+  let holdTimer = null;
+  let holdingBtn = null;
+
+  function resetHold() {
+    if (holdTimer) clearTimeout(holdTimer);
+    holdTimer = null;
+
+    if (holdingBtn) {
+      holdingBtn.classList.remove('holding');
+      holdingBtn = null;
+    }
+  }
+
+  document.addEventListener('pointerdown', (e) => {
+
+    const btn = e.target.closest('[data-delete-reclamation]');
+    if (!btn) return;
+
+    e.stopPropagation();
+
+    holdingBtn = btn;
+    btn.classList.add('holding');
+
+    holdTimer = setTimeout(() => {
+
+      const id = btn.dataset.deleteReclamation;
+
+      if (!confirm('Видалити рекламацію?')) {
+        resetHold();
+        return;
+      }
+
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = `/reclamations/${id}`;
+
+      const csrf = document.querySelector('meta[name="csrf-token"]').content;
+
+      form.innerHTML = `
+        <input type="hidden" name="_token" value="${csrf}">
+        <input type="hidden" name="_method" value="DELETE">
+      `;
+
+      document.body.appendChild(form);
+      form.submit();
+
+    }, HOLD_TIME);
+
+  });
+
+  document.addEventListener('pointerup', resetHold);
+  document.addEventListener('pointerleave', resetHold);
+  document.addEventListener('pointercancel', resetHold);
+
+})();
+
+document.addEventListener('contextmenu', (e) => {
+  if (e.target.closest('.del-rec')) {
+    e.preventDefault();
+  }
+});
+
+
 
 
 })();

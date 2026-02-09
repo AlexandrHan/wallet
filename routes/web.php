@@ -691,6 +691,9 @@ Route::middleware(['auth', 'only.reclamations'])->group(function () {
             Route::get('/create', [ReclamationController::class, 'create'])->name('create');
             Route::post('/', [ReclamationController::class, 'store'])->name('store');
             Route::get('/{reclamation}', [ReclamationController::class, 'show'])->name('show');
+            Route::delete('/{reclamation}', [ReclamationController::class, 'destroy'])
+                ->name('destroy');
+
             Route::post('/{reclamation}/steps/{stepKey}', [ReclamationController::class, 'saveStep'])->name('steps.save');
             Route::post('/{reclamation}/upload', [ReclamationController::class, 'upload'])->name('upload');
         });

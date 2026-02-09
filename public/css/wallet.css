@@ -1437,4 +1437,22 @@ html{
   to{ opacity:1; transform:translate(-50%, -50%) scale(1); }
 }
 
+/* ===============================
+   CASH DELETE HOLD PROTECTION
+=============================== */
+
+.account-card.account-cash{
+  -webkit-user-select: none;
+  user-select: none;
+
+  -webkit-touch-callout: none; /* iOS меню */
+  -webkit-tap-highlight-color: transparent;
+
+  touch-action: manipulation;
+}
+
+.account-card.account-cash *{
+  -webkit-user-select: none;
+  user-select: none;
+}
 

@@ -65,6 +65,16 @@
         @endif
       </div>
     </div>
+    @if(auth()->user()->role === 'owner')
+    <form method="POST"
+          action="{{ route('reclamations.destroy', $reclamation->id) }}"
+          onsubmit="return confirm('Видалити рекламацію?')">
+        @csrf
+        @method('DELETE')
+        <button type="submit" class="btn del-rec" style="margin-top:15px;border:none;background:transparent;margin-left:42%;" data-delete-reclamation="{{ $reclamation->id }}">🗑</button>
+    </form>
+    @endif
+
   </div>
   <div id="clientHistory" class="card history-card hidden" style="margin-top:10px;"></div>
 

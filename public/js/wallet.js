@@ -2461,6 +2461,10 @@ function initPirateDelete(){
     if (card.classList.contains('ro')) return;
 
     card._pirateBound = true;
+    card.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+    });
+
 
     const HOLD_MS = 6000;
 

@@ -372,5 +372,26 @@ public function history(Reclamation $reclamation)
     return response()->json(['html' => $html]);
 }
 
+public function destroy(Reclamation $reclamation)
+{
+    // тільки owner
+    if (auth()->user()->role !== 'owner') {
+        abort(403);
+    }
+
+    // видаляємо етапи
+    $reclamation->steps()->delete();
+
+    // видаляємо лог
+    ReclamationLog::where('reclamation_id', $reclamation->id)->delete();
+
+    // видаляємо саму рекламацію
+    $reclamation->delete();
+
+    return redirect()
+        ->route('reclamations.index')
+        ->with('success', 'Рекламацію видалено');
+}
+
 
 }
