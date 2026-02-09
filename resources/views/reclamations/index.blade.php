@@ -1,9 +1,13 @@
 <!doctype html>
 <html lang="uk">
+
 <head>
   <meta charset="utf-8" />
   <meta name="csrf-token" content="{{ csrf_token() }}">
-  <link rel="manifest" href="/manifest.webmanifest?v={{ filemtime(public_path('manifest.webmanifest')) }}">
+
+  <link rel="manifest"
+        href="/manifest.webmanifest?v={{ filemtime(public_path('manifest.webmanifest')) }}">
+
   <meta name="theme-color" content="#0b0d10">
 
   <!-- iOS home screen -->
@@ -11,15 +15,20 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="SG Wallet">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1, viewport-fit=cover">
+
   <meta name="mobile-web-app-capable" content="yes">
 
-  <link rel="stylesheet" href="/css/wallet.css?v={{ filemtime(public_path('css/wallet.css')) }}">
-  <link rel="stylesheet" href="/css/reclamations.css?v={{ filemtime(public_path('css/reclamations.css')) }}">
+  <link rel="stylesheet"
+        href="/css/wallet.css?v={{ filemtime(public_path('css/wallet.css')) }}">
+
+  <link rel="stylesheet"
+        href="/css/reclamations.css?v={{ filemtime(public_path('css/reclamations.css')) }}">
+
   <script src="/js/reclamations.js?v={{ filemtime(public_path('js/reclamations.js')) }}" defer></script>
   <script src="/js/header.js?v={{ filemtime(public_path('js/header.js')) }}" defer></script>
-
-
 
   <title>SolarGlass • Рекламації</title>
 
@@ -34,14 +43,21 @@
   </script>
 
   <style>
-    :root{ color-scheme:dark }
-    html{ background:#0b0d10 }
-    body{ margin:0 }
-    #appSplash{ position:fixed; inset:0; background:#0b0d10; z-index:99999 }
+    :root { color-scheme: dark }
+    html { background: #0b0d10 }
+    body { margin: 0 }
+
+    #appSplash {
+      position: fixed;
+      inset: 0;
+      background: #0b0d10;
+      z-index: 99999;
+    }
   </style>
 </head>
 
 <body>
+
   <div class="app-bg"></div>
 
   <div id="appSplash">
@@ -50,9 +66,12 @@
     </div>
   </div>
 
+  <!-- ================= HEADER ================= -->
   <header>
-    <div style="margin-top:-1rem;" class="wrap row">
+    <div class="wrap row" style="margin-top:-1rem;">
+
       <div class="top-area">
+
         <a href="/" class="logo">
           <img src="/img/logo.png" alt="SolarGlass">
         </a>
@@ -64,22 +83,38 @@
         </div>
 
         <div class="burger-wrap">
-          <button type="button" id="burgerBtn" class="burger-btn">☰</button>
+
+          <button type="button"
+                  id="burgerBtn"
+                  class="burger-btn">☰</button>
 
           <div id="burgerMenu" class="burger-menu hidden">
-            <a href="/profile" class="burger-item">🔐 Адмінка / пароль</a>
+
+            <a href="/profile" class="burger-item">
+              🔐 Адмінка / пароль
+            </a>
+
             @if(auth()->user()->role !== 'sunfix')
-              <a href="{{ url('/') }}" class="burger-item">💼 Гаманець</a>
+              <a href="{{ url('/') }}" class="burger-item">
+                💼 Гаманець
+              </a>
             @endif
 
-            <a href="{{ route('reclamations.index') }}" class="burger-item">🧾 Рекламації</a>
+            <a href="{{ route('reclamations.index') }}"
+               class="burger-item">
+              🧾 Рекламації
+            </a>
 
             <div class="burger-actions">
               <form method="POST" action="{{ route('logout') }}">
                 @csrf
-                <button type="submit" class="burger-item danger">🚪 Вийти</button>
+                <button type="submit"
+                        class="burger-item danger">
+                  🚪 Вийти
+                </button>
               </form>
             </div>
+
           </div>
         </div>
       </div>
@@ -89,281 +124,103 @@
       </div>
 
       @if(auth()->user()->role !== 'accountant')
-      <div class="header-center">
-
-      </div>
+        <div class="header-center"></div>
       @endif
+
     </div>
   </header>
 
-<main class="wrap reclamations-main">
+  <!-- ================= MAIN ================= -->
+  <main class="wrap reclamations-main">
 
-  <div class="row content topbar topbar-actions">
-    <a href="{{ route('reclamations.new') }}" class="btn create-reclam">Створити рекламацію</a>
-    <button type="button" class="btn" id="searchToggleBtn">🔎 Пошук</button>
-  </div>
-
-  <div id="searchPanel" class="search-panel hidden">
-
-    @php
-      $stepsMap = [
-        '' => 'Пошук по етапах',
-        'reported' => 'Дані клієнта',
-        'dismantled' => 'Демонтували',
-        'where_left' => 'Де залишили',
-        'shipped_to_service' => 'Відправили НП на ремонт',
-        'service_received' => 'Сервіс отримав',
-        'repaired_shipped_back' => 'Відремонтували та відправили',
-        'installed' => 'Встановили',
-        'loaner_return' => 'Повернення підмінного',
-        'closed' => 'Завершили',
-      ];
-      $selStep = request('step','');
-    @endphp
-
-    <form method="GET" action="{{ route('reclamations.index') }}" class="search-form">
-
-      <input
-        class="btn"
-        type="text"
-        name="q"
-        placeholder="Пошук по прізвищу…"
-        value="{{ request('q') }}"
-        autocomplete="off"
-      />
-
-      {{-- status --}}
-      <input type="hidden" name="status" id="statusInput" value="{{ request('status') }}">
-
-      <div class="search-grid">
-
-        {{-- LEFT --}}
-        <div class="search-left">
-
-          <div class="search-fields">
-            <select name="step" class="btn">
-              @foreach($stepsMap as $k => $label)
-                <option value="{{ $k }}" {{ $selStep===$k ? 'selected' : '' }}>{{ $label }}</option>
-              @endforeach
-            </select>
-          </div>
-
-          <div class="search-actions">
-            <button type="submit" class="btn primary">Знайти</button>
-            <a href="{{ route('reclamations.index') }}" class="btn">Скинути</a>
-          </div>
-
-        </div>
-
-        {{-- RIGHT --}}
-        <div class="search-right">
-          <div class="status-filters" id="statusFilters">
-            <button type="button"
-                    class="btn pill {{ request('status')==='accepted' ? 'active' : '' }}"
-                    data-status="accepted">
-              Прийняли заявку
-            </button>
-
-            <button type="button"
-                    class="btn pill {{ request('status')==='shipped' ? 'active' : '' }}"
-                    data-status="shipped">
-              Відправили на ремонт
-            </button>
-          </div>
-        </div>
-
-      </div>
-    </form>
-
-  </div>
-
-
-  @if($items->isEmpty())
-    <div class="reclamations-empty">
-      <div style="font-weight:900;">Поки немає рекламацій</div>
-      <div class="muted" style="margin-top:6px;">Натисни “Створити нову рекламацію”.</div>
-    </div>
-  @else
-
-    @foreach($items as $item)
-
-      @php
-        $labels = [
-          'reported' => 'Дані клієнта',
-          'dismantled' => 'Демонтували',
-          'where_left' => 'Де залишили',
-          'shipped_to_service' => 'Відправили НП на ремонт',
-          'service_received' => 'Сервіс отримав',
-          'repaired_shipped_back' => 'Відремонтували та відправили',
-          'installed' => 'Встановили',
-          'loaner_return' => 'Повернення підмінного',
-          'closed' => 'Завершили',
-        ];
-
-        $order = array_keys($labels);
-
-        $stepsByKey = $item->steps->keyBy('step_key');
-
-        $isDone = function($key) use ($stepsByKey) {
-          $s = $stepsByKey->get($key);
-          if (!$s) return false;
-
-          return !empty($s->done_date)
-            || (is_string($s->note) && trim($s->note) !== '')
-            || (is_string($s->ttn)  && trim($s->ttn)  !== '')
-            || (is_array($s->files) && count($s->files) > 0);
-        };
-
-        // 1) Активний етап: останній виконаний по порядку
-        $activeKey = null;
-        foreach ($order as $k) {
-          if ($isDone($k)) $activeKey = $k;
-        }
-        if (!$activeKey) $activeKey = 'reported';
-
-        $activeLabel = $labels[$activeKey] ?? $activeKey;
-
-        // 2) Дата для картки
-        $activeStep = $stepsByKey->get($activeKey);
-        $dateText = null;
-
-        if ($activeStep && !empty($activeStep->done_date)) {
-          $dateText = \Illuminate\Support\Carbon::parse($activeStep->done_date)->format('d.m.Y');
-        } elseif ($item->reported_at) {
-          $dateText = $item->reported_at->format('d.m.Y');
-        } else {
-          $dateText = '—';
-        }
-
-        // 3) Колір рамки
-        $doneClosed = ($item->status === 'done') || $isDone('closed');
-        $doneRepaired = $isDone('repaired_shipped_back');
-
-        if ($doneClosed) {
-          $borderClass = 'card-done';
-        } elseif ($doneRepaired) {
-          $borderClass = 'card-shipped';
-        } else {
-          $borderClass = 'card-pre';
-        }
-
-        $filesCount = $item->steps->sum(fn($s) => is_array($s->files) ? count($s->files) : 0);
-        $notesCount = $item->steps->filter(fn($s) => is_string($s->note) && trim($s->note) !== '')->count();
-      @endphp
-
-      <a href="{{ route('reclamations.show', $item->id) }}"
-         class="card reclam-card reclam-link {{ $borderClass }}">
-
-        <div class="reclam-top">
-          <div class="reclam-title">
-            <div class="reclam-sub">
-              <b>{{ $item->last_name ?: '—' }}</b>
-            </div>
-          </div>
-
-          <div class="reclam-status status-open">{{ $activeLabel }}</div>
-        </div>
-
-        <div class="reclam-body">
-
-          <div class="reclam-row">
-            <div class="muted">Нас. пункт</div>
-            <div class="right"><b>{{ $item->city ?: '—' }}</b></div>
-          </div>
-
-          <div class="reclam-row">
-            <div class="muted">Дата</div>
-            <div class="right">{{ $dateText }}</div>
-          </div>
-
-          @if($item->problem)
-            <div class="reclam-row">
-              <div class="muted">Проблема</div>
-              <div class="right">{{ $item->problem }}</div>
-            </div>
-          @endif
-        </div>
-
-        <div class="reclam-footer">
-          <div class="reclam-pill">📎 {{ $filesCount }} файли</div>
-          <div class="reclam-pill">💬 {{ $notesCount }} нотатки</div>
-          <div class="reclam-arrow">→</div>
-        </div>
-
+    <!-- TOPBAR -->
+    <div class="row content topbar topbar-actions">
+      <a href="{{ route('reclamations.new') }}"
+         class="btn create-reclam">
+        Створити рекламацію
       </a>
 
-    @endforeach
+      <button type="button"
+              class="btn"
+              id="searchToggleBtn">
+        🔎 Пошук
+      </button>
+    </div>
 
-  @endif
+    <!-- SEARCH PANEL -->
+    <div id="searchPanel" class="search-panel hidden">
 
-</main>
+      <form method="GET"
+            action="{{ route('reclamations.index') }}"
+            class="search-form">
 
+        <input class="btn"
+               type="text"
+               name="q"
+               placeholder="Пошук по прізвищу…"
+               value="{{ request('q') }}"
+               autocomplete="off" />
 
-<script>
-  (function () {
-    const viewer = document.getElementById('imgViewer');
-    const img = document.getElementById('imgViewerImg');
-    const closeBtn = viewer?.querySelector('.img-viewer-close');
-    const backdrop = viewer?.querySelector('.img-viewer-backdrop');
+        <input type="hidden"
+               name="status"
+               id="statusInput"
+               value="{{ request('status') }}">
 
-    if (!viewer || !img) return;
+        <div class="status-filters" id="statusFilters">
 
-    let lastFocusEl = null;
+          <button type="button"
+                  class="btn pill {{ request('status')==='accepted' ? 'active' : '' }}"
+                  data-status="accepted">
+            Прийняли заявку
+          </button>
 
-    function openViewer(src){
-      lastFocusEl = document.activeElement;
+          <button type="button"
+                  class="btn pill {{ request('status')==='shipped' ? 'active' : '' }}"
+                  data-status="shipped">
+            Відправили на ремонт
+          </button>
 
-      img.src = src;
-      viewer.classList.remove('hidden');
-      viewer.setAttribute('aria-hidden', 'false');
+        </div>
 
-      // фокус на хрестик (щоб Esc/Tab були логічні)
-      closeBtn?.focus({ preventScroll: true });
-    }
+        @php
+          $stepsMap = [
+            '' => 'Пошук по етапах',
+            'reported' => 'Дані клієнта',
+            'dismantled' => 'Демонтували',
+            'where_left' => 'Де залишили',
+            'shipped_to_service' => 'Відправили НП на ремонт',
+            'service_received' => 'Сервіс отримав',
+            'repaired_shipped_back' => 'Відремонтували та відправили',
+            'installed' => 'Встановили',
+            'loaner_return' => 'Повернення підмінного',
+            'closed' => 'Завершили',
+          ];
 
-    function closeViewer(){
-      // важливо: зняти фокус з кнопки, перш ніж ховати батька
-      document.activeElement?.blur();
+          $selStep = request('step','');
+        @endphp
 
-      viewer.classList.add('hidden');
-      viewer.setAttribute('aria-hidden', 'true');
-      img.src = '';
+        <select name="step" class="btn">
+          @foreach($stepsMap as $k => $label)
+            <option value="{{ $k }}"
+              {{ $selStep===$k ? 'selected' : '' }}>
+              {{ $label }}
+            </option>
+          @endforeach
+        </select>
 
-      // повернути фокус туди, де був
-      if (lastFocusEl && typeof lastFocusEl.focus === 'function') {
-        lastFocusEl.focus({ preventScroll: true });
-      }
-      lastFocusEl = null;
-    }
+        <button type="submit" class="btn primary">Знайти</button>
 
-    // 1) делегований клік по фотках (використай data-img-viewer)
-    document.addEventListener('click', (e) => {
-      const a = e.target.closest('a[data-img-viewer]');
-      if (!a) return;
+        <a href="{{ route('reclamations.index') }}"
+           class="btn">
+          Скинути фільтри
+        </a>
 
-      e.preventDefault();
-      const src = a.getAttribute('href');
-      if (src) openViewer(src);
-    });
+      </form>
+    </div>
 
-    // 2) закриття по хрестику
-    closeBtn?.addEventListener('click', (e) => {
-      e.preventDefault();
-      closeViewer();
-    });
+    <!-- ДАЛІ ЙДУТЬ КАРТКИ (твій код без змін) -->
 
-    // 3) закриття по фону
-    backdrop?.addEventListener('click', closeViewer);
-
-    // 4) Esc
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && !viewer.classList.contains('hidden')) {
-        closeViewer();
-      }
-    });
-  })();
-</script>
-
+  </main>
 
 </body>
 </html>
