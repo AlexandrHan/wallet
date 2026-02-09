@@ -84,18 +84,69 @@
 
 <div class="pipeline">  
 @foreach($steps as $k => $label)
-  @php
-    $s = $reclamation->step($k);
-    $isDone = $s && ($s->done_date || ($s->note && trim($s->note) !== '') || ($s->ttn && trim($s->ttn) !== '') || (is_array($s->files) && count($s->files)));
-    $need = ($k === 'installed' && (!$s || !$s->note || trim($s->note) === '')); // "встановили" без комента = критично
-    $cls = $need ? 'step-need' : ($isDone ? 'step-done' : 'step-empty');
+@php
+$s = $reclamation->step($k);
 
-    $badge = $need ? '⚠️ відсутній фідбек' : ($isDone ? '✅ виконано' : '⏳ очікує');
-    $sub = $s?->done_date
-  ? $s->done_date->format('d.m.Y')
-  : ($isDone ? 'заповнено' : 'натисни щоб заповнити');
+$isDone =
+    $s &&
+    ($s->done_date ||
+     (is_string($s->note) && trim($s->note) !== '') ||
+     (is_string($s->ttn) && trim($s->ttn) !== '') ||
+     (is_array($s->files) && count($s->files)));
 
-  @endphp
+$need = (
+    $k === 'installed' &&
+    (!$s || !$s->note || trim($s->note) === '')
+);
+
+// ===== статус ремонту =====
+$shipped  = $reclamation->step('shipped_to_service');
+$repaired = $reclamation->step('repaired_shipped_back');
+
+$isShipped =
+    $shipped &&
+    ($shipped->done_date || $shipped->ttn);
+
+$isRepaired =
+    $repaired &&
+    ($repaired->done_date || $repaired->ttn);
+
+// жовтий період
+$isServiceStage = $isShipped && !$isRepaired;
+
+
+// ===== ФІНАЛЬНИЙ клас (ОДИН раз!) =====
+if ($need) {
+
+    $cls = 'step-need';
+
+} elseif (
+    $isServiceStage &&
+    in_array($k, ['shipped_to_service','service_received'])
+) {
+
+    $cls = 'step-service';
+
+} elseif ($isDone) {
+
+    $cls = 'step-done';
+
+} else {
+
+    $cls = 'step-empty';
+}
+
+
+// ===== badge =====
+$badge =
+    $need ? '⚠️ відсутній фідбек'
+    : ($isDone ? '✅ виконано' : '⏳ очікує');
+
+$sub = $s?->done_date
+    ? $s->done_date->format('d.m.Y')
+    : ($isDone ? 'заповнено' : 'натисни щоб заповнити');
+@endphp
+
 
   <div class="step {{ $cls }}" data-step="{{ $k }}">
   <div class="step-line"><div class="step-dot"></div></div>
