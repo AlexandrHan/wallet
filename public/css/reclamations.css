@@ -1092,7 +1092,7 @@ html.no-scroll, body.no-scroll{ overflow:hidden !important; }
   background: rgba(255,255,255,.06);
   border-radius: 999px;
   border: 1px solid rgba(255,255,255,.12);
-  height:32px;
+  height:30px;
   padding: 6px;
   opacity:.85;
 }
@@ -1105,7 +1105,7 @@ html.no-scroll, body.no-scroll{ overflow:hidden !important; }
 }
 
 .step-service .step-card{
-  border-color: rgba(255, 196, 0, 0.55);
+  border-color: rgb(238, 255, 0);
 
   box-shadow:
     0 0 0 1px rgba(255,196,0,.25) inset,
