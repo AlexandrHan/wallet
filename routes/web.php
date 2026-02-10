@@ -675,6 +675,25 @@ Route::middleware(['auth', 'only.reclamations'])->group(function () {
 
     });
 
+    
+
+    Route::get('/stock', function () {
+        return view('stock.index');
+    });
+
+    Route::get('/deliveries/create', function () {
+        return view('deliveries.create');
+    });
+
+    Route::get('/deliveries/{id}', function ($id) {
+        return view('deliveries.show', ['id' => $id]);
+    });
+
+
+    Route::get('/deliveries', function () {
+        return view('deliveries.index');
+    });
+
 
     /*
     |--------------------------------------------------------------------------

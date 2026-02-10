@@ -325,3 +325,38 @@ Route::get('/exchange-rates', function () {
         'rates' => $rates,
     ]);
 });
+
+
+///////////////////////////////////. Санфікс склад.  /////////////////////////////////////
+
+Route::get('/stock', [\App\Http\Controllers\StockController::class, 'index']);
+
+Route::post('/deliveries', [\App\Http\Controllers\DeliveryController::class, 'store']);
+
+Route::get('/deliveries', function () {
+    return \Illuminate\Support\Facades\DB::table('supplier_deliveries')
+        ->orderByDesc('id')
+        ->get();
+});
+
+Route::get('/deliveries/{id}/items', function ($id) {
+    return DB::table('supplier_delivery_items as items')
+        ->join('products','products.id','=','items.product_id')
+        ->where('items.delivery_id',$id)
+        ->select(
+            'products.name',
+            'items.qty_declared',
+            'items.supplier_price'
+        )
+        ->get();
+});
+
+Route::post('/deliveries/{id}/items', [\App\Http\Controllers\DeliveryController::class, 'addItem']);
+
+Route::get('/products', function () {
+    return DB::table('products')
+        ->where('is_active',1)
+        ->select('id','name')
+        ->get();
+});
+
