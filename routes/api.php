@@ -346,6 +346,7 @@ Route::get('/deliveries/{id}/items', function ($id) {
         ->select(
             'products.name',
             'items.qty_declared',
+            'items.qty_accepted',
             'items.supplier_price'
         )
         ->get();
@@ -359,4 +360,34 @@ Route::get('/products', function () {
         ->select('id','name')
         ->get();
 });
+
+Route::post('/products', function (\Illuminate\Http\Request $request) {
+
+    return DB::table('products')->insertGetId([
+        'supplier_id' => 1,
+        'sku' => uniqid('manual_'),
+        'name' => $request->name,
+        'currency' => 'USD',
+        'supplier_price' => 0,
+        'is_active' => 1,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+});
+
+Route::get('/deliveries/{id}', function ($id) {
+    return DB::table('supplier_deliveries')
+        ->where('id',$id)
+        ->first();
+});
+
+Route::post('/deliveries/{id}/ship', [\App\Http\Controllers\DeliveryController::class, 'ship']);
+
+Route::get('/deliveries', function () {
+    return DB::table('supplier_deliveries')
+        ->orderByDesc('id')
+        ->get();
+});
+
+
 

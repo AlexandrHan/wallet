@@ -1,70 +1,96 @@
 @extends('layouts.app')
 
+@push('styles')
+<link rel="stylesheet" href="/css/stock.css?v={{ filemtime(public_path('css/stock.css')) }}">
+@endpush
+
 @section('content')
 
-<main class="wrap">
+<main class="wrap stock-wrap">
+        <div class="breadcrumb" style="margin-bottom:25px;">
+        <a href="/stock" class="btn" style="width:30%">Склад</a>
+            <button class="btn primary" onclick="createDelivery()">
+        Створити нову партію
+    </button>
 
-<main class="wrap">
+        
+    </div>
 
-    <div style="margin-bottom:12px;">
-        <a href="/stock" class="btn">← Назад до складу</a>
+    <div class="card" style="margin-bottom:25px;">
+        <div style="font-weight:700; text-align:center;">
+            Партії поставок
+        </div>
     </div>
 
     <div class="card">
-        <div style="font-size:18px; font-weight:700;">
-            Партії поставки
-        </div>
-
-        <div style="margin-top:14px;">
-            <a href="/deliveries/create" class="btn">
-                + Нова партія
-            </a>
-        </div>
-    </div>
-
-    <div class="card" style="margin-top:16px;">
-        <div style="font-weight:700; margin-bottom:10px;">
-            Список партій
-        </div>
-
-        <table style="width:100%;">
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Status</th>
-                    <th>Дата</th>
-                </tr>
-            </thead>
-            <tbody id="deliveriesTable"></tbody>
-        </table>
+        <div id="deliveriesList" class="delivery-list"></div>
     </div>
 
 </main>
 
 <script>
+
 async function loadDeliveries() {
 
     const res = await fetch('/api/deliveries');
-    const data = await res.json();
+    const deliveries = await res.json();
 
-    const table = document.getElementById('deliveriesTable');
-    table.innerHTML = '';
+    const list = document.getElementById('deliveriesList');
+    list.innerHTML = '';
 
-    data.forEach(d => {
-        table.innerHTML += `
-            <tr onclick="window.location='/deliveries/${d.id}'" style="cursor:pointer">
-                <td>#${d.id}</td>
-                <td>${d.status}</td>
-                <td>${d.created_at}</td>
-            </tr>
+    deliveries.forEach(d => {
+
+        list.innerHTML += `
+            <div class="delivery-row"
+                onclick="openDelivery(${d.id})">
+
+                <div class="delivery-row-top">
+                    Партія #${d.id}
+                </div>
+
+                <div class="delivery-row-bottom">
+                    <div>
+                        <span class="label">Статус</span>
+                        <span class="value">${d.status.toUpperCase()}</span>
+                    </div>
+
+                    <div>
+                        <span class="label">Дата</span>
+                        <span class="value">${d.created_at.substring(0,10)}</span>
+                    </div>
+                </div>
+
+            </div>
         `;
+
     });
+
 }
 
 loadDeliveries();
+
+function openDelivery(id) {
+    window.location.href = `/deliveries/${id}`;
+}
+
+async function createDelivery() {
+
+    const res = await fetch('/api/deliveries', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+        },
+        body: JSON.stringify({
+            supplier_id: 1
+        })
+    });
+
+    const data = await res.json();
+
+    window.location.href = `/deliveries/${data.id}`;
+}
+
 </script>
-
-
-</main>
 
 @endsection

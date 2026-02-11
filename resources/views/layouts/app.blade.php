@@ -22,6 +22,7 @@
         <script src="/js/header.js?v={{ filemtime(public_path('js/header.js')) }}" defer></script>
         <script src="/js/reclamations.js?v={{ filemtime(public_path('js/reclamations.js')) }}" defer></script>
         <link rel="manifest" href="/manifest.webmanifest?v={{ filemtime(public_path('manifest.webmanifest')) }}">
+        @stack('styles')
         <meta name="theme-color" content="#0b0d10">
 
         <style>

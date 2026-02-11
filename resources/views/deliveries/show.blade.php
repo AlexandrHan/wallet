@@ -1,50 +1,47 @@
+@push('styles')
+<link rel="stylesheet" href="/css/stock.css?v={{ filemtime(public_path('css/stock.css')) }}">
+@endpush
+
 @extends('layouts.app')
 
 @section('content')
 
-<main class="wrap">
-    <div style="margin-bottom:12px;">
-    <a href="/stock" class="btn">← Назад до складу</a>
-</div>
+<main class="wrap stock-wrap">
+    <div class="breadcrumb" style="margin-bottom:25px;">
+        <a href="/stock" class="btn" style="width:30%">Склад</a>
+        <a href="/deliveries" class="btn" style="width:60%">Партії поставок</a>
+        
+    </div>
+        <div class="card" style="margin-top:12px;">
+        <div style="text-align:center">
+            Статус: <b id="deliveryStatus">Відправлено</b>
+        </div>
 
 
-<div class="card" style="margin-top:16px;">
-
-    <div style="font-weight:700; margin-bottom:10px;">
-        Додати товар
     </div>
 
-    <div style="display:flex; gap:10px; flex-wrap:wrap;">
-        <select id="product_id">
-            <option value="">Оберіть товар</option>
-        </select>
 
-        <input id="qty" type="number" placeholder="Кількість">
-        <input id="price" type="number" placeholder="Ціна">
 
-        <button class="btn" onclick="addItem()">
-            Додати
-        </button>
-    </div>
+
+
+
+
+
+
+
     <div class="card" style="margin-top:16px;">
         <div style="font-weight:700; margin-bottom:10px;">
             Товари у партії
         </div>
 
-        <table style="width:100%;">
-            <thead>
-                <tr>
-                    <th>Товар</th>
-                    <th>Кількість</th>
-                    <th>Ціна</th>
-                </tr>
-            </thead>
+       <div id="itemsList" class="delivery-list"></div>
+
             <tbody id="itemsTable"></tbody>
         </table>
     </div>
 
 
-</div>
+
 
 
 </main>
@@ -81,40 +78,63 @@ async function loadItems() {
     const res = await fetch('/api/deliveries/{{ $id }}/items');
     const data = await res.json();
 
-    const table = document.getElementById('itemsTable');
-    table.innerHTML = '';
+    const list = document.getElementById('itemsList');
+    list.innerHTML = '';
 
     data.forEach(item => {
-        table.innerHTML += `
-            <tr>
-                <td>${item.name}</td>
-                <td>${item.qty_declared}</td>
-                <td>${item.supplier_price}</td>
-            </tr>
+
+        list.innerHTML += `
+            <div class="delivery-row">
+
+                <div class="delivery-row-top">
+                    ${item.name}
+                </div>
+
+                <div class="delivery-row-bottom">
+                    <div>
+                        <span class="label">Заявлено</span>
+                        <span class="value">${item.qty_declared}</span>
+                    </div>
+
+                    <div>
+                        <span class="label">Прийнято</span>
+                        <span class="value">${item.qty_accepted ?? '-'}</span>
+                    </div>
+
+                    <div>
+                        <span class="label">Ціна</span>
+                        <span class="value">${item.supplier_price}</span>
+                    </div>
+                </div>
+
+            </div>
         `;
     });
+
 }
 
 loadItems();
 
 
-async function loadProducts() {
 
-    const res = await fetch('/api/products');
-    const products = await res.json();
 
-    const select = document.getElementById('product_id');
 
-    products.forEach(p => {
-        select.innerHTML += `
-            <option value="${p.id}">
-                ${p.name}
-            </option>
-        `;
+async function markShipped() {
+
+    await fetch('/api/deliveries/{{ $id }}/ship', {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+        }
     });
+
+    document.getElementById('deliveryStatus').innerText = 'SHIPPED';
+    document.getElementById('addItemCard').style.display = 'none';
 }
 
-loadProducts();
+
+
+
 
 
 </script>

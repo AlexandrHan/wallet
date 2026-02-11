@@ -23,6 +23,22 @@ class DeliveryController extends Controller
     }
     public function addItem(Request $request, $id)
     {
+        $delivery = DB::table('supplier_deliveries')
+            ->where('id', $id)
+            ->first();
+
+        if (!$delivery) {
+            return response()->json([
+                'error' => 'Delivery not found'
+            ], 404);
+        }
+
+        if ($delivery->status !== 'draft') {
+            return response()->json([
+                'error' => 'Delivery already shipped'
+            ], 422);
+        }
+
         DB::table('supplier_delivery_items')->insert([
             'delivery_id' => $id,
             'product_id' => $request->product_id,
@@ -34,6 +50,18 @@ class DeliveryController extends Controller
 
         return response()->json(['ok' => true]);
     }
+    public function ship($id)
+    {
+        DB::table('supplier_deliveries')
+            ->where('id', $id)
+            ->update([
+                'status' => 'shipped',
+                'updated_at' => now()
+            ]);
+
+        return response()->json(['ok' => true]);
+    }
+
 
 }
 
