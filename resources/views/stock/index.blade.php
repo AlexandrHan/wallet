@@ -1,97 +1,86 @@
+@push('styles')
+<link rel="stylesheet" href="/css/stock.css?v={{ filemtime(public_path('css/stock.css')) }}">
+@endpush
+
 @extends('layouts.app')
 
 @section('content')
 
-<main class="wrap">
-    <div style="margin-bottom:12px;">
-    <a href="/deliveries" class="btn">
-        Партії поставки
-    </a>
-</div>
+<main class="wrap stock-wrap">
 
-    <div class="card" style="margin-bottom:16px;">
-        
-        <div style="font-size:14px; opacity:.7;">
+    <div class="breadcrumb" style="margin-bottom:20px;">
+        <a href="/deliveries" class="btn primary" style="width:100%">
+            Партії поставок
+        </a>
+    </div>
+
+    <div class="card">
+        <div style="font-size:14px; opacity:.7; text-align:center">
             Склад SunFix
         </div>
 
-        <div style="font-size:24px; font-weight:700; margin-top:6px;">
-            Борг постачальнику: <span id="supplierDebt">0</span> $
+        <div style="font-size:20px; font-weight:700; margin-top:6px; text-align:center">
+            Борг постачальнику:
+            <span id="supplierDebt">0</span> $
         </div>
     </div>
 
+    <div class="card" style="margin-top:14px;">
+        <div style="font-weight:700; margin-bottom:10px;">
+            Товари на складі
+        </div>
 
-
-    <div id="stockTableDesktop">
-        <table border="1" cellpadding="8" cellspacing="0" style="width:100%; margin-top:20px;">
-            <thead>
-                <tr>
-                    <th>Товар</th>
-                    <th>Отримано</th>
-                    <th>Продано</th>
-                    <th>Залишок</th>
-                    <th>Сума ($)</th>
-                </tr>
-            </thead>
-            <tbody id="stockTable"></tbody>
-        </table>
+        <div id="stockList" class="delivery-list"></div>
     </div>
-
-    <div id="stockCardsMobile" style="display:none;"></div>
 
 </main>
 
 <script>
 async function loadStock() {
+
     const res = await fetch('/api/stock');
     const response = await res.json();
 
-    const table = document.getElementById('stockTable');
+    const list = document.getElementById('stockList');
     const debt = document.getElementById('supplierDebt');
 
-    table.innerHTML = '';
+    list.innerHTML = '';
     debt.innerText = response.supplier_debt ?? 0;
 
-const mobile = window.innerWidth < 768;
+    response.stock.forEach(item => {
 
-response.stock.forEach(row => {
+        list.innerHTML += `
+            <div class="delivery-row">
 
-    if (mobile) {
-        document.getElementById('stockCardsMobile').innerHTML += `
-            <div style="
-                background: rgba(255,255,255,.05);
-                border:1px solid rgba(255,255,255,.08);
-                border-radius:16px;
-                padding:14px;
-                margin-bottom:12px;
-            ">
-                <div style="font-weight:700; margin-bottom:8px;">
-                    ${row.name}
+                <div class="delivery-row-top">
+                    ${item.name}
                 </div>
 
-                <div>Отримано: ${row.received}</div>
-                <div>Продано: ${row.sold}</div>
-                <div><b>Залишок: ${row.qty_on_stock}</b></div>
-                <div>Сума: ${row.stock_value ?? 0} $</div>
+                <div class="delivery-row-bottom">
+                    <div>
+                        <span class="label">Отримано</span>
+                        <span class="value">${item.received}</span>
+                    </div>
+
+                    <div>
+                        <span class="label">Продано</span>
+                        <span class="value">${item.sold}</span>
+                    </div>
+
+                    <div>
+                        <span class="label">Залишок</span>
+                        <span class="value">${item.qty_on_stock ?? item.qty_on_stock}</span>
+                    </div>
+
+                    <div>
+                        <span class="label">Сума</span>
+                        <span class="value">${item.stock_value ?? 0}</span>
+                    </div>
+                </div>
+
             </div>
         `;
-    } else {
-        table.innerHTML += `
-            <tr>
-                <td>${row.name}</td>
-                <td>${row.received}</td>
-                <td>${row.sold}</td>
-                <td><b>${row.qty_on_stock}</b></td>
-                <td>${row.stock_value ?? 0}</td>
-            </tr>
-        `;
-    }
-});
-
-if (mobile) {
-    document.getElementById('stockTableDesktop').style.display = 'none';
-    document.getElementById('stockCardsMobile').style.display = 'block';
-}
+    });
 
 }
 
@@ -99,3 +88,4 @@ loadStock();
 </script>
 
 @endsection
+

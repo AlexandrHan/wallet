@@ -8,6 +8,7 @@
     padding-left: 0;
     padding-right: 0;
 }
+
 .breadcrumb{
     display: flex;
     justify-content: space-around;

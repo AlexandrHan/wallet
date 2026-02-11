@@ -8,21 +8,23 @@
 
 <main class="wrap stock-wrap">
         <div class="breadcrumb" style="margin-bottom:25px;">
-        <a href="/stock" class="btn" style="width:30%">Склад</a>
-            <button class="btn primary" onclick="createDelivery()">
-        Створити нову партію
-    </button>
+        <a href="/stock" class="btn primary" style="width:30%">Склад</a>
+        <button class="btn primary"
+                onclick="window.location.href='/deliveries/create'">
+            Створити нову партію
+        </button>
+
 
         
     </div>
 
-    <div class="card" style="margin-bottom:25px;">
-        <div style="font-weight:700; text-align:center;">
-            Партії поставок
-        </div>
-    </div>
 
     <div class="card">
+        <div style="font-weight:700; text-align:center; margin-bottom:20px;">
+            
+            Партії поставок
+        </div>
+            <hr>
         <div id="deliveriesList" class="delivery-list"></div>
     </div>
 

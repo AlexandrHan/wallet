@@ -8,8 +8,8 @@
 
 <main class="wrap stock-wrap">
     <div class="breadcrumb" style="margin-bottom:25px;">
-        <a href="/stock" class="btn" style="width:30%">Склад</a>
-        <a href="/deliveries" class="btn" style="width:60%">Партії поставок</a>
+        <a href="/stock" class="btn primary" style="width:30%">Склад</a>
+        <a href="/deliveries" class="btn primary" style="width:60%">Партії поставок</a>
         
     </div>
         <div class="card" style="margin-top:12px;">
@@ -19,15 +19,6 @@
 
 
     </div>
-
-
-
-
-
-
-
-
-
 
     <div class="card" style="margin-top:16px;">
         <div style="font-weight:700; margin-bottom:10px;">
