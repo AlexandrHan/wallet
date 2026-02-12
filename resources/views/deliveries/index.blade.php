@@ -10,9 +10,12 @@
     <div class="breadcrumb" style="margin-bottom:25px;">
         <a href="/stock" class="btn primary" style="width:30%">Склад</a>
 
+        @if(in_array(auth()->user()?->role, ['sunfix_manager'], true))
         <button class="btn primary" onclick="window.location.href='/deliveries/create'">
             Створити нову партію
         </button>
+        @endif
+
     </div>
 
     <div class="card">
@@ -72,11 +75,11 @@ async function loadDeliveries() {
                 </div>
                 ${showAccept ? `
                     <div style="margin-top:10px;">
-                        <button class="btn primary"
-                                style="width:100%;"
-                                onclick="acceptDelivery(event, ${d.id})">
-                            Прийняти
-                        </button>
+                    <button class="btn primary"
+                            style="width:100%;"
+                            onclick="openDeliveryBtn(event, ${d.id})">
+                        Прийняти
+                    </button>
                     </div>
                 ` : ''}
 
@@ -89,25 +92,9 @@ async function loadDeliveries() {
 function openDelivery(id) {
     window.location.href = `/deliveries/${id}`;
 }
-
-async function acceptDelivery(e, id) {
+function openDeliveryBtn(e, id) {
     e.stopPropagation();
-
-    const res = await fetch(`/api/deliveries/${id}/accept`, {
-        method: 'POST',
-        headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-        }
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-        alert(data.error ?? 'Помилка');
-        return;
-    }
-
-    loadDeliveries();
+    openDelivery(id);
 }
 
 loadDeliveries();

@@ -11,7 +11,8 @@ use App\Http\Controllers\ReclamationController;
 
 use App\Models\BankTransactionRaw;
 
-Route::middleware(['auth', 'only.reclamations'])->group(function () {
+Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(function () {
+
 
     /*
     |--------------------------------------------------------------------------

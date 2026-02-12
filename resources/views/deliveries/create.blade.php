@@ -24,22 +24,22 @@
 
     <!-- ADD ITEM -->
     <div class="card" style="margin-top:16px;">
-        <div style="font-weight:700; margin-bottom:10px; text-align:center;">
+        <div class="delivery-row-start" style="font-weight:700; margin-bottom:10px; text-align:center;">
             Додати товар
         </div>
 
         <div class="stock-form">
 
             <div class="stock-row-top">
-                <select class="btn" id="product_id">
-                    <option value="">Оберіть товар з списку</option>
-                </select>
-            </div>
-
-            <div class="stock-row-top">
                 <button class="btn" onclick="createProduct()">
                     Додати новий товар
                 </button>
+            </div>
+
+            <div class="stock-row-top">
+                <select class="btn" id="product_id">
+                    <option value="">Оберіть товар з списку</option>
+                </select>
             </div>
 
             <div class="stock-row-bottom">
@@ -176,6 +176,7 @@ async function loadProducts() {
         `;
     });
 }
+
 
 function createProduct() {
     const name = prompt('Назва товару');

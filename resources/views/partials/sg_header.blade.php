@@ -16,9 +16,14 @@
 
         <div id="burgerMenu" class="burger-menu hidden">
           <a href="/profile" class="burger-item">🔐 Адмінка / пароль</a>
-          @if(auth()->user()->role !== 'SunFix')
-            <a href="{{ url('/') }}" class="burger-item">💼 Гаманець</a>
-          @endif
+            @if(!in_array(auth()->user()->role, ['sunfix', 'sunfix_manager'], true))
+              <a href="{{ url('/') }}" class="burger-item">💼 Гаманець</a>
+            @endif
+
+            @if(in_array(auth()->user()?->role, ['owner', 'accountant', 'sunfix_manager'], true))
+              <a href="/stock" class="burger-item">📦 Склад SunFix</a>
+            @endif
+
 
           <a href="{{ route('reclamations.index') }}" class="burger-item">🧾 Рекламації</a>
 

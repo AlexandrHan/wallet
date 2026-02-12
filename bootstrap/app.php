@@ -18,6 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'reclamations.access' => \App\Http\Middleware\ReclamationsAccess::class,
             'only.reclamations'   => \App\Http\Middleware\OnlyReclamations::class, 
             'wallets.access' => \App\Http\Middleware\WalletsAccess::class,
+            'only.sunfix.manager' => \App\Http\Middleware\OnlySunfixManager::class,
 
         ]);
         

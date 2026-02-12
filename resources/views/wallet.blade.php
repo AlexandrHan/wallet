@@ -76,6 +76,9 @@
 
         <div id="burgerMenu" class="burger-menu hidden">
             <a href="/profile" class="burger-item">🔐 Адмінка / пароль</a>
+            @if(in_array(auth()->user()?->role, ['owner', 'accountant'], true))
+              <a href="/stock" class="burger-item">📦 Склад SunFix</a>
+            @endif
             @if(auth()->user()->role !== 'accountant')
               <a href="{{ route('reclamations.index') }}" class="burger-item">🧾 Рекламації</a>
             @endif

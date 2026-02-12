@@ -14,10 +14,20 @@ class ReclamationsAccess
         if (!$u) return $next($request);
 
         // Дозволено: owner, foreman, sunfix
-        if (in_array($u->role, ['owner', 'foreman', 'worker', 'sunfix'], true)) {
+        if (in_array($u->role, ['owner', 'foreman', 'worker', 'sunfix', 'sunfix_manager'], true)) {
             return $next($request);
         }
 
         abort(403);
     }
 }
+
+
+
+
+
+
+
+
+
+

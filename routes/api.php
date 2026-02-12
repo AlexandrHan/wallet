@@ -398,3 +398,5 @@ Route::middleware(['web','auth'])->post('/deliveries/{id}/accept', [DeliveryCont
 
 Route::get('/deliveries', [DeliveryController::class, 'indexApi']);
 
+Route::get('/deliveries/{id}/items', [DeliveryController::class, 'items']);
+

@@ -73,45 +73,71 @@ class DeliveryController extends Controller
     return response()->json($delivery);
 }
 
-    public function accept(Request $request, $id)
-    {
-        $u = $request->user();
+public function accept(Request $request, $id)
+{
+    $u = $request->user();
 
-        // тільки owner + accountant
-        if (!$u || !in_array($u->role, ['owner', 'accountant'])) {
-            return response()->json(['error' => 'Forbidden'], 403);
+    // тільки owner + accountant
+    if (!$u || !in_array($u->role, ['owner', 'accountant'])) {
+        return response()->json(['error' => 'Forbidden'], 403);
+    }
+
+    $delivery = DB::table('supplier_deliveries')->where('id', $id)->first();
+
+    if (!$delivery) {
+        return response()->json(['error' => 'Delivery not found'], 404);
+    }
+
+    if ($delivery->status !== 'shipped') {
+        return response()->json(['error' => 'Delivery must be SHIPPED'], 422);
+    }
+
+    $itemsPayload = $request->input('items');
+
+    // якщо бухгалтер передав фактичні значення
+    if (is_array($itemsPayload) && count($itemsPayload) > 0) {
+
+        foreach ($itemsPayload as $row) {
+            $itemId = isset($row['item_id']) ? (int)$row['item_id'] : 0;
+            $qty    = isset($row['qty_accepted']) ? (float)$row['qty_accepted'] : null;
+
+            if ($itemId <= 0 || $qty === null) {
+                continue;
+            }
+
+            if ($qty < 0) $qty = 0;
+
+            DB::table('supplier_delivery_items')
+                ->where('delivery_id', $id)
+                ->where('id', $itemId)
+                ->update([
+                    'qty_accepted' => $qty,
+                    'updated_at' => now(),
+                ]);
         }
 
-        $delivery = DB::table('supplier_deliveries')->where('id', $id)->first();
-
-        if (!$delivery) {
-            return response()->json(['error' => 'Delivery not found'], 404);
-        }
-
-        if ($delivery->status !== 'shipped') {
-            return response()->json(['error' => 'Delivery must be SHIPPED'], 422);
-        }
-
-        // ставимо qty_accepted = qty_declared (поки без розбіжностей)
+    } else {
+        // fallback: “все співпало”
         DB::table('supplier_delivery_items')
             ->where('delivery_id', $id)
-            ->whereNull('qty_accepted')
             ->update([
                 'qty_accepted' => DB::raw('qty_declared'),
                 'updated_at' => now(),
             ]);
-
-        DB::table('supplier_deliveries')
-            ->where('id', $id)
-            ->update([
-                'status' => 'accepted',
-                'accepted_by' => $u->id,
-                'accepted_at' => now(),
-                'updated_at' => now(),
-            ]);
-
-        return response()->json(['ok' => true]);
     }
+
+    DB::table('supplier_deliveries')
+        ->where('id', $id)
+        ->update([
+            'status' => 'accepted',
+            'accepted_by' => $u->id,
+            'accepted_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+    return response()->json(['ok' => true]);
+}
+
 
     public function indexApi()
 {
@@ -120,6 +146,25 @@ class DeliveryController extends Controller
         ->get();
 
     return response()->json($rows);
+}
+
+
+public function items($id)
+{
+    $items = DB::table('supplier_delivery_items as items')
+        ->join('products', 'products.id', '=', 'items.product_id')
+        ->where('items.delivery_id', $id)
+        ->select([
+            'items.id as item_id',
+            'products.name',
+            'items.qty_declared',
+            'items.qty_accepted',
+            'items.supplier_price',
+        ])
+        ->orderBy('items.id')
+        ->get();
+
+    return response()->json($items);
 }
 
 
