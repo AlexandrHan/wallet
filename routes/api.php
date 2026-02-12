@@ -7,6 +7,9 @@ use Illuminate\Support\Facades\Http;
 use App\Http\Controllers\EntryReceiptController;
 use App\Services\ErpNextService;
 use Illuminate\Support\Facades\Storage;
+use App\Http\Controllers\DeliveryController;
+
+
 
 
 
@@ -389,5 +392,9 @@ Route::get('/deliveries', function () {
         ->get();
 });
 
+Route::get('/deliveries/{id}', [DeliveryController::class, 'get']);
 
+Route::middleware(['web','auth'])->post('/deliveries/{id}/accept', [DeliveryController::class, 'accept']);
+
+Route::get('/deliveries', [DeliveryController::class, 'indexApi']);
 

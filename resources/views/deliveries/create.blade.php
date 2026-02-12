@@ -12,7 +12,7 @@
 
     <div class="breadcrumb" style="margin-bottom:25px;">
         <a href="/stock" class="btn primary" style="width:30%">Склад</a>
-        <a href="/deliveries" class="btn primary" style="width:60%">Партії поставок</a>
+        <a href="/deliveries" class="btn primary" style="width:60%">Список поставок</a>
     </div>
 
     <!-- STATUS -->

@@ -9,10 +9,20 @@
 <main class="wrap stock-wrap">
     <div class="breadcrumb" style="margin-bottom:25px;">
         <a href="/stock" class="btn primary" style="width:30%">Склад</a>
-        <a href="/deliveries" class="btn primary" style="width:60%">Партії поставок</a>
+        <a href="/deliveries" class="btn primary" style="width:60%">Список поставок</a>
         
     </div>
-        <div class="card" style="margin-top:12px;">
+    <div style="margin-top:10px;">
+        <button class="btn" id="shipBtn" onclick="markShipped()" style="width:100%">
+            Відправити
+        </button>
+
+        <button class="btn primary" id="acceptBtn" onclick="acceptDelivery()" style="width:100%; margin-top:10px; display:none;">
+            Прийняти партію
+        </button>
+    </div>
+
+    <div class="card" style="margin-top:12px;">
         <div style="text-align:center">
             Статус: <b id="deliveryStatus">Відправлено</b>
         </div>

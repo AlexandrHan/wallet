@@ -10,7 +10,7 @@
 
     <div class="breadcrumb" style="margin-bottom:20px;">
         <a href="/deliveries" class="btn primary" style="width:100%">
-            Партії поставок
+            Список поставок
         </a>
     </div>
 

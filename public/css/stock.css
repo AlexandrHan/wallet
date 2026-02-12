@@ -106,6 +106,15 @@
     border-bottom: none;
 }
 
+.list-item{
+    padding: 14px 4px;
+    border-bottom: 3px solid rgba(255, 255, 255, 0.06);
+}
+
+.list-item:last-child {
+    border-bottom: none;
+}
+
 .delivery-list {
     margin-top: 8px;
     border-radius: 14px;
@@ -119,6 +128,10 @@
     margin-bottom: 8px;
 }
 
+.delivery-row-start{
+    text-align: center;
+    color: rgba(102, 242, 167, 0.53);
+}
 .delivery-row-bottom {
     display: flex;
     justify-content: space-between;
@@ -175,12 +188,4 @@
     min-width: 32%;
 }
 
-.delivery-row {
-    padding: 14px 4px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
-    cursor: pointer;
-}
 
-.delivery-row:last-child {
-    border-bottom: none;
-}
