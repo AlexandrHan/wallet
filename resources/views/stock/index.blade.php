@@ -9,15 +9,15 @@
 <main class="wrap stock-wrap">
     
     <div class="breadcrumb-inner">
-        <div class="breadcrumb" style="margin-bottom:20px;">
-            <a href="/deliveries" class="btn primary" style="width:100%">
-                🚚 Список поставок
+        <div class="breadcrumb" style="margin-bottom:20px; max-width:40%">
+            <a href="/deliveries" class="btn primary">
+                🚚 Поставки
             </a>
         </div>
 
         @if(auth()->check() && in_array(auth()->user()->role, ['owner','accountant']))
-        <div class="breadcrumb" style="margin-bottom:20px;">
-            <a href="/stock/sales" class="btn primary" style="width:100%;">
+        <div class="breadcrumb" style="margin-bottom:20px; max-width:58%">
+            <a href="/stock/sales" class="btn primary">
                 📅 Тижневий звіт
             </a>
         </div>

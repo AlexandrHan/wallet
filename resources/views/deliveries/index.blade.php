@@ -8,7 +8,7 @@
 
 <main class="wrap stock-wrap">
     <div class="breadcrumb" style="margin-bottom:25px;">
-        <a href="/stock" class="btn primary" style="width:35%">📦📦 Склад</a>
+        <a href="/stock" class="btn primary" style="max-width:40%">📦📦 Склад</a>
 
         @if(in_array(auth()->user()?->role, ['sunfix_manager'], true))
         <button class="btn primary" onclick="window.location.href='/deliveries/create'">

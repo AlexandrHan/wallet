@@ -8,8 +8,8 @@
 
 <main class="wrap stock-wrap">
     <div class="breadcrumb" style="margin-bottom:25px;">
-        <a href="/deliveries" class="btn primary" style="width:60%">🚚 Список поставок</a>
-        <a href="/stock" class="btn primary" style="width:35%">📦📦 Склад</a>
+        <a href="/deliveries" class="btn primary" style="max-width:58%">🚚 Поставки</a>
+        <a href="/stock" class="btn primary" style="max-width:40%">📦📦 Склад</a>
     </div>
 
     <div class="card" style="margin-top:12px;">
