@@ -11,8 +11,8 @@
 <main class="wrap stock-wrap">
 
     <div class="breadcrumb" style="margin-bottom:25px;">
-        <a href="/stock" class="btn primary" style="width:30%">Склад</a>
-        <a href="/deliveries" class="btn primary" style="width:60%">Список поставок</a>
+        <a href="/stock" class="btn primary" style="width:35%">📦📦 Склад</a>
+        <a href="/deliveries" class="btn primary" style="width:58%">🚚 Список поставок</a>
     </div>
 
     <!-- STATUS -->

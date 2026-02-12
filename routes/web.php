@@ -87,6 +87,180 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
             ]);
         });
 
+        Route::get('/stock', function (Request $request) {
+
+            // ====== 1) Діапазон (за замовчуванням поточний тиждень ПН-НД) ======
+            $from = $request->query('from');
+            $to   = $request->query('to');
+
+            if (!$from || !$to) {
+                $now = \Carbon\Carbon::now();
+                $from = $now->copy()->startOfWeek(\Carbon\Carbon::MONDAY)->toDateString();
+                $to   = $now->copy()->startOfWeek(\Carbon\Carbon::MONDAY)->addDays(6)->toDateString();
+            }
+
+            // ====== 2) Прийнято (тільки accepted) ======
+            $purchases = DB::table('supplier_delivery_items as i')
+                ->join('supplier_deliveries as d', 'd.id', '=', 'i.delivery_id')
+                ->where('d.status', 'accepted')
+                ->groupBy('i.product_id')
+                ->select(
+                    'i.product_id',
+                    DB::raw('SUM(i.qty_accepted) as received'),
+                    DB::raw('SUM(i.qty_accepted * i.supplier_price) as received_cost'),
+                    DB::raw('ROUND(SUM(i.qty_accepted * i.supplier_price) / NULLIF(SUM(i.qty_accepted),0), 2) as avg_purchase_price')
+                );
+
+            // ====== 3) Продано (всього) + собівартість проданого (всього) ======
+            $salesAll = DB::table('sales')
+                ->groupBy('product_id')
+                ->select(
+                    'product_id',
+                    DB::raw('SUM(qty) as sold'),
+                    DB::raw('SUM(qty * supplier_price) as sold_cost')
+                );
+
+            // ====== 4) Віддаємо склад + зважену собівартість залишку ======
+            $rows = DB::table('products as p')
+                ->leftJoinSub($purchases, 'pur', 'pur.product_id', '=', 'p.id')
+                ->leftJoinSub($salesAll, 's', 's.product_id', '=', 'p.id')
+                ->whereNotNull('pur.product_id') // показуємо тільки те, що хоч раз приймали
+                ->select(
+                    'p.id as product_id',
+                    'p.name',
+                    DB::raw('COALESCE(pur.received,0) as received'),
+                    DB::raw('COALESCE(s.sold,0) as sold'),
+                    DB::raw('(COALESCE(pur.received,0) - COALESCE(s.sold,0)) as qty_on_stock'),
+
+                    // ✅ собівартість одиниці залишку (moving weighted average)
+                    DB::raw("
+                        CASE
+                        WHEN (COALESCE(pur.received,0) - COALESCE(s.sold,0)) > 0
+                        THEN ROUND(
+                            (COALESCE(pur.received_cost,0) - COALESCE(s.sold_cost,0))
+                            / NULLIF((COALESCE(pur.received,0) - COALESCE(s.sold,0)), 0)
+                        , 2)
+                        ELSE ROUND(COALESCE(pur.avg_purchase_price,0), 2)
+                        END as supplier_price
+                    "),
+
+                    // ✅ вартість залишку на складі
+                    DB::raw('ROUND((COALESCE(pur.received_cost,0) - COALESCE(s.sold_cost,0)), 2) as stock_value')
+                )
+                ->orderBy('p.name')
+                ->get();
+
+            // ====== 5) До сплати за тиждень (тільки sold_at в діапазоні) ======
+            $weekly_to_pay = (float) DB::table('sales')
+                ->whereBetween('sold_at', [$from, $to])
+                ->sum(DB::raw('qty * supplier_price'));
+
+            return response()->json([
+                'from' => $from,
+                'to' => $to,
+                'supplier_debt' => round($weekly_to_pay, 2), // <- “до сплати за період”
+                'stock' => $rows,
+            ]);
+        });
+
+
+        Route::post('/sales/batch', function (Request $request) {
+
+        $u = $request->user();
+        if (!$u || !in_array($u->role, ['owner', 'accountant'], true)) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
+        $data = $request->validate([
+            'sold_at' => 'required|date',
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'required|integer',
+            'items.*.qty' => 'required|integer|min:0',
+        ]);
+
+        $soldAt = $data['sold_at'];
+
+        foreach ($data['items'] as $it) {
+            $pid = (int)$it['product_id'];
+            $qty = (int)$it['qty'];
+
+            if ($qty <= 0) continue;
+
+            // ціна постачальника беремо з останньої ACCEPTED поставки по цьому товару
+            $supplierPrice = DB::table('supplier_delivery_items as i')
+                ->join('supplier_deliveries as d', 'd.id', '=', 'i.delivery_id')
+                ->where('d.status', 'accepted')
+                ->where('i.product_id', $pid)
+                ->orderByDesc('d.accepted_at')
+                ->orderByDesc('i.updated_at')
+                ->value('i.supplier_price');
+
+            if ($supplierPrice === null) {
+                return response()->json([
+                    'error' => "Нема ціни постачальника для product_id={$pid} (нема accepted поставки)"
+                ], 422);
+            }
+
+            // перевірка залишку: received - sold
+            $received = (int) DB::table('supplier_delivery_items as i')
+                ->join('supplier_deliveries as d', 'd.id', '=', 'i.delivery_id')
+                ->where('d.status', 'accepted')
+                ->where('i.product_id', $pid)
+                ->sum('i.qty_accepted');
+
+            $sold = (int) DB::table('sales')
+                ->where('product_id', $pid)
+                ->sum('qty');
+
+            $available = $received - $sold;
+
+            if ($qty > $available) {
+                return response()->json([
+                    'error' => "Недостатньо на складі для product_id={$pid}. Доступно: {$available}, вводиш: {$qty}"
+                ], 422);
+            }
+
+            DB::table('sales')->insert([
+                'product_id' => $pid,
+                'qty' => $qty,
+                'supplier_price' => $supplierPrice,
+                'sold_at' => $soldAt,
+                'created_by' => $u->id,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        return response()->json(['ok' => true]);
+    });
+
+    Route::get('/sales/summary', function (Request $request) {
+
+        $u = $request->user();
+        if (!$u || !in_array($u->role, ['owner', 'accountant'], true)) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
+        $from = $request->query('from');
+        $to   = $request->query('to');
+
+        if (!$from || !$to) {
+            return response()->json(['error' => 'from/to required'], 422);
+        }
+
+        $total = (float) DB::table('sales')
+            ->whereBetween('sold_at', [$from, $to])
+            ->sum(DB::raw('qty * supplier_price'));
+
+        return response()->json([
+            'from' => $from,
+            'to' => $to,
+            'total' => round($total, 2),
+        ]);
+    });
+
+
+
         /*
         |--------------------------
         | CSV preview/import
@@ -694,6 +868,17 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
     Route::get('/deliveries', function () {
         return view('deliveries.index');
     });
+
+    Route::get('/stock/sales', function (Request $request) {
+        $u = $request->user();
+
+        if (!$u || !in_array($u->role, ['owner', 'accountant'], true)) {
+            abort(403);
+        }
+
+        return view('stock.sales');
+    });
+
 
 
     /*

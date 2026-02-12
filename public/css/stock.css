@@ -9,6 +9,11 @@
     padding-right: 0;
 }
 
+.breadcrumb-inner{
+    display: flex;
+    justify-content: space-around;
+}
+
 .breadcrumb{
     display: flex;
     justify-content: space-around;
@@ -202,3 +207,22 @@
     opacity:1;
 }
 
+/* Центруємо лейбл + цифру в “клітинках” */
+.delivery-row-bottom .kv{
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+}
+
+.delivery-row-bottom .kv .label{
+  width: 100%;
+  text-align: center;
+}
+
+.delivery-row-bottom .kv .value{
+  width: 100%;
+  text-align: center;
+}
