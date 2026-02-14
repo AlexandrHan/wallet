@@ -51,13 +51,6 @@
     @endif
 
 
-    <div class="card" style="margin-top:14px;">
-        <div style="font-weight:700; text-align:center; margin-bottom:10px;">
-            Передані кошти
-        </div>
-
-        <div id="cashTransfersList" class="delivery-list"></div>
-    </div>
 
 
     <div class="card" style="margin-top:14px;">
@@ -172,59 +165,56 @@ async function receiveCash(id){
 
 
 async function loadCashTransfers(){
+  const res = await fetch('/api/supplier-cash', {
+    headers: {
+      'Accept': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest',
+    }
+  });
 
-    const res = await fetch('/api/supplier-cash');
-    const rows = await res.json();
+  const rows = await res.json();
 
-    const box = document.getElementById('cashTransfersList');
-    if (!box) return;
+  const box = document.getElementById('cashTransfersList');
+  if (!box) return;
 
-    box.innerHTML = '';
+  box.innerHTML = '';
 
-(rows || []).forEach(r => {
-
-    const status = (r.status || '').toUpperCase();
-    const isReceived = status === 'RECEIVED';
+  (Array.isArray(rows) ? rows : []).forEach(r => {
+    const isReceived = Number(r.is_received ?? 0) === 1;
+    const status = isReceived ? 'RECEIVED' : 'SENT';
 
     box.innerHTML += `
-        <div class="delivery-row">
-
-            <div class="delivery-row-top">
-                ${isReceived ? '✅' : '🕓'} Передача #${r.id}
-            </div>
-
-            <div class="delivery-row-bottom">
-                <div>
-                    <span class="label">Сума</span>
-                    <span class="value">${r.amount} $</span>
-                </div>
-
-                <div>
-                    <span class="label">Статус</span>
-                    <span class="value">${status || 'SENT'}</span>
-                </div>
-
-                <div>
-                    <span class="label">Дата</span>
-                    <span class="value">${String(r.created_at).substring(0,10)}</span>
-                </div>
-
-                ${
-                    !isReceived
-                    ? `<button class="btn primary"
-                        onclick="receiveCash(${r.id})">
-                        Отримати
-                       </button>`
-                    : ''
-                }
-            </div>
-
+      <div class="delivery-row">
+        <div class="delivery-row-top">
+          ${isReceived ? '✅' : '🕓'} Передача #${r.id}
         </div>
+
+        <div class="delivery-row-bottom">
+          <div>
+            <span class="label">Сума</span>
+            <span class="value">${r.amount} $</span>
+          </div>
+
+          <div>
+            <span class="label">Статус</span>
+            <span class="value">${status}</span>
+          </div>
+
+          <div>
+            <span class="label">Дата</span>
+            <span class="value">${String(r.created_at).substring(0,10)}</span>
+          </div>
+
+          ${
+            !isReceived
+              ? `<button class="btn primary" onclick="receiveCash(${r.id})">Отримати</button>`
+              : ''
+          }
+        </div>
+      </div>
     `;
-});
-
+  });
 }
-
 
 function openSendCashModal(){
     document.getElementById('sendCashAmount').value = '';
