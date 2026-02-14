@@ -29,6 +29,8 @@ class OnlySunfixManager
             $request->is('api/deliveries*') ||
             $request->is('api/products*') ||
             $request->is('api/reclamations*') ||
+            $request->is('api/supplier-cash*') ||
+
 
             // logout + storage
             $request->is('logout') ||

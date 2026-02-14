@@ -149,36 +149,6 @@ async function loadStock() {
 
 }
 
-async function loadCashTransfers(){
-
-    const res = await fetch('/api/supplier-cash');
-    const data = await res.json();
-
-    const list = document.getElementById('cashTransfersList');
-    if (!list) return;
-
-    list.innerHTML = '';
-
-    data.forEach(t => {
-
-        if (t.is_received) return;
-
-        list.innerHTML += `
-            <div class="delivery-row">
-                <div class="delivery-row-top">
-                    Передано ${t.amount} $
-                </div>
-
-                <div class="delivery-row-bottom">
-                    <button class="btn primary"
-                        onclick="receiveCash(${t.id})">
-                        Отримати кошти
-                    </button>
-                </div>
-            </div>
-        `;
-    });
-}
 
 async function receiveCash(id){
 
@@ -211,37 +181,48 @@ async function loadCashTransfers(){
 
     box.innerHTML = '';
 
-    (rows || []).forEach(r => {
+(rows || []).forEach(r => {
 
-        const status = (r.status || '').toUpperCase();
+    const status = (r.status || '').toUpperCase();
+    const isReceived = status === 'RECEIVED';
 
-        box.innerHTML += `
-            <div class="delivery-row">
+    box.innerHTML += `
+        <div class="delivery-row">
 
-                <div class="delivery-row-top">
-                    ${status === 'RECEIVED' ? '✅' : '🕓'} Передача #${r.id}
-                </div>
-
-                <div class="delivery-row-bottom">
-                    <div>
-                        <span class="label">Сума</span>
-                        <span class="value">${r.amount} $</span>
-                    </div>
-
-                    <div>
-                        <span class="label">Статус</span>
-                        <span class="value">${status}</span>
-                    </div>
-
-                    <div>
-                        <span class="label">Дата</span>
-                        <span class="value">${String(r.created_at).substring(0,10)}</span>
-                    </div>
-                </div>
-
+            <div class="delivery-row-top">
+                ${isReceived ? '✅' : '🕓'} Передача #${r.id}
             </div>
-        `;
-    });
+
+            <div class="delivery-row-bottom">
+                <div>
+                    <span class="label">Сума</span>
+                    <span class="value">${r.amount} $</span>
+                </div>
+
+                <div>
+                    <span class="label">Статус</span>
+                    <span class="value">${status || 'SENT'}</span>
+                </div>
+
+                <div>
+                    <span class="label">Дата</span>
+                    <span class="value">${String(r.created_at).substring(0,10)}</span>
+                </div>
+
+                ${
+                    !isReceived
+                    ? `<button class="btn primary"
+                        onclick="receiveCash(${r.id})">
+                        Отримати
+                       </button>`
+                    : ''
+                }
+            </div>
+
+        </div>
+    `;
+});
+
 }
 
 

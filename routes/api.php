@@ -400,3 +400,18 @@ Route::get('/deliveries', [DeliveryController::class, 'indexApi']);
 
 Route::get('/deliveries/{id}/items', [DeliveryController::class, 'items']);
 
+Route::middleware('auth')->post('/supplier-cash/{id}/received', function ($id) {
+
+    DB::table('supplier_cash_transfers')
+        ->where('id', $id)
+        ->update([
+            'is_received' => 1,
+            'received_by' => auth()->id(),
+            'received_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+    return response()->json([
+        'ok' => true
+    ]);
+});

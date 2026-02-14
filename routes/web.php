@@ -204,6 +204,14 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
 
         Route::post('/supplier-cash/{id}/received', function ($id) {
 
+            $transfer = DB::table('supplier_cash_transfers')
+                ->where('id', $id)
+                ->first();
+
+            if (!$transfer) {
+                return response()->json(['error' => 'Not found'], 404);
+            }
+
             DB::table('supplier_cash_transfers')
                 ->where('id', $id)
                 ->update([
@@ -213,8 +221,18 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
                     'updated_at' => now(),
                 ]);
 
+            // ✅ списуємо борг постачальнику
+            DB::table('supplier_deliveries')
+                ->whereNull('paid_at')
+                ->orderBy('id')
+                ->limit(1)
+                ->update([
+                    'paid_at' => now()
+                ]);
+
             return response()->json(['ok' => true]);
         });
+
 
 
 
