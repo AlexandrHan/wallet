@@ -23,19 +23,11 @@
             <input class="btn btn-input" id="to" type="date">
         </div>
 
-        <div class="stock-row-bottom">
-            <button class="btn primary" onclick="calcSummary()" style="margin-top:20px; width:100%;">Порахувати</button>
-        </div>
 
         <div style="margin-top:12px; text-align:center; font-weight:700;">
             До сплати за період: <span id="summaryTotal">0</span> $
         </div>
 
-        <div class="stock-row-bottom" style="margin-top:10px;">
-            <button class="btn primary" onclick="saveSales()" style="width:100%">
-                Зберегти продажі (датою “to”)
-            </button>
-        </div>
     </div>
 
     <div class="card" style="margin-top:14px;">
@@ -44,6 +36,12 @@
         </div>
 
         <div id="salesList" class="delivery-list"></div>
+    </div>
+
+    <div class="stock-row-bottom" style="margin-top:10px;">
+      <button class="btn primary" onclick="saveSales()" style="width:100%">
+        Зберегти продажі
+      </button>
     </div>
 
 </main>
@@ -190,15 +188,13 @@ async function calcSummary(){
   const from = document.getElementById('from')?.value;
   const to   = document.getElementById('to')?.value;
 
-  if (!from || !to) { alert('Вибери дати from/to'); return; }
+  const out = await fetchJson(`/api/sales/summary?from=${from}&to=${to}`);
 
-  try {
-    const out = await fetchJson(`/api/sales/summary?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
-    document.getElementById('summaryTotal').innerText = out.total ?? 0;
-  } catch (e) {
-    alert(e.message);
-  }
+  console.log('SUMMARY RESPONSE:', out);
+
+  document.getElementById('summaryTotal').innerText = out.total ?? 0;
 }
+
 
 document.addEventListener('DOMContentLoaded', async () => {
   setDefaultDates();

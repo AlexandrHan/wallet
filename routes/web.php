@@ -163,6 +163,60 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
             ]);
         });
 
+        // ======================
+        // SUPPLIER CASH
+        // ======================
+
+        Route::get('/supplier-cash', function (Request $request) {
+
+            $rows = DB::table('supplier_cash_transfers')
+                ->orderByDesc('id')
+                ->limit(50)
+                ->get();
+
+            return response()->json($rows);
+        });
+
+        Route::post('/supplier-cash', function (Request $request) {
+
+            $u = $request->user();
+
+            $amount = (float) $request->input('amount', 0);
+
+            if ($amount <= 0) {
+                return response()->json(['error' => 'amount required'], 422);
+            }
+
+            $id = DB::table('supplier_cash_transfers')->insertGetId([
+                'amount' => $amount,
+                'created_by' => $u->id,
+                'is_received' => 0,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            return response()->json([
+                'ok' => true,
+                'id' => $id
+            ]);
+        });
+
+
+        Route::post('/supplier-cash/{id}/received', function ($id) {
+
+            DB::table('supplier_cash_transfers')
+                ->where('id', $id)
+                ->update([
+                    'is_received' => 1,
+                    'received_by' => auth()->id(),
+                    'received_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+            return response()->json(['ok' => true]);
+        });
+
+
 
         Route::post('/sales/batch', function (Request $request) {
 
