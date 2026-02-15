@@ -131,8 +131,20 @@ html.no-splash #appSplash{
 /* ================== BASE ================== */
 *{ box-sizing:border-box; }
 
-/* NOTE: це правило далі перекривається нижче (body height:auto !important) */
-body{ height:110%; }
+html, body{
+  height: 100%;
+}
+
+body{
+  height: auto;      /* важливо */
+  min-height: 100vh; /* базово */
+}
+
+/* сучасний viewport, щоб мобільний не чудив */
+@supports (min-height: 100dvh){
+  body{ min-height: 100dvh; }
+}
+
 
 html{
   height:100%;
