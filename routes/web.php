@@ -322,48 +322,48 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
 
 
     
-Route::get('/sales/summary', function (Request $request) {
+        Route::get('/sales/summary', function (Request $request) {
 
-    $u = $request->user();
-    if (!$u || !in_array($u->role, ['owner', 'accountant'], true)) {
-        return response()->json(['error' => 'Forbidden'], 403);
-    }
+            $u = $request->user();
+            if (!$u || !in_array($u->role, ['owner', 'accountant'], true)) {
+                return response()->json(['error' => 'Forbidden'], 403);
+            }
 
-    $from = $request->query('from');
-    $to   = $request->query('to');
+            $from = $request->query('from');
+            $to   = $request->query('to');
 
-    if (!$from || !$to) {
-        return response()->json(['error' => 'from/to required'], 422);
-    }
+            if (!$from || !$to) {
+                return response()->json(['error' => 'from/to required'], 422);
+            }
 
-    // 1) Продажі за період
-    $salesTotal = (float) DB::table('sales')
-        ->whereBetween(DB::raw("date(COALESCE(sold_at, created_at))"), [$from, $to])
-        ->sum(DB::raw('qty * supplier_price'));
+            // 1) Продажі за період
+            $salesTotal = (float) DB::table('sales')
+                ->whereBetween(DB::raw("date(COALESCE(sold_at, created_at))"), [$from, $to])
+                ->sum(DB::raw('qty * supplier_price'));
 
-    // 2) Отримані кошти менеджером за період
-    $paidTotal = (float) DB::table('supplier_cash_transfers')
-        ->where('is_received', 1)
-        ->where('currency', 'USD')
-        ->whereNotNull('received_at')
-        ->whereBetween(DB::raw("date(received_at)"), [$from, $to])
-        ->sum('amount');
+            // 2) Отримані кошти менеджером за період
+            $paidTotal = (float) DB::table('supplier_cash_transfers')
+                ->where('is_received', 1)
+                ->where('currency', 'USD')
+                ->whereNotNull('received_at')
+                ->whereBetween(DB::raw("date(received_at)"), [$from, $to])
+                ->sum('amount');
 
-    // 3) Нетто “до сплати”
-    $total = max(0, $salesTotal - $paidTotal);
+            // 3) Нетто “до сплати”
+            $total = max(0, $salesTotal - $paidTotal);
 
-    return response()->json([
-        'from' => $from,
-        'to' => $to,
-        'total' => round($total, 2),          // ✅ фронт хай бере як і брав
-        'sales_total' => round($salesTotal, 2),
-        'paid_total' => round($paidTotal, 2),
-    ]);
-});
-
-
+            return response()->json([
+                'from' => $from,
+                'to' => $to,
+                'total' => round($total, 2),          // ✅ фронт хай бере як і брав
+                'sales_total' => round($salesTotal, 2),
+                'paid_total' => round($paidTotal, 2),
+            ]);
+        });
 
 
+        
+        
 
 
         /*
@@ -961,6 +961,11 @@ Route::get('/sales/summary', function (Request $request) {
         return view('stock.index');
     });
 
+    Route::get('/stock/supplier-cash', function () {
+        return view('stock.supplier-cash');
+    });
+
+
     Route::get('/deliveries/create', function () {
         return view('deliveries.create');
     });
@@ -983,6 +988,12 @@ Route::get('/sales/summary', function (Request $request) {
 
         return view('stock.sales');
     });
+
+    Route::get('/finance', function () {
+        return view('finance.finance');
+    });
+
+
 
 
 

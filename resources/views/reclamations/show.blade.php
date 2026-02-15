@@ -13,8 +13,14 @@
     'closed' => 'Завершили',
   ];
 @endphp
+@push('styles')
+<link rel="stylesheet" href="/css/stock.css?v={{ filemtime(public_path('css/stock.css')) }}">
+@endpush
 
-<main class="wrap page reclamations-show" data-reclamation-id="{{ $reclamation->id }}">
+
+
+
+<main class="wrap page reclamations-show {{ auth()->check() ? 'has-tg-nav' : '' }}" data-reclamation-id="{{ $reclamation->id }}">
 
   <div class="row content">
     
@@ -261,6 +267,18 @@ $sub = $s?->done_date
     ->toArray();
 @endphp
 
+
+@auth
+  @php
+    $navView = match(auth()->user()->role){
+      'sunfix_manager' => 'partials.nav.bottom-sunfix-manager',
+      'owner' => 'partials.nav.bottom-owner',
+      default => null,
+    };
+  @endphp
+@endauth
+
+@include('partials.nav.bottom-wallet')
 
 <script>
   window.RECL = {

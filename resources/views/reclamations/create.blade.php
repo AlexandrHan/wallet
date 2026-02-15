@@ -5,7 +5,7 @@
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <link rel="manifest" href="/manifest.webmanifest?v={{ filemtime(public_path('manifest.webmanifest')) }}">
   <meta name="theme-color" content="#0b0d10">
-
+  <link rel="stylesheet" href="/css/nav-telegram.css?v={{ filemtime(public_path('css/nav-telegram.css')) }}">
   <link rel="stylesheet" href="/css/wallet.css?v={{ filemtime(public_path('css/wallet.css')) }}">
   <link rel="stylesheet" href="/css/reclamations.css?v={{ filemtime(public_path('css/reclamations.css')) }}">
   <script src="/js/reclamations.js?v={{ filemtime(public_path('js/reclamations.js')) }}" defer></script>
@@ -21,7 +21,8 @@
   </style>
 </head>
 
-<body>
+<body class="{{ auth()->check() ? 'has-tg-nav' : '' }}">
+
   <div class="app-bg"></div>
 
   <div id="appSplash">
@@ -144,5 +145,16 @@
       </div>
     </form>
   </main>
+@auth
+  @php
+    $navView = match(auth()->user()->role){
+      'sunfix_manager' => 'partials.nav.bottom-sunfix-manager',
+      'owner' => 'partials.nav.bottom-owner',
+      default => null,
+    };
+  @endphp
+@endauth
+
+@include('partials.nav.bottom-wallet')
 </body>
 </html>

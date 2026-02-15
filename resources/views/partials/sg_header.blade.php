@@ -11,30 +11,8 @@
         </span>
       </div>
 
-      <div class="burger-wrap">
-        <button type="button" id="burgerBtn" class="burger-btn">☰</button>
+      @include('partials.nav.top-avatar-placeholder')
 
-        <div id="burgerMenu" class="burger-menu hidden">
-          <a href="/profile" class="burger-item">🔐 Адмінка / пароль</a>
-            @if(!in_array(auth()->user()->role, ['sunfix', 'sunfix_manager'], true))
-              <a href="{{ url('/') }}" class="burger-item">💼 Гаманець</a>
-            @endif
-
-            @if(in_array(auth()->user()?->role, ['owner', 'accountant', 'sunfix_manager'], true))
-              <a href="/stock" class="burger-item">📦 Склад SunFix</a>
-            @endif
-
-
-          <a href="{{ route('reclamations.index') }}" class="burger-item">🧾 Рекламації</a>
-
-          <div class="burger-actions">
-            <form method="POST" action="{{ route('logout') }}">
-              @csrf
-              <button type="submit" class="burger-item danger">🚪 Вийти</button>
-            </form>
-          </div>
-        </div>
-      </div>
     </div>
 
     <div class="header-right">

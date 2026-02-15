@@ -14,6 +14,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="mobile-web-app-capable" content="yes">
 
+  <link rel="stylesheet" href="/css/nav-telegram.css?v={{ filemtime(public_path('css/nav-telegram.css')) }}">
+
   <link rel="stylesheet" href="/css/wallet.css?v={{ filemtime(public_path('css/wallet.css')) }}">
   <link rel="stylesheet" href="/css/reclamations.css?v={{ filemtime(public_path('css/reclamations.css')) }}">
   <script src="/js/reclamations.js?v={{ filemtime(public_path('js/reclamations.js')) }}" defer></script>
@@ -40,8 +42,8 @@
     #appSplash{ position:fixed; inset:0; background:#0b0d10; z-index:99999 }
   </style>
 </head>
+<body class="{{ auth()->check() ? 'has-tg-nav' : '' }}">
 
-<body>
   <div class="app-bg"></div>
 
   <div id="appSplash">
@@ -342,6 +344,17 @@ $notesCount = $item->steps
 
 </main>
 
+@auth
+  @php
+    $navView = match(auth()->user()->role){
+      'sunfix_manager' => 'partials.nav.bottom-sunfix-manager',
+      'owner' => 'partials.nav.bottom-owner',
+      default => null,
+    };
+  @endphp
+@endauth
+
+@include('partials.nav.bottom-wallet')
 
 <script>
   (function () {

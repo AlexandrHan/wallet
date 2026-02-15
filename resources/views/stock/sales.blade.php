@@ -8,10 +8,6 @@
 
 <main class="wrap stock-wrap">
 
-    <div class="breadcrumb" style="margin-bottom:20px;">
-        <a href="/stock" class="btn primary" style="max-width:40%">📦📦 Склад</a>
-        <a href="/deliveries" class="btn primary" style="max-width:58%">🚚 Поставки</a>
-    </div>
 
     <div class="card">
         <div style="font-weight:700; text-align:center; margin-bottom:10px;">
@@ -46,6 +42,19 @@
 
 </main>
 
+@auth
+  @php
+    $navView = match(auth()->user()->role){
+      'sunfix_manager' => 'partials.nav.bottom-sunfix-manager',
+      'owner' => 'partials.nav.bottom-owner',
+      default => null,
+    };
+  @endphp
+
+  @if($navView)
+    @include($navView)
+  @endif
+@endauth
 <script>
 function iso(d){
   const z = n => String(n).padStart(2,'0');

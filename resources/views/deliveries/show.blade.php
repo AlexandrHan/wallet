@@ -4,13 +4,11 @@
 <link rel="stylesheet" href="/css/stock.css?v={{ filemtime(public_path('css/stock.css')) }}">
 @endpush
 
+
+
 @section('content')
 
-<main class="wrap stock-wrap">
-    <div class="breadcrumb" style="margin-bottom:25px;">
-        <a href="/deliveries" class="btn primary" style="max-width:58%">🚚 Поставки</a>
-        <a href="/stock" class="btn primary" style="max-width:40%">📦📦 Склад</a>
-    </div>
+<main class="wrap stock-wrap {{ auth()->check() ? 'has-tg-nav' : '' }}">
 
     <div class="card" style="margin-top:12px;">
         <div style="text-align:center">
@@ -66,6 +64,19 @@
     </div>
 
 </main>
+@auth
+  @php
+    $navView = match(auth()->user()->role){
+      'sunfix_manager' => 'partials.nav.bottom-sunfix-manager',
+      'owner' => 'partials.nav.bottom-owner',
+      default => null,
+    };
+  @endphp
+
+  @if($navView)
+    @include($navView)
+  @endif
+@endauth
 
 <script>
 const AUTH_ROLE = @json(auth()->check() ? auth()->user()->role : null);

@@ -23,6 +23,7 @@ class OnlySunfixManager
             $request->is('stock') ||
             $request->is('deliveries*') ||
             $request->is('reclamations*') ||
+            $request->is('stock/supplier-cash*') ||
 
             // api for stock/deliveries/products (+ reclamations якщо є)
             $request->is('api/stock*') ||
@@ -30,6 +31,7 @@ class OnlySunfixManager
             $request->is('api/products*') ||
             $request->is('api/reclamations*') ||
             $request->is('api/supplier-cash*') ||
+            
 
 
             // logout + storage

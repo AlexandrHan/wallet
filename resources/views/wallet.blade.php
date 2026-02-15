@@ -21,6 +21,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="SG Wallet">
   <link rel="stylesheet" href="/css/wallet.css?v={{ filemtime(public_path('css/wallet.css')) }}">
+
+  <link rel="stylesheet" href="/css/nav-telegram.css?v={{ filemtime(public_path('css/nav-telegram.css')) }}">
+
   <script src="/js/wallet.js?v={{ filemtime(public_path('js/wallet.js')) }}" defer></script>
   
 
@@ -332,6 +335,8 @@
     <button type="button" id="walletConfirm" class="btn save">Створити</button>
   </div>
 </div>
+
+@include('partials.nav.bottom-wallet')
 
 
 <div id="staffCashModal" class="modal hidden">

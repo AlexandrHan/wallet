@@ -3,12 +3,12 @@
 @push('styles')
 <link rel="stylesheet" href="/css/stock.css?v={{ filemtime(public_path('css/stock.css')) }}">
 @endpush
+<body class="{{ auth()->check() ? 'has-tg-nav' : '' }}">
 
 @section('content')
 
 <main class="wrap stock-wrap">
     <div class="breadcrumb" style="margin-bottom:25px;">
-        <a href="/stock" class="btn primary" style="max-width:40%">📦📦 Склад</a>
 
         @if(in_array(auth()->user()?->role, ['sunfix_manager'], true))
         <button class="btn primary" onclick="window.location.href='/deliveries/create'">
@@ -26,6 +26,20 @@
         <div id="deliveriesList" class="delivery-list"></div>
     </div>
 </main>
+@auth
+  @php
+    $navView = match(auth()->user()->role){
+      'sunfix_manager' => 'partials.nav.bottom-sunfix-manager',
+      'owner' => 'partials.nav.bottom-owner',
+      default => null,
+    };
+  @endphp
+
+  @if($navView)
+    @include($navView)
+  @endif
+@endauth
+</body>
 
 <script>
 const AUTH_ROLE = @json(auth()->check() ? auth()->user()->role : null);
