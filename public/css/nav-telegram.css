@@ -13,18 +13,34 @@ body.has-tg-nav main.wrap{
   padding-bottom: calc(92px + env(safe-area-inset-bottom));
 }
 
+/* щоб на десктопі не було "стрибака" через появу скролбару */
+html{ scrollbar-gutter: stable; }
+body{ overflow-y: scroll; } /* можна лишити тільки на десктоп через media */
+
 /* ---------- BOTTOM NAV ---------- */
 .tg-bottom-nav{
   position: fixed;
-  left: 0; right: 0; bottom: -20px;
+
+  /* було: left:0; right:0; bottom:-30px; */
+  left: 50%;
+  bottom: 0;
+
+  /* ширина як у контейнера + центрування */
+  width: min(980px, calc(100% - 24px));
+  transform: translateX(-50%) translateY(30px); /* оце замість bottom:-30px */
+
   z-index: 9999;
   padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+
   pointer-events: none;
 }
+
+.tg-bottom-nav > *{ pointer-events: auto; }
+
 
 .tg-bottom-nav > *{ pointer-events: auto; }
 
@@ -121,3 +137,8 @@ body.has-tg-nav main.wrap{
   border: 1px solid rgba(255,107,107,.28);
 }
 
+@media (min-width:900px){
+  .tg-bottom-nav{
+    bottom: 30px; 
+}
+  }
