@@ -150,17 +150,31 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
                 ->orderBy('p.name')
                 ->get();
 
-            // ====== 5) До сплати за тиждень (тільки sold_at в діапазоні) ======
-            $weekly_to_pay = (float) DB::table('sales')
-                ->whereBetween('sold_at', [$from, $to])
+            // ====== 5) Борг постачальнику за період = продажі - отримані кошти ======
+
+            // 5.1) Продажі за період (sold_at або created_at якщо sold_at null)
+            $salesPeriod = (float) DB::table('sales')
+                ->whereBetween(DB::raw("date(COALESCE(sold_at, created_at))"), [$from, $to])
                 ->sum(DB::raw('qty * supplier_price'));
+
+            // 5.2) Отримані кошти за період (received_at)
+            $paidPeriod = (float) DB::table('supplier_cash_transfers')
+                ->where('is_received', 1)
+                ->where('currency', 'USD')
+                ->whereNotNull('received_at')
+                ->whereBetween(DB::raw("date(received_at)"), [$from, $to])
+                ->sum('amount');
+
+            // 5.3) Нетто-борг
+            $supplierDebt = max(0, $salesPeriod - $paidPeriod);
 
             return response()->json([
                 'from' => $from,
                 'to' => $to,
-                'supplier_debt' => round($weekly_to_pay, 2), // <- “до сплати за період”
+                'supplier_debt' => round($supplierDebt, 2),
                 'stock' => $rows,
             ]);
+
         });
 
         // ======================
@@ -204,34 +218,34 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
 
         Route::post('/supplier-cash/{id}/received', function ($id) {
 
-            $transfer = DB::table('supplier_cash_transfers')
-                ->where('id', $id)
-                ->first();
+            // ✅ тільки менеджер має право "отримати"
+            $u = auth()->user();
+            if (!$u || $u->role !== 'sunfix_manager') {
+                return response()->json(['error' => 'Forbidden'], 403);
+            }
 
+            $transfer = DB::table('supplier_cash_transfers')->where('id', $id)->first();
             if (!$transfer) {
                 return response()->json(['error' => 'Not found'], 404);
+            }
+
+            // якщо вже отримано — просто ок
+            if ((int)($transfer->is_received ?? 0) === 1) {
+                return response()->json(['ok' => true, 'already' => true]);
             }
 
             DB::table('supplier_cash_transfers')
                 ->where('id', $id)
                 ->update([
                     'is_received' => 1,
-                    'received_by' => auth()->id(),
+                    'received_by' => $u->id,
                     'received_at' => now(),
-                    'updated_at' => now(),
-                ]);
-
-            // ✅ списуємо борг постачальнику
-            DB::table('supplier_deliveries')
-                ->whereNull('paid_at')
-                ->orderBy('id')
-                ->limit(1)
-                ->update([
-                    'paid_at' => now()
+                    'updated_at'  => now(),
                 ]);
 
             return response()->json(['ok' => true]);
         });
+
 
 
 
@@ -306,30 +320,49 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         return response()->json(['ok' => true]);
     });
 
-    Route::get('/sales/summary', function (Request $request) {
 
-        $u = $request->user();
-        if (!$u || !in_array($u->role, ['owner', 'accountant'], true)) {
-            return response()->json(['error' => 'Forbidden'], 403);
-        }
+    
+Route::get('/sales/summary', function (Request $request) {
 
-        $from = $request->query('from');
-        $to   = $request->query('to');
+    $u = $request->user();
+    if (!$u || !in_array($u->role, ['owner', 'accountant'], true)) {
+        return response()->json(['error' => 'Forbidden'], 403);
+    }
 
-        if (!$from || !$to) {
-            return response()->json(['error' => 'from/to required'], 422);
-        }
+    $from = $request->query('from');
+    $to   = $request->query('to');
 
-        $total = (float) DB::table('sales')
-            ->whereBetween('sold_at', [$from, $to])
-            ->sum(DB::raw('qty * supplier_price'));
+    if (!$from || !$to) {
+        return response()->json(['error' => 'from/to required'], 422);
+    }
 
-        return response()->json([
-            'from' => $from,
-            'to' => $to,
-            'total' => round($total, 2),
-        ]);
-    });
+    // 1) Продажі за період
+    $salesTotal = (float) DB::table('sales')
+        ->whereBetween(DB::raw("date(COALESCE(sold_at, created_at))"), [$from, $to])
+        ->sum(DB::raw('qty * supplier_price'));
+
+    // 2) Отримані кошти менеджером за період
+    $paidTotal = (float) DB::table('supplier_cash_transfers')
+        ->where('is_received', 1)
+        ->where('currency', 'USD')
+        ->whereNotNull('received_at')
+        ->whereBetween(DB::raw("date(received_at)"), [$from, $to])
+        ->sum('amount');
+
+    // 3) Нетто “до сплати”
+    $total = max(0, $salesTotal - $paidTotal);
+
+    return response()->json([
+        'from' => $from,
+        'to' => $to,
+        'total' => round($total, 2),          // ✅ фронт хай бере як і брав
+        'sales_total' => round($salesTotal, 2),
+        'paid_total' => round($paidTotal, 2),
+    ]);
+});
+
+
+
 
 
 

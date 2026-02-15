@@ -52,6 +52,14 @@
 
 
 
+    <div class="card" style="margin-top:14px;">
+        <div style="font-weight:700; text-align:center; margin-bottom:10px;">
+            Передані кошти
+        </div>
+
+        <div id="cashTransfersList" class="delivery-list"></div>
+    </div>
+
 
     <div class="card" style="margin-top:14px;">
         <div class="list-item" style="font-weight:700; margin-bottom:10px; text-align:center;">
