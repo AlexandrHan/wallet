@@ -138,7 +138,7 @@
 
     </div>
 
-<!-- SG HOLDING CARD -->
+<!-- SG HOLDING CARD start -->
 
 <div id="holdingCard" class="card {{ auth()->user()->role === 'owner' ? '' : 'hidden' }}"></div>
 
