@@ -52,13 +52,7 @@
 
 
 
-    <div class="card" style="margin-top:14px;">
-        <div style="font-weight:700; text-align:center; margin-bottom:10px;">
-            Передані кошти
-        </div>
 
-        <div id="cashTransfersList" class="delivery-list"></div>
-    </div>
 
 
     <div class="card" style="margin-top:14px;">
@@ -98,9 +92,14 @@
 
 <script>
 async function loadStock() {
+  const res = await fetch('/api/stock');
 
-    const res = await fetch('/api/stock');
-    const response = await res.json();
+  if (!res.ok) {
+    console.warn('GET /api/stock failed:', res.status, await res.text());
+    return;
+  }
+
+  const response = await res.json();
 
     const list = document.getElementById('stockList');
     const debt = document.getElementById('supplierDebt');
@@ -173,12 +172,12 @@ async function receiveCash(id){
 
 
 async function loadCashTransfers(){
-  const res = await fetch('/api/supplier-cash', {
-    headers: {
-      'Accept': 'application/json',
-      'X-Requested-With': 'XMLHttpRequest',
-    }
-  });
+  const res = await fetch('/api/supplier-cash');
+
+  if (!res.ok) {
+    console.warn('GET /api/supplier-cash failed:', res.status, await res.text());
+    return;
+  }
 
   const rows = await res.json();
 
@@ -223,6 +222,33 @@ async function loadCashTransfers(){
     `;
   });
 }
+
+let _refreshTimer = null;
+
+function startAutoRefresh(){
+  if (_refreshTimer) return;
+
+  const tick = async () => {
+    await loadCashTransfers();
+    await loadStock();
+  };
+
+  tick(); // одразу оновили
+  _refreshTimer = setInterval(tick, 5000); // раз на 5 сек
+}
+
+// щоб не молотило у фоні, коли вкладка не активна
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    clearInterval(_refreshTimer);
+    _refreshTimer = null;
+  } else {
+    startAutoRefresh();
+  }
+});
+
+startAutoRefresh();
+
 
 function openSendCashModal(){
     document.getElementById('sendCashAmount').value = '';
