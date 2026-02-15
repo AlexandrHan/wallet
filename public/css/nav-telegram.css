@@ -16,7 +16,7 @@ body.has-tg-nav main.wrap{
 /* ---------- BOTTOM NAV ---------- */
 .tg-bottom-nav{
   position: fixed;
-  left: 0; right: 0; bottom: 0;
+  left: 0; right: 0; bottom: -20px;
   z-index: 9999;
   padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
   display: flex;
@@ -32,7 +32,7 @@ body.has-tg-nav main.wrap{
   flex: 1;
   display: flex;
   gap: 6px;
-  padding: 4px;
+  padding: 10px;
   border-radius: 999px;
   background: rgba(28,32,45,.72);
   border: 1px solid rgba(255,255,255,.08);
