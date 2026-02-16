@@ -26,7 +26,7 @@ body{ overflow-y: scroll; } /* можна лишити тільки на дес�
   /* було: left:0; right:0; bottom:-30px; */
   left: 50%;
   bottom: 0;
-  padding-bottom: 50px;
+  padding-bottom: 80px;
   /* ширина як у контейнера + центрування */
   width: min(980px, calc(100% - 24px));
   transform: translateX(-50%);
