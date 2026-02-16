@@ -425,5 +425,11 @@
   window.AUTH_USER = @json(auth()->user());
 </script>
 
+<script>
+  window.addEventListener('DOMContentLoaded', function() {
+    document.body.classList.add('content-loaded');
+  });
+</script>
+
 </body>
 </html>

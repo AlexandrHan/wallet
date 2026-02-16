@@ -1483,3 +1483,7 @@ html{
   user-select: none;
 }
 
+body.content-loaded #walletsView,
+body.content-loaded #opsView {
+  padding-bottom: calc(110px + env(safe-area-inset-bottom));
+}
