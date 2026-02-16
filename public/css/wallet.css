@@ -135,9 +135,19 @@ html, body{
   height: 100%;
 }
 
-body{
-  height: auto;      /* важливо */
-  min-height: 100vh; /* базово */
+body {
+  padding-bottom: 110px; /* базовий відступ */
+  padding-bottom: calc(110px + env(safe-area-inset-bottom)); /* з урахуванням безпечної зони */
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+/* Для сучасних браузерів з dynamic viewport */
+@supports (min-height: 100dvh) {
+  body {
+    min-height: 100dvh;
+    padding-bottom: calc(110px + env(safe-area-inset-bottom));
+  }
 }
 
 /* сучасний viewport, щоб мобільний не чудив */
