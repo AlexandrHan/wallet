@@ -121,6 +121,8 @@
   </div>
 </header>
 
+<main>
+
 <div class="wrap">
 
   <!-- VIEW 1: Рахунки -->
@@ -334,6 +336,8 @@
     <button type="button" id="walletConfirm" class="btn save">Створити</button>
   </div>
 </div>
+
+</main>
 
 @include('partials.nav.bottom-wallet')
 
