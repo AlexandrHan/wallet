@@ -23,16 +23,16 @@ body{ overflow-y: scroll; } /* можна лишити тільки на дес�
 .tg-bottom-nav{
   position: fixed;
 
-  /* було: left:0; right:0; bottom:-30px; */
   left: 50%;
-  bottom: env(safe-area-inset-bottom);
+  bottom: 0;
 
-  /* ширина як у контейнера + центрування */
   width: min(980px, calc(100% - 24px));
   transform: translateX(-50%);
 
   z-index: 9999;
-  padding: 10px 12px calc(1px + env(safe-area-inset-bottom));
+
+  padding: 10px 12px env(safe-area-inset-bottom);
+
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -40,6 +40,7 @@ body{ overflow-y: scroll; } /* можна лишити тільки на дес�
 
   pointer-events: none;
 }
+
 
 .tg-bottom-nav > *{ pointer-events: auto; }
 
