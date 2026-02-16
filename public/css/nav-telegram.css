@@ -48,7 +48,7 @@ html{ scrollbar-gutter: stable; }
   flex: 1;
   display: flex;
   gap: 6px;
-  padding: 4px 10px;
+  padding: 3px 3px;
   border-radius: 999px;
     /* border був двічі: залишаю фінальний (нижній) як у тебе */
   border:1px solid var(--stroke);
@@ -98,8 +98,8 @@ html{ scrollbar-gutter: stable; }
 }
 
 .tg-fab{
-  width: 65px;
-  height: 65px;
+  width: 55px;
+  height: 55px;
   border-radius: 999px;
   color: rgba(233,238,246,.95);
   font-size: 22px;
