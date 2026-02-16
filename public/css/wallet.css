@@ -248,7 +248,7 @@ main,
 .content,
 .app{
   padding-top: calc(var(--header-h) + env(safe-area-inset-top));
-  padding-bottom: 18px;
+  padding-bottom: 0;
 }
 
 /* ================== LAYOUT ================== */
@@ -399,7 +399,6 @@ main,
   grid-template-columns:repeat(auto-fill,minmax(360px,1fr));
   gap:22px;
   margin-top:22px;
-  margin-bottom: 6rem;
   align-items:stretch;
 }
 
@@ -461,7 +460,7 @@ table{
   border-collapse:separate;
   border-spacing:0 10px;
   table-layout:fixed;
-  margin-bottom: 6rem;
+
 }
 thead{ display:none; }
 
@@ -1114,7 +1113,7 @@ img{ display:block; max-height:48px; }
 
 #walletsView,
 #opsView{
-  padding-bottom: calc(120px + env(safe-area-inset-bottom));
+  padding-bottom: calc(110px + env(safe-area-inset-bottom));
 }
 
 
