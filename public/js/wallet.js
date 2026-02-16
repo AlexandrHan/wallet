@@ -323,19 +323,20 @@ function formatDateParts(dateStr){
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-  function showWallets(){
-    opsView.style.display = 'none';
-    walletsView.style.display = '';
-  }
+function showWallets(){
+  opsView.style.display = 'none';
+  walletsView.style.display = '';
+}
+
+function showOps(){
+  walletsView.style.display = 'none';
+  opsView.style.display = '';
+}
+
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-  function showOps(){
-    walletsView.style.display = 'none';
-    opsView.style.display = '';
-  }
 
 function canWriteWallet(walletOwner){
   return walletOwner === state.actor;
