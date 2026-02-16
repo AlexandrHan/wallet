@@ -28,7 +28,7 @@ html{ scrollbar-gutter: stable; }
 
   z-index: 9999;
 
-  padding: 10px 12px env(safe-area-inset-bottom);
+  padding: 10px 12px calc(env(safe-area-inset-bottom) - 10px);
 
   display: flex;
   align-items: center;
