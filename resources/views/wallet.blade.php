@@ -127,7 +127,6 @@
    
   <div id="walletsView">
     <div class="row content">
-      <div style="font-weight:700;">Рахунки</div>
 
       <button type="button" class="btn " id="addWallet">+</button>
       <button type="button" class="btn" id="refresh">Оновити</button>

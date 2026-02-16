@@ -8,16 +8,13 @@
   box-shadow: 0 10px 30px rgba(0,0,0,.25);
 }
 
-/* щоб контент не ховався під нижнім меню */
-body.has-tg-nav #walletsView,
-body.has-tg-nav #opsView{
-  padding-bottom: calc(92px + env(safe-area-inset-bottom));
-}
-
 
 /* щоб на десктопі не було "стрибака" через появу скролбару */
 html{ scrollbar-gutter: stable; }
-body{ overflow-y: scroll; } /* можна лишити тільки на десктоп через media */
+@media (min-width:900px){
+  body{ overflow-y: scroll; }
+}
+
 
 /* ---------- BOTTOM NAV ---------- */
 .tg-bottom-nav{
