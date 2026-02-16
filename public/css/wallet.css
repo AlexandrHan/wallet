@@ -1125,11 +1125,9 @@ img{ display:block; max-height:48px; }
 
 /* 1) Окремий шар фону замість body */
 .app-bg{
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: calc(-1 * env(safe-area-inset-bottom));
+  position:fixed;
+  inset:0;
+  z-index:-1;
 
   background:
     radial-gradient(1400px 700px at 20% -20%, #1b2450 0%, transparent 60%),
