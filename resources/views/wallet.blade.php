@@ -165,8 +165,7 @@
   </div> <!-- END walletsView -->
 
   <!-- VIEW 2: Операції -->
-  <div id="opsView" class="view-hidden">
-
+  <div id="opsView" style="display:none;">
 
     <div class="content" style="text-align:center; margin-bottom:10px;">
       <div class="muted btn" id="walletTitle"></div>

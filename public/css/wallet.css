@@ -408,7 +408,7 @@ header .wrap{
   grid-template-columns:repeat(auto-fill,minmax(360px,1fr));
   gap:22px;
   margin-top:22px;
-  /*margin-bottom: 6rem;*/
+  margin-bottom: 30rem;
   align-items:stretch;
 }
 
@@ -1127,23 +1127,6 @@ img{ display:block; max-height:48px; }
 }
 
 
-
-
-.view-hidden{
-  position: fixed;
-  inset: 0;
-  visibility: hidden;
-  pointer-events: none;
-}
-
-
-.view-visible{
-  visibility: visible;
-  position: static;
-}
-
-
-
 /* =========================================================
    🔧 BACKGROUND FIX (НЕ ЛАМАЄ ІСНУЮЧІ СТИЛІ)
    Стабілізує фон на iOS / Chrome / WebView
@@ -1501,6 +1484,3 @@ html{
   user-select: none;
 }
 
-html{
-  overflow-y: scroll;
-}
