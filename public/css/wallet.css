@@ -21,6 +21,16 @@
   color-scheme: dark;
 }
 
+main{
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.wrap{
+  flex: 1;
+}
 
 
 /* Select у sheet: базовий вигляд */
@@ -251,7 +261,7 @@ header .wrap{
 }
 
 /* ================== LAYOUT ================== */
-.wrap{ max-width:980px; margin:0 auto; padding:18px;}й
+.wrap{ max-width:980px; padding:18px;}й
 .row{ display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
 
 /* ================== BURGER ================== */
@@ -398,7 +408,7 @@ header .wrap{
   grid-template-columns:repeat(auto-fill,minmax(360px,1fr));
   gap:22px;
   margin-top:22px;
-  margin-bottom: 6rem;
+  /*margin-bottom: 6rem;*/
   align-items:stretch;
 }
 
