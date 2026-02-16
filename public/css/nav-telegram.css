@@ -22,13 +22,17 @@ body{ overflow-y: scroll; } /* можна лишити тільки на дес�
 /* ---------- BOTTOM NAV ---------- */
 .tg-bottom-nav{
   position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
 
-  transform: none;        /* важливо */
-  margin: 0;
-  padding-bottom: env(safe-area-inset-bottom);
+  /* було: left:0; right:0; bottom:-30px; */
+  left: 50%;
+  bottom: env(safe-area-inset-bottom);
+
+  /* ширина як у контейнера + центрування */
+  width: min(980px, calc(100% - 24px));
+  transform: translateX(-50%);
+
+  z-index: 9999;
+  padding: 10px 12px calc(1px + env(safe-area-inset-bottom));
   display: flex;
   align-items: center;
   justify-content: space-between;
