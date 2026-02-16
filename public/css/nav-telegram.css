@@ -9,9 +9,11 @@
 }
 
 /* щоб контент не ховався під нижнім меню */
-body.has-tg-nav main.wrap{
+body.has-tg-nav #walletsView,
+body.has-tg-nav #opsView{
   padding-bottom: calc(92px + env(safe-area-inset-bottom));
 }
+
 
 /* щоб на десктопі не було "стрибака" через появу скролбару */
 html{ scrollbar-gutter: stable; }
@@ -23,11 +25,11 @@ body{ overflow-y: scroll; } /* можна лишити тільки на дес�
 
   /* було: left:0; right:0; bottom:-30px; */
   left: 50%;
-  bottom: 0;
+  bottom: env(safe-area-inset-bottom);
 
   /* ширина як у контейнера + центрування */
   width: min(980px, calc(100% - 24px));
-  transform: translateX(-50%) translateY(30px); /* оце замість bottom:-30px */
+  transform: translateX(-50%);
 
   z-index: 9999;
   padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
@@ -48,7 +50,7 @@ body{ overflow-y: scroll; } /* можна лишити тільки на дес�
   flex: 1;
   display: flex;
   gap: 6px;
-  padding: 10px;
+  padding: 4px 10px;
   border-radius: 999px;
     /* border був двічі: залишаю фінальний (нижній) як у тебе */
   border:1px solid var(--stroke);
