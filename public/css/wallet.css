@@ -1127,6 +1127,23 @@ img{ display:block; max-height:48px; }
 }
 
 
+
+
+.view-hidden{
+  position: fixed;
+  inset: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+
+.view-visible{
+  visibility: visible;
+  position: static;
+}
+
+
+
 /* =========================================================
    🔧 BACKGROUND FIX (НЕ ЛАМАЄ ІСНУЮЧІ СТИЛІ)
    Стабілізує фон на iOS / Chrome / WebView
