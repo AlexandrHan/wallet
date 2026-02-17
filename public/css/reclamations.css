@@ -2,6 +2,11 @@
    RECLAMATIONS FIXES / OVERRIDES
 ============================= */
 
+.wrap{
+  max-width:980px;
+  margin:0 auto;
+  padding:18px;
+}
 /* wallet.css додає padding-top на .content — тут прибираємо */
 .reclamations-main .content{
   padding-top: 0 !important;
@@ -17,6 +22,7 @@
 @media (max-width: 768px){
   .reclamations-main{
     padding-top: calc(84px + env(safe-area-inset-top)) !important; /* залишив так само, без дубля логіки */
+    padding-bottom: 3rem;
   }
 }
 
@@ -532,6 +538,8 @@
 .reclamations-show.wrap{
   padding-left: 10px !important;
   padding-right: 10px !important;
+  padding-bottom: 3rem !important;
+  
 }
 
 .reclamations-show.page{

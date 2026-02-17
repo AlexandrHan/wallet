@@ -1,7 +1,11 @@
 /* ===============================
    STOCK PAGE (SunFix Warehouse)
    =============================== */
-
+.wrap{
+  max-width:980px;
+  margin:0 auto;
+  padding:18px;
+}
    
 .stock-wrap {
     width: 100%;

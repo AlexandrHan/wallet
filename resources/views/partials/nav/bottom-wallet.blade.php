@@ -20,29 +20,33 @@
   ];
 @endphp
 
-<nav class="tg-bottom-nav">
-  <div class="tg-bottom-left">
-    @foreach($tabs as $t)
-      <a class="tg-tab {{ $t['active'] ? 'is-active' : '' }}" href="{{ $t['href'] }}">
-        {!! $t['icon'] !!}<span>{{ $t['label'] }}</span>
-      </a>
-    @endforeach
-  </div>
+@auth
+  @if(auth()->user()->role === 'owner')
+    <nav class="tg-bottom-nav">
+      <div class="tg-bottom-left">
+        @foreach($tabs as $t)
+          <a class="tg-tab {{ $t['active'] ? 'is-active' : '' }}" href="{{ $t['href'] }}">
+            {!! $t['icon'] !!}<span>{{ $t['label'] }}</span>
+          </a>
+        @endforeach
+      </div>
 
-  <div class="tg-fab-wrap">
-    <button type="button" class="tg-fab" id="tgFabBtn" aria-expanded="false">☰</button>
+      <div class="tg-fab-wrap">
+        <button type="button" class="tg-fab" id="tgFabBtn" aria-expanded="false">☰</button>
 
-    <div class="tg-fab-menu hidden" id="tgFabMenu">
-      <a class="tg-fab-item" href="/profile">🔐 Адмінка / пароль</a>
-      <a class="tg-fab-item" href="/">💼 Гаманець</a>
+        <div class="tg-fab-menu hidden" id="tgFabMenu">
+          <a class="tg-fab-item" href="/profile">🔐 Адмінка / пароль</a>
+          <a class="tg-fab-item" href="/">💼 Гаманець</a>
 
-      <form method="POST" action="{{ route('logout') }}">
-        @csrf
-        <button type="submit" class="tg-fab-item danger">🚪 Вийти</button>
-      </form>
-    </div>
-  </div>
-</nav>
+          <form method="POST" action="{{ route('logout') }}">
+            @csrf
+            <button type="submit" class="tg-fab-item danger">🚪 Вийти</button>
+          </form>
+        </div>
+      </div>
+    </nav>
+  @endif
+@endauth
 
 <script>
 (function(){
