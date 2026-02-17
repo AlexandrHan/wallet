@@ -27,33 +27,7 @@
         </div>
     </div>
 
-    <div class="card" id="addItemCard" style="margin-top:16px; display:none;">
-        <div style="font-weight:700; margin-bottom:10px; text-align:center;">
-            Додати товар
-        </div>
 
-        <div class="stock-form">
-
-            <div class="stock-row-top">
-                <select class="btn" id="product_id">
-                    <option value="">Оберіть товар з списку</option>
-                </select>
-            </div>
-
-            <div class="stock-row-top">
-                <button class="btn" onclick="createProduct()">
-                    Додати новий товар
-                </button>
-            </div>
-
-            <div class="stock-row-bottom">
-                <input class="btn btn-input" id="qty" type="number" placeholder="Кількість">
-                <input class="btn btn-input" id="price" type="number" placeholder="Ціна">
-                <button class="btn primary" onclick="addItem()">Додати</button>
-            </div>
-
-        </div>
-    </div>
 
     <div class="card" style="margin-top:16px;">
         <div style="font-weight:700; margin-bottom:10px;">
@@ -95,12 +69,14 @@ async function loadDelivery() {
     DELIVERY_STATUS = (d.status || 'draft').toLowerCase();
     document.getElementById('deliveryStatus').innerText = DELIVERY_STATUS.toUpperCase();
 
-    // draft: можна редагувати + можна відправити
+    // draft: можна редагувати 
     if (DELIVERY_STATUS === 'draft') {
-        document.getElementById('addItemCard').style.display = 'block';
-        document.getElementById('shipBtn').style.display = 'block';
+        document.getElementById('addItemCard').style.display = 'none';
+        document.getElementById('shipBtn').style.display = 'none';
         document.getElementById('acceptBtn').style.display = 'none';
     }
+
+
 
     // shipped: редагування ховаємо, показуємо “Прийняти” тільки бухгалтер/власник
     if (DELIVERY_STATUS === 'shipped') {
@@ -165,8 +141,36 @@ async function loadItems() {
                 </div>
             </div>
         `;
-    });
+        // якщо це draft і товарів нема — пропонуємо видалити
+        if (DELIVERY_STATUS === 'draft' && data.length === 0) {
+
+            const confirmDelete = confirm(
+                'Це порожня чернетка. Видалити?'
+            );
+
+            if (confirmDelete) {
+                await deleteDraft();
+            } else {
+                window.location.href = '/deliveries';
+            }
+        }
+
+            });
 }
+
+async function deleteDraft() {
+
+    await fetch('/api/deliveries/{{ $id }}', {
+        method: 'DELETE',
+        headers: {
+            'X-CSRF-TOKEN': document
+                .querySelector('meta[name="csrf-token"]').content
+        }
+    });
+
+    window.location.href = '/deliveries';
+}
+
 
 async function addItem() {
     const product_id = document.getElementById('product_id').value;
