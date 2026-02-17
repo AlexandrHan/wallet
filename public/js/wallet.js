@@ -402,7 +402,7 @@ async function loadWallets() {
   state.wallets = res.ok ? await res.json() : [];
 
   renderWallets();   // покаже кеш (bankAccounts ще порожній)
-  hideSplash();      // ⬅️ важливо: сплеш прибираємо СРАЗУ
+
 
   // 2) Догружаємо "важке" у фоні, не блокуючи UI
   setTimeout(async () => {
@@ -765,22 +765,12 @@ card.innerHTML = `
 
   isRenderingWallets = false;
   initPirateDelete();
-  hideSplash();
+
 }
 
 
 
-function hideSplash(){
-  const el = document.getElementById('appSplash');
-  if (!el) return;
 
-  el.classList.add('hide');
-
-  try{
-    sessionStorage.setItem('sg_splash_shown', '1');   // ✅ запам’ятали в цій вкладці
-    document.documentElement.classList.add('no-splash'); // ✅ на всякий
-  } catch (e) {}
-}
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

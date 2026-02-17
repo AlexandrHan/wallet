@@ -63,32 +63,6 @@ main > .wrap{
   color: #9aa6bc;
 }
 
-/* Splash ховаємо, якщо вже показували у вкладці */
-html.no-splash #appSplash{
-  display: none !important;
-}
-
-/* ================== SPLASH ================== */
-#appSplash {
-  position: fixed;
-  width: 100%;
-  inset: 0;
-  background:
-    radial-gradient(1400px 700px at 20% -20%, #1b2450 0%, transparent 60%),
-    radial-gradient(1200px 600px at 90% 10%, #0f3a2a 0%, transparent 55%),
-    linear-gradient(180deg, #0b0d10 0%, #07080c 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 99999;
-  transition: opacity .35s ease, visibility .35s ease;
-}
-
-#appSplash.hide {
-  opacity: 0;
-  visibility: hidden;
-}
-
 #holdingTotalAmt{
   color:#cacaca !important;
   text-shadow: 0 10px 26px rgba(0,0,0,.55), 0 1px 0 rgba(255,255,255,.08);

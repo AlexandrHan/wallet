@@ -31,7 +31,7 @@
         :root{ color-scheme: dark; }
         html{ background:#0b0d10; }
         body{ margin:0; }
-        #appSplash{ position:fixed; inset:0; background:#0b0d10; z-index:99999; }
+
         </style>
 
 
@@ -41,11 +41,7 @@
     <body>
     <div class="app-bg"></div>
 
-    <div id="appSplash">
-        <div class="splash-logo">
-        <img src="/img/holding.png" alt="SolarGlass">
-        </div>
-    </div>
+
 
     {{-- твій хедер (той що з бургером) --}}
     @include('partials.sg_header')

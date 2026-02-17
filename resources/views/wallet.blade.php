@@ -31,15 +31,7 @@
 
   <title>SolarGlass</title>
 
-  <script>
-    (function () {
-      try {
-        if (sessionStorage.getItem('sg_splash_shown') === '1') {
-          document.documentElement.classList.add('no-splash');
-        }
-      } catch (e) {}
-    })();
-  </script>
+
 
 
 
@@ -47,7 +39,6 @@
   :root{color-scheme:dark}
   html{background:#0b0d10}
   body{margin:0}
-  #appSplash{position:fixed;inset:0;background:#0b0d10;z-index:99999}
 </style>
 
 
@@ -56,14 +47,6 @@
 
 <body>
   <div class="app-bg"></div>
-
-  <div id="appSplash">
-    <div class="splash-logo">
-      <img src="/img/holding.png" alt="SolarGlass">
-    </div>
-  </div>
-
-
 <header>
   <div style="margin-top:-1rem;" class="wrap row">
     <div class="top-area">
