@@ -135,6 +135,23 @@ async function addItem() {
     loadItems();
 }
 
+async function deleteItem(itemId) {
+
+    const ok = confirm('Видалити товар з партії?');
+    if (!ok) return;
+
+    await fetch(`/api/deliveries/items/${itemId}`, {
+        method: 'DELETE',
+        headers: {
+            'X-CSRF-TOKEN':
+                document.querySelector('meta[name="csrf-token"]').content
+        }
+    });
+
+    loadItems();
+}
+
+
 /* =====================
    LOAD ITEMS
 ===================== */
@@ -151,7 +168,22 @@ async function loadItems() {
     data.forEach(item => {
         list.innerHTML += `
             <div class="delivery-row">
-                <div class="delivery-row-top">${item.name}</div>
+
+                <div class="delivery-row-top"
+                    style="display:flex; justify-content:space-between; align-items:center;">
+                    
+                    <span>${item.name}</span>
+
+                    ${DELIVERY_STATUS === 'draft'
+                        ? `<button class="btn"
+                            style="padding:4px 10px; background:rgba(255,80,80,.15);"
+                            onclick="deleteItem(${item.item_id})">
+                            🗑
+                        </button>`
+                        : ''
+                    }
+
+                </div>
 
                 <div class="delivery-row-bottom">
                     <div>
@@ -164,9 +196,11 @@ async function loadItems() {
                         <span class="value">${item.supplier_price}</span>
                     </div>
                 </div>
+
             </div>
         `;
     });
+
 }
 
 /* =====================

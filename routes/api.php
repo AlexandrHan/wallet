@@ -415,3 +415,5 @@ Route::middleware('auth')->post('/supplier-cash/{id}/received', function ($id) {
         'ok' => true
     ]);
 });
+
+Route::delete('/deliveries/items/{id}', [DeliveryController::class, 'deleteItem']);

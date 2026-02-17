@@ -62,42 +62,62 @@ function canAccept(){
 
 let DELIVERY_STATUS = 'draft';
 
+/* =========================
+   LOAD DELIVERY
+========================= */
 async function loadDelivery() {
+
     const res = await fetch('/api/deliveries/{{ $id }}');
     const d = await res.json();
 
     DELIVERY_STATUS = (d.status || 'draft').toLowerCase();
-    document.getElementById('deliveryStatus').innerText = DELIVERY_STATUS.toUpperCase();
+    document.getElementById('deliveryStatus').innerText =
+        DELIVERY_STATUS.toUpperCase();
 
-    // draft: можна редагувати 
+    // UI state
     if (DELIVERY_STATUS === 'draft') {
-        document.getElementById('addItemCard').style.display = 'none';
         document.getElementById('shipBtn').style.display = 'none';
         document.getElementById('acceptBtn').style.display = 'none';
     }
 
-
-
-    // shipped: редагування ховаємо, показуємо “Прийняти” тільки бухгалтер/власник
     if (DELIVERY_STATUS === 'shipped') {
-        document.getElementById('addItemCard').style.display = 'none';
         document.getElementById('shipBtn').style.display = 'none';
-        document.getElementById('acceptBtn').style.display = canAccept() ? 'block' : 'none';
+        document.getElementById('acceptBtn').style.display =
+            canAccept() ? 'block' : 'none';
     }
 
-    // accepted: все read-only
     if (DELIVERY_STATUS === 'accepted') {
-        document.getElementById('addItemCard').style.display = 'none';
         document.getElementById('shipBtn').style.display = 'none';
         document.getElementById('acceptBtn').style.display = 'none';
     }
 
-    await loadItems();
+    // ---- LOAD ITEMS ONCE ----
+    const resItems = await fetch('/api/deliveries/{{ $id }}/items');
+    const items = await resItems.json();
+
+    // ✅ EMPTY DRAFT CHECK (ОДИН РАЗ)
+    if (DELIVERY_STATUS === 'draft' && items.length === 0) {
+
+        const confirmDelete = confirm(
+            'Це порожня чернетка. Видалити?'
+        );
+
+        if (confirmDelete) {
+            await deleteDraft();
+            return;
+        } else {
+            window.location.href = '/deliveries';
+            return;
+        }
+    }
+
+    renderItems(items);
 }
 
-async function loadItems() {
-    const res = await fetch('/api/deliveries/{{ $id }}/items');
-    const data = await res.json();
+/* =========================
+   RENDER ITEMS
+========================= */
+function renderItems(data) {
 
     const list = document.getElementById('itemsList');
     list.innerHTML = '';
@@ -106,8 +126,10 @@ async function loadItems() {
     const editableAccepted = isShipped && canAccept();
 
     data.forEach(item => {
-        const itemId = item.item_id ?? item.id; // підтримка обох форматів API
-        const acceptedVal = (item.qty_accepted ?? item.qty_declared ?? 0);
+
+        const itemId = item.item_id ?? item.id;
+        const acceptedVal =
+            (item.qty_accepted ?? item.qty_declared ?? 0);
 
         list.innerHTML += `
             <div class="delivery-row">
@@ -125,12 +147,12 @@ async function loadItems() {
                         <span class="label">Прийнято</span>
                         ${
                             editableAccepted
-                                ? `<input class="btn"
-                                          type="number"
-                                          data-item-id="${itemId}"
-                                          value="${acceptedVal}"
-                                          style="width:78px; text-align:center; padding:0 10px;">`
-                                : `<span class="value">${item.qty_accepted ?? '-'}</span>`
+                            ? `<input class="btn"
+                                      type="number"
+                                      data-item-id="${itemId}"
+                                      value="${acceptedVal}"
+                                      style="width:78px;text-align:center;padding:0 10px;">`
+                            : `<span class="value">${item.qty_accepted ?? '-'}</span>`
                         }
                     </div>
 
@@ -141,74 +163,46 @@ async function loadItems() {
                 </div>
             </div>
         `;
-        // якщо це draft і товарів нема — пропонуємо видалити
-        if (DELIVERY_STATUS === 'draft' && data.length === 0) {
-
-            const confirmDelete = confirm(
-                'Це порожня чернетка. Видалити?'
-            );
-
-            if (confirmDelete) {
-                await deleteDraft();
-            } else {
-                window.location.href = '/deliveries';
-            }
-        }
-
-            });
+    });
 }
 
+/* =========================
+   DELETE DRAFT
+========================= */
 async function deleteDraft() {
 
     await fetch('/api/deliveries/{{ $id }}', {
         method: 'DELETE',
         headers: {
-            'X-CSRF-TOKEN': document
-                .querySelector('meta[name="csrf-token"]').content
+            'X-CSRF-TOKEN':
+                document.querySelector('meta[name="csrf-token"]').content
         }
     });
 
     window.location.href = '/deliveries';
 }
 
-
-async function addItem() {
-    const product_id = document.getElementById('product_id').value;
-    const qty = document.getElementById('qty').value;
-    const price = document.getElementById('price').value;
-
-    await fetch('/api/deliveries/{{ $id }}/items', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-        },
-        body: JSON.stringify({
-            product_id: product_id,
-            qty_declared: qty,
-            supplier_price: price
-        })
-    });
-
-    document.getElementById('product_id').value = '';
-    document.getElementById('qty').value = '';
-    document.getElementById('price').value = '';
-
-    
-}
-
+/* =========================
+   SHIP
+========================= */
 async function markShipped() {
+
     await fetch('/api/deliveries/{{ $id }}/ship', {
         method: 'POST',
         headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+            'X-CSRF-TOKEN':
+                document.querySelector('meta[name="csrf-token"]').content
         }
     });
 
     await loadDelivery();
 }
 
+/* =========================
+   ACCEPT
+========================= */
 async function acceptDelivery() {
+
     const inputs = document.querySelectorAll('[data-item-id]');
     const items = [];
 
@@ -223,7 +217,8 @@ async function acceptDelivery() {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+            'X-CSRF-TOKEN':
+                document.querySelector('meta[name="csrf-token"]').content
         },
         body: JSON.stringify({ items })
     });
@@ -238,36 +233,13 @@ async function acceptDelivery() {
     await loadDelivery();
 }
 
-async function loadProducts() {
-    const res = await fetch('/api/products');
-    const products = await res.json();
-
-    const select = document.getElementById('product_id');
-    select.innerHTML = `<option value="">Оберіть товар з списку</option>`;
-
-    products.forEach(p => {
-        select.innerHTML += `<option value="${p.id}">${p.name}</option>`;
-    });
-}
-
-function createProduct() {
-    const name = prompt('Назва товару');
-    if (!name) return;
-
-    fetch('/api/products', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-        },
-        body: JSON.stringify({ name })
-    }).then(() => loadProducts());
-}
-
-    document.addEventListener('DOMContentLoaded', () => {
-    loadProducts();
+/* =========================
+   INIT
+========================= */
+document.addEventListener('DOMContentLoaded', () => {
     loadDelivery();
 });
 </script>
+
 
 @endsection

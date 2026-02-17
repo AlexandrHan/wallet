@@ -169,6 +169,50 @@ public function items($id)
 
 
 
+public function destroy($id)
+{
+    $delivery = Delivery::findOrFail($id);
+
+    // 🔴 ГОЛОВНЕ ПРАВИЛО
+    if ($delivery->status !== 'draft') {
+        return response()->json([
+            'error' => 'Можна видалити тільки чернетку'
+        ], 403);
+    }
+
+    $delivery->delete();
+
+    return response()->json([
+        'success' => true
+    ]);
+}
+
+public function deleteItem($itemId)
+{
+    $item = DB::table('supplier_delivery_items')
+        ->where('id', $itemId)
+        ->first();
+
+    if (!$item) {
+        return response()->json(['error' => 'Item not found'], 404);
+    }
+
+    $delivery = DB::table('supplier_deliveries')
+        ->where('id', $item->delivery_id)
+        ->first();
+
+    if (!$delivery || $delivery->status !== 'draft') {
+        return response()->json([
+            'error' => 'Можна видаляти тільки у чернетці'
+        ], 403);
+    }
+
+    DB::table('supplier_delivery_items')
+        ->where('id', $itemId)
+        ->delete();
+
+    return response()->json(['ok' => true]);
+}
 
 
 }
