@@ -63,7 +63,10 @@
 }
 
 
-
+.btn-trash{
+    border: none;
+    background-color: transparent;
+}
 
 /* заголовки */
 .stock-title {

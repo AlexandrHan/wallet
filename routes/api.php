@@ -355,28 +355,114 @@ Route::get('/deliveries/{id}/items', function ($id) {
         ->get();
 });
 
+
+Route::middleware(['web','auth','only.sunfix.manager'])
+    ->delete('/deliveries/{id}', [DeliveryController::class, 'destroy']);
+
+
 Route::post('/deliveries/{id}/items', [\App\Http\Controllers\DeliveryController::class, 'addItem']);
 
-Route::get('/products', function () {
-    return DB::table('products')
-        ->where('is_active',1)
+
+/** Категорії */
+Route::get('/product-categories', function () {
+    return DB::table('product_categories')
         ->select('id','name')
+        ->orderBy('name')
         ->get();
 });
 
-Route::post('/products', function (\Illuminate\Http\Request $request) {
+/** Товари (active only за замовчуванням) */
+Route::get('/products', function (Request $request) {
+    $q = DB::table('products')
+        ->leftJoin('product_categories', 'product_categories.id', '=', 'products.category_id')
+        ->select(
+            'products.id',
+            'products.name',
+            'products.category_id',
+            'products.is_active',
+            'product_categories.name as category_name'
+        )
+        ->orderBy('product_categories.name')
+        ->orderBy('products.name');
 
-    return DB::table('products')->insertGetId([
-        'supplier_id' => 1,
+    // якщо НЕ просимо include_inactive=1 — показуємо тільки активні
+    if (!$request->boolean('include_inactive')) {
+        $q->where('products.is_active', 1);
+    }
+
+    return $q->get();
+});
+
+/** Створити товар */
+Route::post('/products', function (Request $request) {
+
+    $name = trim((string)$request->input('name'));
+    $categoryId = (int)$request->input('category_id');
+
+    if ($name === '') {
+        return response()->json(['error' => 'Назва обовʼязкова'], 422);
+    }
+    if ($categoryId <= 0) {
+        return response()->json(['error' => 'Оберіть категорію'], 422);
+    }
+
+    $id = DB::table('products')->insertGetId([
+        'supplier_id' => 1,                 // ✅ важливо, бо в тебе NOT NULL
         'sku' => uniqid('manual_'),
-        'name' => $request->name,
+        'name' => $name,
+        'category_id' => $categoryId,
         'currency' => 'USD',
         'supplier_price' => 0,
         'is_active' => 1,
         'created_at' => now(),
         'updated_at' => now(),
     ]);
+
+    return response()->json(['id' => $id]);
 });
+
+/** Оновити товар (назва/категорія/активність) */
+Route::patch('/products/{id}', function (Request $request, $id) {
+
+    $id = (int)$id;
+    $name = trim((string)$request->input('name'));
+    $categoryId = (int)$request->input('category_id');
+    $isActive = $request->has('is_active') ? (int)!!$request->input('is_active') : null;
+
+    if ($name === '') {
+        return response()->json(['error' => 'Назва обовʼязкова'], 422);
+    }
+    if ($categoryId <= 0) {
+        return response()->json(['error' => 'Оберіть категорію'], 422);
+    }
+
+    $payload = [
+        'name' => $name,
+        'category_id' => $categoryId,
+        'updated_at' => now(),
+    ];
+    if ($isActive !== null) {
+        $payload['is_active'] = $isActive;
+    }
+
+    DB::table('products')->where('id', $id)->update($payload);
+
+    return response()->json(['ok' => true]);
+});
+
+/** “Видалити” без фізичного delete: в архів (щоб не ламати join в поставках) */
+Route::delete('/products/{id}', function ($id) {
+    $id = (int)$id;
+
+    DB::table('products')->where('id', $id)->update([
+        'is_active' => 0,
+        'updated_at' => now(),
+    ]);
+
+    return response()->json(['ok' => true]);
+});
+
+
 
 Route::get('/deliveries/{id}', function ($id) {
     return DB::table('supplier_deliveries')

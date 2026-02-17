@@ -169,23 +169,33 @@ public function items($id)
 
 
 
-public function destroy($id)
+public function destroy(Request $request, $id)
 {
-    $delivery = Delivery::findOrFail($id);
+    $u = $request->user();
 
-    // 🔴 ГОЛОВНЕ ПРАВИЛО
-    if ($delivery->status !== 'draft') {
-        return response()->json([
-            'error' => 'Можна видалити тільки чернетку'
-        ], 403);
+    // тільки менеджер
+    if (!$u || $u->role !== 'sunfix_manager') {
+        return response()->json(['error' => 'Forbidden'], 403);
     }
 
-    $delivery->delete();
+    $delivery = DB::table('supplier_deliveries')->where('id', $id)->first();
+    if (!$delivery) {
+        return response()->json(['error' => 'Not found'], 404);
+    }
 
-    return response()->json([
-        'success' => true
-    ]);
+    // можна видаляти ТІЛЬКИ draft
+    if (($delivery->status ?? '') !== 'draft') {
+        return response()->json(['error' => 'Можна видалити тільки чернетку'], 422);
+    }
+
+    DB::transaction(function () use ($id) {
+        DB::table('supplier_delivery_items')->where('delivery_id', $id)->delete();
+        DB::table('supplier_deliveries')->where('id', $id)->delete();
+    });
+
+    return response()->json(['ok' => true]);
 }
+
 
 public function deleteItem($itemId)
 {
@@ -213,6 +223,7 @@ public function deleteItem($itemId)
 
     return response()->json(['ok' => true]);
 }
+
 
 
 }
