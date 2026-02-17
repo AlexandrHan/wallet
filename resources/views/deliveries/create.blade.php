@@ -55,64 +55,56 @@
             </div>-->
 
 
-            <div class="card" style="margin-top:16px;">
-                <div style="font-weight:700; margin-bottom:10px; text-align:center;">
-                    Каталог товарів
-                </div>
+<div class="stock-row-top" style="display:flex; gap:10px;">
+  <button type="button" class="btn" onclick="toggleProductPanel('add')">
+    ➕ Додати новий товар
+  </button>
 
-                <div style="display:flex; gap:10px;">
-                    <button type="button" class="btn" onclick="toggleProductPanel('new')">➕ Додати новий товар</button>
-                    <button type="button" class="btn" onclick="toggleProductPanel('edit')">✏️ Редагувати існуючий товар</button>
-                </div>
+  <button type="button" class="btn" onclick="toggleProductPanel('edit')">
+    ✏️ Редагувати існуючий товар
+  </button>
+</div>
 
-                <!-- NEW -->
-                <div id="newProductPanel" style="display:none; margin-top:12px;">
-                    <div class="stock-row-top">
-                    <select class="btn" id="new_category_id">
-                        <option value="">Оберіть категорію</option>
-                    </select>
-                    </div>
+<!-- Панель: додати -->
+<div id="productPanelAdd" class="card" style="margin-top:12px; display:none;">
+  <div style="font-weight:700; margin-bottom:10px; text-align:center;">Додати новий товар</div>
 
-                    <div class="stock-row-top" style="margin-top:10px;">
-                    <input class="btn btn-input" id="new_product_name" type="text" placeholder="Назва нового товару">
-                    </div>
+  <select class="btn" id="new_category_id" style="width:100%; margin-bottom:10px;">
+    <option value="">Оберіть категорію</option>
+  </select>
 
-                    <div style="margin-top:10px;">
-                    <button type="button" class="btn primary" style="width:100%" onclick="createProductFromPanel()">
-                        Зберегти товар
-                    </button>
-                    </div>
-                </div>
+  <input class="btn" id="new_product_name" placeholder="Назва товару" style="width:100%; margin-bottom:10px;">
 
-                <!-- EDIT -->
-                <div id="editProductPanel" style="display:none; margin-top:12px;">
-                    <div class="stock-row-top">
-                    <select class="btn" id="edit_product_id" onchange="fillEditProduct()">
-                        <option value="">Оберіть товар</option>
-                    </select>
-                    </div>
+  <button type="button" class="btn primary" style="width:100%;" onclick="createProductFromPanel()">
+    Зберегти товар
+  </button>
+</div>
 
-                    <div class="stock-row-top" style="margin-top:10px;">
-                    <select class="btn" id="edit_category_id">
-                        <option value="">Оберіть категорію</option>
-                    </select>
-                    </div>
+<!-- Панель: редагувати -->
+<div id="productPanelEdit" class="card" style="margin-top:12px; display:none;">
+  <div style="font-weight:700; margin-bottom:10px; text-align:center;">Редагування товару</div>
 
-                    <div class="stock-row-top" style="margin-top:10px;">
-                    <input class="btn btn-input" id="edit_product_name" type="text" placeholder="Нова назва">
-                    </div>
+  <select class="btn" id="edit_product_id" style="width:100%; margin-bottom:10px;" onchange="fillEditProductFields()">
+    <option value="">Оберіть товар</option>
+  </select>
 
-                    <div style="display:flex; gap:10px; margin-top:10px;">
-                    <button type="button" class="btn primary" style="flex:1" onclick="updateProductFromPanel()">
-                        Зберегти зміни
-                    </button>
+  <select class="btn" id="edit_category_id" style="width:100%; margin-bottom:10px;">
+    <option value="">Оберіть категорію</option>
+  </select>
 
-                    <button type="button" class="btn" style="flex:1; background:rgba(255,80,80,.15);" onclick="archiveProductFromPanel()">
-                        🗑 В архів
-                    </button>
-                    </div>
-                </div>
-                </div>
+  <input class="btn" id="edit_product_name" placeholder="Нова назва товару" style="width:100%; margin-bottom:10px;">
+
+  <div style="display:flex; gap:10px;">
+    <button type="button" class="btn primary" style="width:70%;" onclick="updateProductFromPanel()">
+      Зберегти
+    </button>
+
+    <button type="button" class="btn" style="width:30%; background:rgba(255,80,80,.15);" onclick="deleteProductFromPanel()">
+      🗑
+    </button>
+  </div>
+</div>
+
 
 
 
@@ -143,9 +135,10 @@
 
     <!-- SHIP -->
     <div class="card" style="margin-top:16px;">
-        <button class="btn primary" style="width:100%" onclick="markShipped()">
+        <button class="btn primary" id="shipBtn" style="width:100%; display:none;" onclick="markShipped()">
             Відправити
         </button>
+
     </div>
 
 </main>
@@ -164,284 +157,162 @@
 @endauth
 
 <script>
-
 let DELIVERY_ID = null;
 
+// сховаємо "Відправити" доки нема чого відправляти
+function setShipVisible(visible){
+  const btn = document.getElementById('shipBtn');
+  if (!btn) return;
+  btn.style.display = visible ? 'block' : 'none';
+}
+
 /* =====================
-   CREATE DRAFT DELIVERY
+   CREATE DELIVERY (ONLY WHEN NEEDED)
 ===================== */
-async function createDelivery() {
+async function ensureDeliveryCreated() {
+  if (DELIVERY_ID) return DELIVERY_ID;
 
-    const res = await fetch('/api/deliveries', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': document
-                .querySelector('meta[name="csrf-token"]').content
-        },
-        body: JSON.stringify({
-            supplier_id: 1
-        })
-    });
+  const res = await fetch('/api/deliveries', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? ''
+    },
+    body: JSON.stringify({ supplier_id: 1 })
+  });
 
-    const data = await res.json();
-    DELIVERY_ID = data.id;
+  const text = await res.text();
+  let data = {};
+  try { data = text ? JSON.parse(text) : {}; } catch(e) {}
+
+  if (!res.ok || !data.id) {
+    alert(data.error ?? `Не вдалося створити партію (${res.status})`);
+    throw new Error('create delivery failed: ' + text);
+  }
+
+  DELIVERY_ID = data.id;
+  return DELIVERY_ID;
 }
 
 /* =====================
    ADD ITEM
 ===================== */
 async function addItem() {
+  const product_id = document.getElementById('product_id').value;
+  const qty = document.getElementById('qty').value;
+  const price = document.getElementById('price').value;
 
-    if (!DELIVERY_ID) return;
+  if (!product_id) return alert('Оберіть товар');
+  if (!qty || Number(qty) <= 0) return alert('Вкажіть кількість');
+  if (price === '' || Number(price) < 0) return alert('Вкажіть ціну');
 
-    const product_id = document.getElementById('product_id').value;
-    const qty = document.getElementById('qty').value;
-    const price = document.getElementById('price').value;
+  // ✅ створюємо чернетку тільки тут, при першому додаванні
+  await ensureDeliveryCreated();
 
-    await fetch(`/api/deliveries/${DELIVERY_ID}/items`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': document
-                .querySelector('meta[name="csrf-token"]').content
-        },
-        body: JSON.stringify({
-            product_id,
-            qty_declared: qty,
-            supplier_price: price
-        })
-    });
+  const res = await fetch(`/api/deliveries/${DELIVERY_ID}/items`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? ''
+    },
+    body: JSON.stringify({
+      product_id,
+      qty_declared: qty,
+      supplier_price: price
+    })
+  });
 
-    document.getElementById('product_id').value = '';
-    document.getElementById('qty').value = '';
-    document.getElementById('price').value = '';
+  if (!res.ok) {
+    const t = await res.text();
+    alert('Помилка додавання товару: ' + t.slice(0,200));
+    return;
+  }
 
-    loadItems();
+  document.getElementById('product_id').value = '';
+  document.getElementById('qty').value = '';
+  document.getElementById('price').value = '';
+
+  await loadItems();
 }
 
+/* =====================
+   DELETE ITEM (IF YOU HAVE ROUTE)
+===================== */
 async function deleteItem(itemId) {
+  if (!DELIVERY_ID) return;
 
-    const ok = confirm('Видалити товар з партії?');
-    if (!ok) return;
+  const ok = confirm('Видалити товар з партії?');
+  if (!ok) return;
 
-    await fetch(`/api/deliveries/items/${itemId}`, {
-        method: 'DELETE',
-        headers: {
-            'X-CSRF-TOKEN':
-                document.querySelector('meta[name="csrf-token"]').content
-        }
-    });
+  const res = await fetch(`/api/deliveries/items/${itemId}`, {
+    method: 'DELETE',
+    headers: {
+      'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? ''
+    }
+  });
 
-    loadItems();
+  if (!res.ok) {
+    const t = await res.text();
+    alert('Не вдалося видалити: ' + t.slice(0,200));
+    return;
+  }
+
+  await loadItems();
 }
-
 
 /* =====================
    LOAD ITEMS
 ===================== */
 async function loadItems() {
+  const list = document.getElementById('itemsList');
+  list.innerHTML = '';
 
-    if (!DELIVERY_ID) return;
+  // ще нічого не створено = нуль товарів
+  if (!DELIVERY_ID) {
+    setShipVisible(false);
+    return;
+  }
 
-    const res = await fetch(`/api/deliveries/${DELIVERY_ID}/items`);
-    const data = await res.json();
+  const res = await fetch(`/api/deliveries/${DELIVERY_ID}/items`);
+  const data = await res.json();
 
-    const list = document.getElementById('itemsList');
-    list.innerHTML = '';
+  setShipVisible(data.length > 0);
 
-    data.forEach(item => {
-        list.innerHTML += `
-            <div class="delivery-row">
+  data.forEach(item => {
+    list.innerHTML += `
+      <div class="delivery-row">
+        <div class="delivery-row-top" style="display:flex;justify-content:space-between;align-items:center;">
+          <span>${item.name}</span>
+          <button class="btn btn-trash" style="padding:4px 1px;" onclick="deleteItem(${item.item_id})">🗑</button>
+        </div>
 
-                <div class="delivery-row-top"
-                    style="display:flex; justify-content:space-between; align-items:center;">
-                    
-                    <span>${item.name}</span>
+        <div class="delivery-row-bottom">
+          <div>
+            <span class="label">Заявлено</span>
+            <span class="value">${item.qty_declared}</span>
+          </div>
 
-                <button class="btn btn-trash" style="padding:4px 2px; border:none;" onclick="deleteItem(${item.item_id})">
-                    🗑
-                </button>
-
-
-                </div>
-
-                <div class="delivery-row-bottom">
-                    <div>
-                        <span class="label">Заявлено</span>
-                        <span class="value">${item.qty_declared}</span>
-                    </div>
-
-                    <div>
-                        <span class="label">Ціна</span>
-                        <span class="value">${item.supplier_price}</span>
-                    </div>
-                </div>
-
-            </div>
-        `;
-    });
-
+          <div>
+            <span class="label">Ціна</span>
+            <span class="value">${item.supplier_price}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  });
 }
 
 /* =====================
    PRODUCTS
 ===================== */
 async function loadProducts() {
-
-    const res = await fetch('/api/products');
-    const products = await res.json();
-
-    const select = document.getElementById('product_id');
-
-    select.innerHTML = `<option value="">Оберіть товар</option>`;
-
-    // групуємо по категоріях
-    const groups = {};
-
-    products.forEach(p => {
-        const cat = p.category_name || 'Інше';
-
-        if (!groups[cat]) {
-            groups[cat] = [];
-        }
-
-        groups[cat].push(p);
-    });
-
-    // малюємо optgroup
-    Object.keys(groups).forEach(category => {
-
-        const group = document.createElement('optgroup');
-        group.label = category;
-
-        groups[category].forEach(p => {
-            const option = document.createElement('option');
-            option.value = p.id;
-            option.textContent = p.name;
-            group.appendChild(option);
-        });
-
-        select.appendChild(group);
-    });
-}
-
-
-
-async function createProduct() {
-
-    // 1. отримуємо категорії
-    const res = await fetch('/api/product-categories');
-    const categories = await res.json();
-
-    // будуємо список
-    let text = 'Оберіть категорію:\n\n';
-    categories.forEach(c => {
-        text += `${c.id} — ${c.name}\n`;
-    });
-
-    const category_id = prompt(text);
-    if (!category_id) return;
-
-    // 2. назва товару
-    const name = prompt('Назва товару');
-    if (!name) return;
-
-    const save = await fetch('/api/products', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': document
-                .querySelector('meta[name="csrf-token"]').content
-        },
-        body: JSON.stringify({
-            name,
-            category_id
-        })
-    });
-
-    const data = await save.json();
-
-    if (!save.ok) {
-        alert(data.error ?? 'Помилка');
-        return;
-    }
-
-    // перезавантажуємо список
-    await loadProducts();
-
-    alert('Товар створено');
-}
-
-
-async function safeJson(res){
-  const text = await res.text();
-  try { return JSON.parse(text); } catch(e) { return { error: text }; }
-}
-
-async function loadCategories(){
-  const res = await fetch('/api/product-categories');
-  if (!res.ok) {
-    alert('Не відкривається /api/product-categories');
-    return;
-  }
-  const cats = await res.json();
-
-  const selNew  = document.getElementById('new_category_id');
-  const selEdit = document.getElementById('edit_category_id');
-
-  selNew.innerHTML  = `<option value="">Оберіть категорію</option>`;
-  selEdit.innerHTML = `<option value="">Змінити категорію</option>`;
-
-  cats.forEach(c => {
-    selNew.innerHTML  += `<option value="${c.id}">${c.name}</option>`;
-    selEdit.innerHTML += `<option value="${c.id}">${c.name}</option>`;
-  });
-}
-
-async function createProductSmart(){
-  const name = document.getElementById('new_product_name').value.trim();
-  const category_id = document.getElementById('new_category_id').value;
-
-  if (!category_id) { alert('Оберіть категорію'); return; }
-  if (!name) { alert('Введіть назву товару'); return; }
-
-  const res = await fetch('/api/products', {
-    method: 'POST',
-    headers: {
-      'Content-Type':'application/json',
-      'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-    },
-    body: JSON.stringify({ name, category_id })
-  });
-
-  const data = await safeJson(res);
-
-  if (!res.ok) {
-    alert(data.error ?? 'Помилка створення товару');
-    return;
-  }
-
-  document.getElementById('new_product_name').value = '';
-  await loadProducts();
-
-  // приємно: одразу вибрати щойно створений товар у селекті товарів
-  const productSelect = document.getElementById('product_id');
-  if (productSelect) productSelect.value = data.id;
-
-  // і в “редагуванні” теж
-  const editSelect = document.getElementById('edit_product_id');
-  if (editSelect) editSelect.value = data.id;
-}
-
-async function loadProducts(){
   const res = await fetch('/api/products');
   const products = await res.json();
 
-  // селект для додавання в партію (з optgroup як було)
   const select = document.getElementById('product_id');
   select.innerHTML = `<option value="">Оберіть товар</option>`;
 
+  // групування по категоріях
   const groups = {};
   products.forEach(p => {
     const cat = p.category_name || 'Інше';
@@ -461,232 +332,144 @@ async function loadProducts(){
 
     select.appendChild(group);
   });
-
-  // селект для редагування/видалення
-  const editSel = document.getElementById('edit_product_id');
-  editSel.innerHTML = `<option value="">Редагувати існуючий товар</option>`;
-  products.forEach(p => {
-    editSel.innerHTML += `<option value="${p.id}" data-category="${p.category_id}" data-name="${p.name}">${p.category_name} • ${p.name}</option>`;
-  });
-
-  // автозаповнення полів редагування
-  editSel.onchange = () => {
-    const opt = editSel.options[editSel.selectedIndex];
-    document.getElementById('edit_product_name').value = opt?.dataset?.name ?? '';
-    document.getElementById('edit_category_id').value = opt?.dataset?.category ?? '';
-  };
-}
-
-async function saveProduct(){
-  const id = document.getElementById('edit_product_id').value;
-  if (!id) { alert('Оберіть товар для редагування'); return; }
-
-  const name = document.getElementById('edit_product_name').value.trim();
-  const category_id = document.getElementById('edit_category_id').value;
-
-  if (!name) { alert('Назва не може бути пустою'); return; }
-  if (!category_id) { alert('Оберіть категорію'); return; }
-
-  const res = await fetch(`/api/products/${id}`, {
-    method: 'PATCH',
-    headers: {
-      'Content-Type':'application/json',
-      'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-    },
-    body: JSON.stringify({ name, category_id })
-  });
-
-  const data = await safeJson(res);
-
-  if (!res.ok) {
-    alert(data.error ?? 'Помилка збереження');
-    return;
-  }
-
-  await loadProducts();
-}
-
-async function deactivateProduct(){
-  const id = document.getElementById('edit_product_id').value;
-  if (!id) { alert('Оберіть товар'); return; }
-
-  const ok = confirm('Прибрати товар зі списку? (історія поставок не постраждає)');
-  if (!ok) return;
-
-  const res = await fetch(`/api/products/${id}`, {
-    method: 'DELETE',
-    headers: {
-      'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-    }
-  });
-
-  const data = await safeJson(res);
-
-  if (!res.ok) {
-    alert(data.error ?? 'Помилка');
-    return;
-  }
-
-  document.getElementById('edit_product_id').value = '';
-  document.getElementById('edit_product_name').value = '';
-  document.getElementById('edit_category_id').value = '';
-
-  await loadProducts();
 }
 
 /* =====================
    SHIP DELIVERY
 ===================== */
 async function markShipped() {
+  if (!DELIVERY_ID) return alert('Немає товарів у партії');
 
-    if (!DELIVERY_ID) return;
+  const res = await fetch(`/api/deliveries/${DELIVERY_ID}/ship`, {
+    method: 'POST',
+    headers: {
+      'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? ''
+    }
+  });
 
-    await fetch(`/api/deliveries/${DELIVERY_ID}/ship`, {
-        method: 'POST',
-        headers: {
-            'X-CSRF-TOKEN': document
-                .querySelector('meta[name="csrf-token"]').content
-        }
-    });
+  const text = await res.text();
+  if (!res.ok) {
+    alert(text.slice(0,200));
+    return;
+  }
 
-    window.location.href = `/deliveries/${DELIVERY_ID}`;
+  window.location.href = `/deliveries/${DELIVERY_ID}`;
 }
 
-const CSRF = document.querySelector('meta[name="csrf-token"]')?.content || '';
+function toggleProductPanel(mode) {
+  const add = document.getElementById('productPanelAdd');
+  const edit = document.getElementById('productPanelEdit');
 
-let categories = [];
-let productsActive = [];
-let productsAll = [];
+  if (!add || !edit) {
+    console.warn('Panels not found: productPanelAdd/productPanelEdit');
+    return;
+  }
 
-function toggleProductPanel(which){
-  const newP = document.getElementById('newProductPanel');
-  const editP = document.getElementById('editProductPanel');
+  // якщо натиснули ту саму вкладку вдруге, закриваємо
+  const isAddOpen = add.style.display !== 'none';
+  const isEditOpen = edit.style.display !== 'none';
 
-  if (which === 'new') {
-    newP.style.display = (newP.style.display === 'none' ? 'block' : 'none');
-    editP.style.display = 'none';
-  } else {
-    editP.style.display = (editP.style.display === 'none' ? 'block' : 'none');
-    newP.style.display = 'none';
+  if (mode === 'add') {
+    edit.style.display = 'none';
+    add.style.display = isAddOpen ? 'none' : 'block';
+    if (add.style.display === 'block') {
+      loadCategoriesToSelect('new_category_id');
+    }
+  }
+
+  if (mode === 'edit') {
+    add.style.display = 'none';
+    edit.style.display = isEditOpen ? 'none' : 'block';
+    if (edit.style.display === 'block') {
+      loadCategoriesToSelect('edit_category_id');
+      loadProductsForEditSelect();
+    }
   }
 }
 
-async function loadCategories(){
-  const res = await fetch('/api/product-categories', { headers: { 'Accept':'application/json' } });
+async function loadCategoriesToSelect(selectId) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+
+  const res = await fetch('/api/product-categories');
   const text = await res.text();
-  categories = text ? JSON.parse(text) : [];
+  let cats = [];
+  try { cats = text ? JSON.parse(text) : []; } catch (e) {
+    console.error('Categories not JSON:', text);
+    return alert('Не вдалося завантажити категорії (дивись консоль).');
+  }
 
-  const selNew  = document.getElementById('new_category_id');
-  const selEdit = document.getElementById('edit_category_id');
-
-  if (selNew)  selNew.innerHTML  = `<option value="">Оберіть категорію</option>`;
-  if (selEdit) selEdit.innerHTML = `<option value="">Оберіть категорію</option>`;
-
-  categories.forEach(c => {
-    const opt1 = document.createElement('option');
-    opt1.value = c.id;
-    opt1.textContent = c.name;
-    selNew?.appendChild(opt1);
-
-    const opt2 = document.createElement('option');
-    opt2.value = c.id;
-    opt2.textContent = c.name;
-    selEdit?.appendChild(opt2);
+  sel.innerHTML = `<option value="">Оберіть категорію</option>`;
+  cats.forEach(c => {
+    sel.innerHTML += `<option value="${c.id}">${c.name}</option>`;
   });
 }
 
-async function loadProducts(){
-  // для списку у партію (тільки активні)
-  const r1 = await fetch('/api/products', { headers:{'Accept':'application/json'} });
-  productsActive = await r1.json();
+async function loadProductsForEditSelect() {
+  const sel = document.getElementById('edit_product_id');
+  if (!sel) return;
 
-  // для редагування (включно з неактивними)
-  const r2 = await fetch('/api/products?include_inactive=1', { headers:{'Accept':'application/json'} });
-  productsAll = await r2.json();
+  const res = await fetch('/api/products');
+  const products = await res.json();
 
-  // 1) твій селект для додавання в партію (групуємо по категоріях)
-  const select = document.getElementById('product_id');
-  if (select) {
-    select.innerHTML = `<option value="">Оберіть товар з списку</option>`;
-
-    const groups = {};
-    productsActive.forEach(p => {
-      const cat = p.category_name || 'Інше';
-      (groups[cat] ||= []).push(p);
-    });
-
-    Object.keys(groups).forEach(cat => {
-      const og = document.createElement('optgroup');
-      og.label = cat;
-
-      groups[cat].forEach(p => {
-        const opt = document.createElement('option');
-        opt.value = p.id;
-        opt.textContent = p.name;
-        og.appendChild(opt);
-      });
-
-      select.appendChild(og);
-    });
-  }
-
-  // 2) селект для редагування
-  const editSel = document.getElementById('edit_product_id');
-  if (editSel) {
-    editSel.innerHTML = `<option value="">Оберіть товар</option>`;
-    productsAll.forEach(p => {
-      const opt = document.createElement('option');
-      opt.value = p.id;
-      opt.textContent = `${p.category_name ? `[${p.category_name}] ` : ''}${p.name}${p.is_active ? '' : ' (архів)'}`;
-      editSel.appendChild(opt);
-    });
-  }
+  sel.innerHTML = `<option value="">Оберіть товар</option>`;
+  products.forEach(p => {
+    sel.innerHTML += `<option value="${p.id}" data-name="${escapeHtml(p.name)}" data-category="${p.category_id ?? ''}">
+      ${p.category_name ? `[${p.category_name}] ` : ''}${p.name}
+    </option>`;
+  });
 }
 
-function fillEditProduct(){
-  const id = Number(document.getElementById('edit_product_id')?.value || 0);
-  const p = productsAll.find(x => Number(x.id) === id);
-  if (!p) return;
+function fillEditProductFields() {
+  const sel = document.getElementById('edit_product_id');
+  const nameInp = document.getElementById('edit_product_name');
+  const catSel = document.getElementById('edit_category_id');
+  if (!sel || !nameInp || !catSel) return;
 
-  document.getElementById('edit_product_name').value = p.name || '';
-  document.getElementById('edit_category_id').value = p.category_id || '';
+  const opt = sel.options[sel.selectedIndex];
+  if (!opt || !opt.value) return;
+
+  nameInp.value = opt.getAttribute('data-name') ?? '';
+  catSel.value = opt.getAttribute('data-category') ?? '';
 }
 
-async function createProductFromPanel(){
-  const name = document.getElementById('new_product_name')?.value?.trim() || '';
-  const category_id = Number(document.getElementById('new_category_id')?.value || 0);
+async function createProductFromPanel() {
+  const name = document.getElementById('new_product_name')?.value?.trim();
+  const category_id = document.getElementById('new_category_id')?.value;
 
   if (!category_id) return alert('Оберіть категорію');
-  if (!name) return alert('Введіть назву');
+  if (!name) return alert('Введіть назву товару');
 
   const res = await fetch('/api/products', {
     method: 'POST',
     headers: {
-      'Content-Type':'application/json',
-      'Accept':'application/json',
-      ...(CSRF ? { 'X-CSRF-TOKEN': CSRF } : {}),
-      'X-Requested-With': 'XMLHttpRequest',
+      'Content-Type': 'application/json',
+      'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? ''
     },
     body: JSON.stringify({ name, category_id })
   });
 
   const text = await res.text();
   let data = {};
-  try { data = text ? JSON.parse(text) : {}; } catch(e){}
+  try { data = text ? JSON.parse(text) : {}; } catch(e) {}
 
-  if (!res.ok) return alert(data.error ?? `Помилка (${res.status})`);
+  if (!res.ok) {
+    alert(data.error ?? ('Помилка створення: ' + text.slice(0,200)));
+    return;
+  }
 
-  document.getElementById('new_product_name').value = '';
-  document.getElementById('new_category_id').value = '';
-  document.getElementById('newProductPanel').style.display = 'none';
-
+  // оновлюємо селект товарів для додавання в партію
   await loadProducts();
+  // закриваємо панель
+  document.getElementById('productPanelAdd').style.display = 'none';
+  document.getElementById('new_product_name').value = '';
 }
 
-async function updateProductFromPanel(){
-  const id = Number(document.getElementById('edit_product_id')?.value || 0);
-  const name = document.getElementById('edit_product_name')?.value?.trim() || '';
-  const category_id = Number(document.getElementById('edit_category_id')?.value || 0);
+async function updateProductFromPanel() {
+  // ⚠️ Працює тільки якщо у тебе є бек-роут PATCH/PUT /api/products/{id}
+  const id = document.getElementById('edit_product_id')?.value;
+  const name = document.getElementById('edit_product_name')?.value?.trim();
+  const category_id = document.getElementById('edit_category_id')?.value;
 
   if (!id) return alert('Оберіть товар');
   if (!category_id) return alert('Оберіть категорію');
@@ -695,64 +478,73 @@ async function updateProductFromPanel(){
   const res = await fetch(`/api/products/${id}`, {
     method: 'PATCH',
     headers: {
-      'Content-Type':'application/json',
-      'Accept':'application/json',
-      ...(CSRF ? { 'X-CSRF-TOKEN': CSRF } : {}),
-      'X-Requested-With': 'XMLHttpRequest',
+      'Content-Type': 'application/json',
+      'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? ''
     },
     body: JSON.stringify({ name, category_id })
   });
 
   const text = await res.text();
   let data = {};
-  try { data = text ? JSON.parse(text) : {}; } catch(e){}
+  try { data = text ? JSON.parse(text) : {}; } catch(e) {}
 
-  if (!res.ok) return alert(data.error ?? `Помилка (${res.status})`);
+  if (!res.ok) {
+    alert(data.error ?? ('Помилка збереження: ' + text.slice(0,200)));
+    return;
+  }
 
-  document.getElementById('editProductPanel').style.display = 'none';
   await loadProducts();
+  await loadProductsForEditSelect();
+  alert('Збережено ✅');
 }
 
-async function archiveProductFromPanel(){
-  const id = Number(document.getElementById('edit_product_id')?.value || 0);
+async function deleteProductFromPanel() {
+  // ⚠️ Працює тільки якщо у тебе є бек-роут DELETE /api/products/{id}
+  const id = document.getElementById('edit_product_id')?.value;
   if (!id) return alert('Оберіть товар');
 
-  const ok = confirm('Відправити товар в архів? Він зникне зі списку додавання в партію.');
+  const ok = confirm('Видалити цей товар?');
   if (!ok) return;
 
   const res = await fetch(`/api/products/${id}`, {
     method: 'DELETE',
     headers: {
-      'Accept':'application/json',
-      ...(CSRF ? { 'X-CSRF-TOKEN': CSRF } : {}),
-      'X-Requested-With': 'XMLHttpRequest',
+      'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? ''
     }
   });
 
   const text = await res.text();
   let data = {};
-  try { data = text ? JSON.parse(text) : {}; } catch(e){}
+  try { data = text ? JSON.parse(text) : {}; } catch(e) {}
 
-  if (!res.ok) return alert(data.error ?? `Помилка (${res.status})`);
+  if (!res.ok) {
+    alert(data.error ?? ('Помилка видалення: ' + text.slice(0,200)));
+    return;
+  }
 
-  document.getElementById('editProductPanel').style.display = 'none';
   await loadProducts();
+  await loadProductsForEditSelect();
+  alert('Видалено ✅');
 }
 
-// INIT
-document.addEventListener('DOMContentLoaded', async () => {
-  await loadCategories();
-  await loadProducts();
-});
+// маленький escape щоб не ламати option data-name
+function escapeHtml(s){
+  return String(s)
+    .replaceAll('&','&amp;')
+    .replaceAll('<','&lt;')
+    .replaceAll('>','&gt;')
+    .replaceAll('"','&quot;')
+    .replaceAll("'","&#039;");
+}
 
 
 /* INIT */
-createDelivery();
-loadCategories();
-loadProducts();
-
-
+document.addEventListener('DOMContentLoaded', () => {
+  setShipVisible(false);
+  loadProducts();
+});
 </script>
+
 
 @endsection
 
