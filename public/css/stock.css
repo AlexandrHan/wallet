@@ -264,3 +264,53 @@
     gap:10px;
     margin-top:14px;
 }
+.stock-cat-summary{
+  list-style: none;
+  cursor: pointer;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  color: #66f2a8;
+  padding: 6px 2px;
+  font-weight: 800;
+}
+
+.stock-cat-summary::-webkit-details-marker{ display:none; }
+
+.stock-cat-left{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.stock-cat-title{
+  font-size: 16px;
+  color: #66f2a8;
+}
+
+.stock-cat-right{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  opacity: .9;
+  font-weight: 700;
+}
+
+.chev{
+  display:inline-block;
+  transform: rotate(0deg);
+  transition: transform .15s ease;
+  font-weight: 900;
+}
+
+.stock-cat[open] .chev{
+  transform: rotate(90deg);
+}
+
+.stock-cat-body{
+  margin-top: 12px;
+}
+
+.ps{
+    color: #fff;
+}

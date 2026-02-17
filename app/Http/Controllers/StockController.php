@@ -44,12 +44,16 @@ class StockController extends Controller
             );
 
         $rows = DB::table('products as p')
+            ->leftJoin('product_categories as c', 'c.id', '=', 'p.category_id')
             ->leftJoinSub($purchases, 'pur', 'pur.product_id', '=', 'p.id')
             ->leftJoinSub($salesAll, 's', 's.product_id', '=', 'p.id')
             ->whereNotNull('pur.product_id')
             ->select(
                 'p.id as product_id',
                 'p.name',
+                'p.category_id',
+                DB::raw("COALESCE(c.name, 'Інше') as category_name"),
+
                 DB::raw('COALESCE(pur.received,0) as received'),
                 DB::raw('COALESCE(s.sold,0) as sold'),
                 DB::raw('(COALESCE(pur.received,0) - COALESCE(s.sold,0)) as qty_on_stock'),
@@ -67,8 +71,10 @@ class StockController extends Controller
 
                 DB::raw('ROUND((COALESCE(pur.received_cost,0) - COALESCE(s.sold_cost,0)), 2) as stock_value')
             )
+            ->orderByRaw("COALESCE(c.name, 'Інше') asc")
             ->orderBy('p.name')
             ->get();
+
 
         // ====== 2) БОРГ ЗА ВЕСЬ ЧАС (АКТУАЛЬНИЙ) ======
         $soldAllTime = (float) DB::table('sales')
@@ -101,6 +107,8 @@ class StockController extends Controller
             'sold_total' => round($soldAllTime, 2),
 
             'stock' => $rows,
+
+            
         ]);
     }
 }

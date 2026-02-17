@@ -332,7 +332,7 @@ Route::get('/exchange-rates', function () {
 
 ///////////////////////////////////. Санфікс склад.  /////////////////////////////////////
 
-Route::get('/stock', [\App\Http\Controllers\StockController::class, 'index']);
+
 
 Route::post('/deliveries', [\App\Http\Controllers\DeliveryController::class, 'store']);
 
