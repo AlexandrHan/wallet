@@ -47,6 +47,7 @@
     $navView = match(auth()->user()->role){
       'sunfix_manager' => 'partials.nav.bottom-sunfix-manager',
       'owner' => 'partials.nav.bottom-owner',
+      'accountant' => 'partials.nav.bottom-accountant',
       default => null,
     };
   @endphp

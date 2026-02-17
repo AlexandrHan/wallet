@@ -18,22 +18,9 @@
     @endif
   </div>
 
-  @if(auth()->user()->role === 'owner')
-    <div class="card" style="margin-bottom:20px;">
-      <button class="btn primary" onclick="openSendCashModal()" style="width:100%">
-        Передати кошти менеджеру
-      </button>
-    </div>
-  @endif
 
-  <div class="card">
-    <div style="font-size:14px; opacity:.7; text-align:center">Склад SunFix</div>
 
-    <div style="font-size:20px; font-weight:700; margin-top:6px; text-align:center">
-      Борг постачальнику:
-      <span id="supplierDebt">0</span> $
-    </div>
-  </div>
+
 
   <div class="card" style="margin-top:14px;">
     <div class="list-item" style="font-weight:700; margin-bottom:10px; text-align:center;">
@@ -69,6 +56,7 @@
     $navView = match(auth()->user()->role){
       'sunfix_manager' => 'partials.nav.bottom-sunfix-manager',
       'owner' => 'partials.nav.bottom-owner',
+      'accountant' => 'partials.nav.bottom-accountant',
       default => null,
     };
   @endphp
@@ -94,7 +82,7 @@ async function loadStock() {
   (response.stock || []).forEach(item => {
     list.innerHTML += `
       <div class="delivery-row">
-        <div class="delivery-row-top delivery-row-start">${item.name}</div>
+        <div class="delivery-row-top">${item.name}</div>
         <div class="delivery-row-bottom">
           <div class="kv"><span class="label">Отримано</span><span class="value">${item.received}</span></div>
           <div class="kv"><span class="label">Продано</span><span class="value">${item.sold}</span></div>

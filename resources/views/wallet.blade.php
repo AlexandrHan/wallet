@@ -338,7 +338,7 @@
 </div>
 
 </main>
-
+@include('partials.nav.bottom-accountant')
 @include('partials.nav.bottom-wallet')
 
 

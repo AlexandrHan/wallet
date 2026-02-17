@@ -8,21 +8,23 @@
 @section('content')
 
 <main class="wrap stock-wrap">
+    @if(in_array(auth()->user()?->role, ['sunfix_manager'], true))
     <div class="breadcrumb" style="margin-bottom:25px;">
 
-        @if(in_array(auth()->user()?->role, ['sunfix_manager'], true))
+        
         <button class="btn primary" onclick="window.location.href='/deliveries/create'">
             📦➕ Створити нову партію
         </button>
-        @endif
+        
 
-    </div>
-
-    <div class="card">
+    </div>@endif
+        <div class="card" style="margin-bottom:14px;">
         <div class="list-item" style="font-weight:700; text-align:center; margin-bottom:10px;">
             Список поставок
         </div>
+    </div>
 
+    <div class="card">
         <div id="deliveriesList" class="delivery-list"></div>
     </div>
 </main>
@@ -31,6 +33,7 @@
     $navView = match(auth()->user()->role){
       'sunfix_manager' => 'partials.nav.bottom-sunfix-manager',
       'owner' => 'partials.nav.bottom-owner',
+      'accountant' => 'partials.nav.bottom-accountant',
       default => null,
     };
   @endphp

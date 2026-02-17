@@ -348,10 +348,13 @@ $notesCount = $item->steps
   @php
     $navView = match(auth()->user()->role){
       'sunfix_manager' => 'partials.nav.bottom-sunfix-manager',
-      'owner' => 'partials.nav.bottom-owner',
       default => null,
     };
   @endphp
+
+  @if($navView)
+    @include($navView)
+  @endif
 @endauth
 
 @include('partials.nav.bottom-wallet')
