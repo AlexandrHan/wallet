@@ -28,6 +28,17 @@ main{
   flex-direction: column;
 }
 
+main{
+  width:100%;
+  display:block;
+}
+
+main > .wrap{
+  margin-left:auto;
+  margin-right:auto;
+}
+
+
 .wrap{
   flex: 1;
 }
@@ -196,6 +207,8 @@ body.modal-open{
 
 /* ================== HEADER ================== */
 header{
+  display:flex;
+  justify-content:center;
   position:fixed;
   top:0;
   left:0;
@@ -213,10 +226,14 @@ header{
   padding-top: env(safe-area-inset-top);
 }
 
+
 header .wrap{
   display:flex;
   align-items:center;
   position:relative;
+  width:100%;
+  max-width:980px;
+  margin:0 auto;
 }
 
 .header-right{
@@ -470,7 +487,7 @@ table{
   border-collapse:separate;
   border-spacing:0 10px;
   table-layout:fixed;
-  margin-bottom: 6rem;
+  margin-bottom: 30rem;
 }
 thead{ display:none; }
 
