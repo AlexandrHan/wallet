@@ -143,7 +143,8 @@ async function loadStock() {
             </div>
 
             <div class="stock-cat-right">
-              <span class="stock-cat-meta ps">${totalQty} шт</span>
+
+               <span class="stock-cat-meta ps">${totalValue} $</span>
             </div>
           </summary>
 

@@ -252,73 +252,86 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
 
         Route::post('/sales/batch', function (Request $request) {
 
-        $u = $request->user();
-        if (!$u || !in_array($u->role, ['owner', 'accountant'], true)) {
-            return response()->json(['error' => 'Forbidden'], 403);
-        }
-
-        $data = $request->validate([
-            'sold_at' => 'required|date',
-            'items' => 'required|array|min:1',
-            'items.*.product_id' => 'required|integer',
-            'items.*.qty' => 'required|integer|min:0',
-        ]);
-
-        $soldAt = $data['sold_at'];
-
-        foreach ($data['items'] as $it) {
-            $pid = (int)$it['product_id'];
-            $qty = (int)$it['qty'];
-
-            if ($qty <= 0) continue;
-
-            // ціна постачальника беремо з останньої ACCEPTED поставки по цьому товару
-            $supplierPrice = DB::table('supplier_delivery_items as i')
-                ->join('supplier_deliveries as d', 'd.id', '=', 'i.delivery_id')
-                ->where('d.status', 'accepted')
-                ->where('i.product_id', $pid)
-                ->orderByDesc('d.accepted_at')
-                ->orderByDesc('i.updated_at')
-                ->value('i.supplier_price');
-
-            if ($supplierPrice === null) {
-                return response()->json([
-                    'error' => "Нема ціни постачальника для product_id={$pid} (нема accepted поставки)"
-                ], 422);
+            $u = $request->user();
+            if (!$u || !in_array($u->role, ['owner', 'accountant'], true)) {
+                return response()->json(['error' => 'Forbidden'], 403);
             }
 
-            // перевірка залишку: received - sold
-            $received = (int) DB::table('supplier_delivery_items as i')
-                ->join('supplier_deliveries as d', 'd.id', '=', 'i.delivery_id')
-                ->where('d.status', 'accepted')
-                ->where('i.product_id', $pid)
-                ->sum('i.qty_accepted');
-
-            $sold = (int) DB::table('sales')
-                ->where('product_id', $pid)
-                ->sum('qty');
-
-            $available = $received - $sold;
-
-            if ($qty > $available) {
-                return response()->json([
-                    'error' => "Недостатньо на складі для product_id={$pid}. Доступно: {$available}, вводиш: {$qty}"
-                ], 422);
-            }
-
-            DB::table('sales')->insert([
-                'product_id' => $pid,
-                'qty' => $qty,
-                'supplier_price' => $supplierPrice,
-                'sold_at' => $soldAt,
-                'created_by' => $u->id,
-                'created_at' => now(),
-                'updated_at' => now(),
+            $data = $request->validate([
+                'sold_at' => 'required|date',
+                'items' => 'required|array|min:1',
+                'items.*.product_id' => 'required|integer',
+                'items.*.qty' => 'required|integer|min:0',
             ]);
-        }
 
-        return response()->json(['ok' => true]);
-    });
+            $soldAt = $data['sold_at'];
+
+            try {
+
+                DB::transaction(function () use ($data, $u, $soldAt) {
+
+                    foreach ($data['items'] as $it) {
+
+                        $pid = (int)$it['product_id'];
+                        $qty = (int)$it['qty'];
+
+                        if ($qty <= 0) continue;
+
+                        // ціна постачальника
+                        $supplierPrice = DB::table('supplier_delivery_items as i')
+                            ->join('supplier_deliveries as d', 'd.id', '=', 'i.delivery_id')
+                            ->where('d.status', 'accepted')
+                            ->where('i.product_id', $pid)
+                            ->orderByDesc('d.accepted_at')
+                            ->orderByDesc('i.updated_at')
+                            ->value('i.supplier_price');
+
+                        if ($supplierPrice === null) {
+                            throw new Exception("Нема ціни постачальника для product_id={$pid}");
+                        }
+
+                        // отримано
+                        $received = (int) DB::table('supplier_delivery_items as i')
+                            ->join('supplier_deliveries as d', 'd.id', '=', 'i.delivery_id')
+                            ->where('d.status', 'accepted')
+                            ->where('i.product_id', $pid)
+                            ->sum('i.qty_accepted');
+
+                        // вже продано
+                        $sold = (int) DB::table('sales')
+                            ->where('product_id', $pid)
+                            ->sum('qty');
+
+                        $available = $received - $sold;
+
+                        if ($qty > $available) {
+                            throw new Exception("Недостатньо на складі для product_id={$pid}. Доступно: {$available}, вводиш: {$qty}");
+                        }
+
+                        DB::table('sales')->insert([
+                            'product_id' => $pid,
+                            'qty' => $qty,
+                            'supplier_price' => $supplierPrice,
+                            'sold_at' => $soldAt,
+                            'created_by' => $u->id,
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ]);
+                    }
+
+                });
+
+                return response()->json(['ok' => true]);
+
+            } catch (\Throwable $e) {
+
+                return response()->json([
+                    'error' => $e->getMessage()
+                ], 422);
+
+            }
+        });
+
 
 
     
