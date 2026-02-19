@@ -314,3 +314,83 @@
 .ps{
     color: #fff;
 }
+
+/* ============================
+   FEM DEBT CARD
+============================ */
+
+#femDebtCard summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 6px 0;
+}
+
+#femDebtCard summary::-webkit-details-marker {
+  display: none;
+}
+
+/* шапка таблиці */
+.fem-table-header {
+  display: flex;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 13px;
+  opacity: .7;
+  padding: 8px 6px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+
+/* рядок */
+.fem-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 6px;
+  border-bottom: 1px solid rgba(255,255,255,.05);
+}
+
+.fem-row:last-child {
+  border-bottom: none;
+}
+
+/* поля */
+.fem-row input {
+  height: 36px;
+  font-size: 14px;
+  padding: 0 8px;
+}
+
+/* колонки */
+.fem-col-date   { width: 18%; }
+.fem-col-name   { width: 32%; }
+.fem-col-amount { width: 15%; }
+.fem-col-pay    { width: 15%; }
+.fem-col-balance{
+  width: 20%;
+  text-align: right;
+  font-weight: 700;
+}
+
+/* баланс */
+.fem-balance-positive {
+  color: #66f2a8;
+}
+
+.fem-balance-zero {
+  color: #aaa;
+}
+
+/* кнопка додавання */
+.fem-add-btn {
+  margin-top: 10px;
+  width: 100%;
+  opacity: .85;
+}
+
+.fem-add-btn:hover {
+  opacity: 1;
+}
+
+/* прибрати маркер (трикутник/крапку) у summary для details */
+details > summary::-webkit-details-marker { display: none; }
+details > summary::marker { content: ""; }

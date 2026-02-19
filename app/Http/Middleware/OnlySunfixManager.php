@@ -31,6 +31,9 @@ class OnlySunfixManager
             $request->is('api/products*') ||
             $request->is('api/reclamations*') ||
             $request->is('api/supplier-cash*') ||
+            $request->is('api/fem*') ||
+            $request->is('api/debt-chart*') ||
+
             
 
 

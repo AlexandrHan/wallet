@@ -66,6 +66,10 @@ html{ scrollbar-gutter: stable; }
     inset 0 1px 1px rgba(255,255,255,.12),
     0 4px 14px rgba(0,0,0,.25);
 }
+@media (min-width:900px){
+  .tg-bottom-left{margin-bottom: 10px;}
+  .tg-fab{margin-bottom: 10px;}
+}
 
 .tg-tab{
   flex: 1;

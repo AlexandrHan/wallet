@@ -8,6 +8,8 @@ use Illuminate\Http\Request;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\WalletController;
 use App\Http\Controllers\ReclamationController;
+use App\Http\Controllers\FemDebtController;
+
 
 use App\Models\BankTransactionRaw;
 
@@ -168,14 +170,30 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
             // 5.3) Нетто-борг
             $supplierDebt = max(0, $salesPeriod - $paidPeriod);
 
+            // ====== BALANCE CHECK ======
+
+            $soldCostTotal = (float) DB::table('sales')
+                ->sum(DB::raw('qty * supplier_price'));
+
+            $paidTotal = (float) DB::table('supplier_cash_transfers')
+                ->where('is_received', 1)
+                ->sum('amount');
+
+            $balanceOk = abs($soldCostTotal - ($paidTotal + $supplierDebt)) < 0.01;
+
+
             return response()->json([
                 'from' => $from,
                 'to' => $to,
                 'supplier_debt' => round($supplierDebt, 2),
+                'balance_ok' => $balanceOk,
                 'stock' => $rows,
             ]);
 
+
         });
+
+
 
         // ======================
         // SUPPLIER CASH
@@ -245,8 +263,6 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
 
             return response()->json(['ok' => true]);
         });
-
-
 
 
 
@@ -1005,6 +1021,134 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
     Route::get('/finance', function () {
         return view('finance.finance');
     });
+
+    Route::middleware(['auth'])->prefix('api/fem')->group(function () {
+        Route::get('/containers', [FemDebtController::class, 'index']);                 // manager/owner/accountant
+        Route::post('/containers', [FemDebtController::class, 'storeContainer']);      // manager only (контролер вже перевіряє)
+        Route::patch('/containers/{id}', [FemDebtController::class, 'updateContainer']); // manager only
+        Route::post('/containers/{id}/payments', [FemDebtController::class, 'storePayment']); // owner/accountant only
+        Route::post('/payments/{paymentId}/received', [FemDebtController::class, 'receivePayment']);
+
+    });
+
+
+        // ======================
+        // Діаграмма боргів по санфіксу
+        // ======================
+
+        Route::middleware(['auth'])->get('/api/debt-chart', function () {
+
+            // ---------- 1) Інверторне: борг загальний ----------
+            $salesTotal = (float) DB::table('sales')->sum(DB::raw('qty * supplier_price'));
+
+            $cashQ = DB::table('supplier_cash_transfers')->where('is_received', 1);
+
+            // якщо є колонка currency — фільтруємо USD
+            if (\Illuminate\Support\Facades\Schema::hasColumn('supplier_cash_transfers', 'currency')) {
+                $cashQ->where('currency', 'USD');
+            }
+
+            $paidTotal = (float) $cashQ->sum('amount');
+
+            $inverterDebtTotal = max(0, $salesTotal - $paidTotal);
+
+            // ---------- 2) Інверторне: борг по категоріях ----------
+            // Без CONCAT/GREATEST: якщо нема текстової категорії, групуємо по category_id і даємо лейбл у PHP
+            if (\Illuminate\Support\Facades\Schema::hasColumn('products', 'category')) {
+                $salesByCat = DB::table('sales as s')
+                    ->join('products as p', 'p.id', '=', 's.product_id')
+                    ->groupBy('p.category')
+                    ->select('p.category as key', DB::raw("SUM(s.qty * s.supplier_price) as sales_total"))
+                    ->get()
+                    ->map(fn($r) => ['label' => trim($r->key ?: 'Без категорії'), 'sales_total' => (float)$r->sales_total]);
+
+            } elseif (\Illuminate\Support\Facades\Schema::hasColumn('products', 'category_name')) {
+                $salesByCat = DB::table('sales as s')
+                    ->join('products as p', 'p.id', '=', 's.product_id')
+                    ->groupBy('p.category_name')
+                    ->select('p.category_name as key', DB::raw("SUM(s.qty * s.supplier_price) as sales_total"))
+                    ->get()
+                    ->map(fn($r) => ['label' => trim($r->key ?: 'Без категорії'), 'sales_total' => (float)$r->sales_total]);
+
+            } elseif (\Illuminate\Support\Facades\Schema::hasColumn('products', 'category_id')) {
+                $salesByCat = DB::table('sales as s')
+                    ->join('products as p', 'p.id', '=', 's.product_id')
+                    ->groupBy('p.category_id')
+                    ->select('p.category_id as key', DB::raw("SUM(s.qty * s.supplier_price) as sales_total"))
+                    ->get()
+                    ->map(fn($r) => ['label' => 'Категорія #' . (int)($r->key ?? 0), 'sales_total' => (float)$r->sales_total]);
+
+            } else {
+                // взагалі немає категорій
+                $salesByCat = collect([
+                    ['label' => 'Без категорії', 'sales_total' => $salesTotal]
+                ]);
+            }
+
+            $sumCatSales = (float) $salesByCat->sum('sales_total');
+
+            $inverterByCategory = $salesByCat->map(function ($r) use ($paidTotal, $sumCatSales) {
+                $sales = (float) $r['sales_total'];
+                $share = ($sumCatSales > 0) ? ($sales / $sumCatSales) : 0;
+                $paidAllocated = $paidTotal * $share;
+                $debt = max(0, $sales - $paidAllocated);
+
+                return [
+                    'category' => $r['label'],
+                    'debt' => round($debt, 2),
+                ];
+            })->sortByDesc('debt')->values();
+
+            // ---------- 3) ФЕМ: борг загальний + по виробниках (усе в PHP, без SUBSTRING_INDEX/GREATEST) ----------
+            $containers = DB::table('fem_containers as c')
+                ->leftJoin('fem_container_payments as p', 'p.fem_container_id', '=', 'c.id')
+                ->groupBy('c.id', 'c.name', 'c.amount')
+                ->select(
+                    'c.id',
+                    'c.name',
+                    'c.amount',
+                    DB::raw('COALESCE(SUM(p.amount),0) as paid_sum')
+                )
+                ->orderByDesc('c.id')
+                ->get();
+
+            $femTotalDebt = 0.0;
+            $byBrand = [];
+
+            foreach ($containers as $c) {
+                $amount = (float) $c->amount;
+                $paid   = (float) $c->paid_sum;
+                $balance = $amount - $paid;
+
+                $pos = max(0, $balance);
+                $femTotalDebt += $pos;
+
+                $name = trim((string)($c->name ?? ''));
+                $brand = $name ? preg_split('/\s+/', $name)[0] : 'Невідомо';
+
+                if (!isset($byBrand[$brand])) $byBrand[$brand] = 0.0;
+                $byBrand[$brand] += $pos;
+            }
+
+            $femByBrand = collect($byBrand)
+                ->map(fn($v,$k) => ['brand' => $k, 'debt' => round((float)$v, 2)])
+                ->sortByDesc('debt')
+                ->values();
+
+            $totalDebt = $inverterDebtTotal + $femTotalDebt;
+
+            return response()->json([
+                'total_debt' => round($totalDebt, 2),
+
+                'inverter_debt' => round($inverterDebtTotal, 2),
+                'inverter_by_category' => $inverterByCategory,
+
+                'fem_debt' => round($femTotalDebt, 2),
+                'fem_by_brand' => $femByBrand,
+            ]);
+        });
+
+
 
 
 

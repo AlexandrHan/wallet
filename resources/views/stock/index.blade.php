@@ -79,6 +79,10 @@ async function loadStock() {
     return;
   }
   const stockJson = await rStock.json();
+  if (stockJson.balance_ok === false) {
+  console.warn('⚠️ Баланс складу не сходиться');
+}
+
   const stock = stockJson.stock || [];
 
   // 2) тягнемо довідник товарів з категоріями
@@ -144,7 +148,7 @@ async function loadStock() {
 
             <div class="stock-cat-right">
 
-               <span class="stock-cat-meta ps">${totalValue} $</span>
+               <span class="stock-cat-meta ps">${totalValue}</span>
             </div>
           </summary>
 
