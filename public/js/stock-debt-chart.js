@@ -74,7 +74,7 @@
         <!-- ✅ СТРУКТУРА БОРГУ — ВГОРІ -->
         <div style="margin-top:12px;">
             <button type="button" class="btn" data-view="total" style="width:100%;">
-            📊 Структура боргу
+            📊 Загальний борг
             </button>
         </div>
 
@@ -98,7 +98,7 @@
 
           <!-- TOTAL -->
           <div class="card" id="debtSectionTotal" style="margin-top:10px;">
-            <div style="font-weight:700; text-align:center; margin-bottom:10px;">Структура боргу</div>
+            <div style="font-weight:700; text-align:center; margin-bottom:10px;">Загальний борг</div>
 
             <div style="height:220px;">
               <canvas id="pieTotal"></canvas>
@@ -109,7 +109,7 @@
 
           <!-- INVERTERS -->
           <div class="card" id="debtSectionInverter" style="margin-top:10px;">
-            <div style="font-weight:700; text-align:center; margin-bottom:10px;">Інвертори: по категоріях</div>
+            <div style="font-weight:700; text-align:center; margin-bottom:10px;">Обладнання: по категоріях</div>
 
             <div style="height:220px;">
               <canvas id="pieInverterCats"></canvas>
@@ -369,7 +369,7 @@ function hookViewClicks() {
     if (femEl)   femEl.innerText   = fmt0(d.fem_debt || 0);
 
     // TOTAL
-    const totalLabels = ['Інвертори', 'ФЕМ'];
+    const totalLabels = ['Обладнання', 'ФЕМ'];
     const totalData = [Number(d.inverter_debt || 0), Number(d.fem_debt || 0)];
     chartTotal = upsertPie(chartTotal, 'pieTotal', totalLabels, totalData);
     renderBars(document.getElementById('barsTotal'), totalLabels, totalData);

@@ -503,3 +503,5 @@ Route::middleware('auth')->post('/supplier-cash/{id}/received', function ($id) {
 });
 
 Route::delete('/deliveries/items/{id}', [DeliveryController::class, 'deleteItem']);
+
+

@@ -89,8 +89,23 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
             ]);
         });
 
-        Route::get('/stock', function (Request $request) {
+        
 
+        Route::post('/cash-transfers', [\App\Http\Controllers\CashTransferController::class, 'store']);
+
+        Route::post('/cash-transfers/{id}/accept', [\App\Http\Controllers\CashTransferController::class, 'accept']);
+
+        Route::post('/sales-projects', [\App\Http\Controllers\SalesProjectController::class, 'store']);
+
+        Route::get('/sales-projects', [\App\Http\Controllers\SalesProjectController::class, 'index']);
+
+        Route::post('/sales-projects/{id}/advance', [\App\Http\Controllers\SalesProjectController::class, 'addAdvance']);
+        
+        Route::post('/send-project-money', [\App\Http\Controllers\CashTransferController::class, 'sendProjectMoney']);
+
+        
+
+        Route::get('/stock', function (Request $request) {
             // ====== 1) Діапазон (за замовчуванням поточний тиждень ПН-НД) ======
             $from = $request->query('from');
             $to   = $request->query('to');
@@ -1028,7 +1043,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         Route::patch('/containers/{id}', [FemDebtController::class, 'updateContainer']); // manager only
         Route::post('/containers/{id}/payments', [FemDebtController::class, 'storePayment']); // owner/accountant only
         Route::post('/payments/{paymentId}/received', [FemDebtController::class, 'receivePayment']);
-
+        
     });
 
 
