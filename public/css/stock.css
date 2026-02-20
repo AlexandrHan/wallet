@@ -394,3 +394,143 @@
 /* прибрати маркер (трикутник/крапку) у summary для details */
 details > summary::-webkit-details-marker { display: none; }
 details > summary::marker { content: ""; }
+
+
+/* =========================================
+   DEBT HERO (SG Holding style)
+========================================= */
+
+/* прибираємо маркер details глобально */
+details > summary::-webkit-details-marker { display:none; }
+details > summary::marker { content:""; }
+
+/* HERO summary */
+#debtChartsCard .debt-hero{
+  list-style:none;
+  cursor:pointer;
+  padding: 18px 18px 16px;
+  border-radius: 22px;
+
+  /* glass */
+  background: radial-gradient(120% 180% at 50% 0%,
+    rgba(102,242,168,.22) 0%,
+    rgba(255,255,255,.08) 35%,
+    rgba(255,255,255,.05) 70%,
+    rgba(255,255,255,.04) 100%
+  );
+
+  border: 1px solid rgba(255,255,255,.10);
+  box-shadow:
+    0 18px 48px rgba(0,0,0,.42),
+    inset 0 1px 0 rgba(255,255,255,.12);
+  backdrop-filter: blur(18px);
+}
+
+#debtChartsCard .debt-hero-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+#debtChartsCard .debt-hero-title{
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: .2px;
+  opacity: .95;
+}
+
+#debtChartsCard .debt-hero-pill{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 13px;
+  color: #0b0d10;
+  background: rgba(102,242,168,.95);
+  box-shadow: 0 6px 16px rgba(0,0,0,.25);
+}
+
+#debtChartsCard .debt-hero-total{
+  margin-top: 14px;
+  text-align:center;
+  font-size: 40px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  opacity: .95;
+}
+
+#debtChartsCard .debt-hero-grid{
+  margin-top: 14px;
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+#debtChartsCard .debt-mini{
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(0,0,0,.14);
+  border: 1px solid rgba(255,255,255,.08);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+}
+
+#debtChartsCard .debt-mini-top{
+  font-size: 14px;
+  font-weight: 800;
+  opacity: .90;
+}
+
+#debtChartsCard .debt-mini-val{
+  margin-top: 6px;
+  font-size: 20px;
+  font-weight: 900;
+  opacity: .95;
+}
+
+#debtChartsCard .debt-hero-hint{
+  margin-top: 12px;
+  text-align:center;
+  font-size: 13px;
+  opacity: .68;
+}
+
+/* BODY padding */
+#debtChartsCard .debt-hero-body{
+  margin-top: 12px;
+}
+
+/* зробити сам card charts красивішим під glass */
+#debtChartsCard .debt-hero-body .card{
+  border-radius: 20px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.04);
+  box-shadow: 0 14px 34px rgba(0,0,0,.35);
+}
+
+/* бари: трохи “wallet-like” */
+#debtChartsCard #barsTotal > div,
+#debtChartsCard #barsInverterCats > div,
+#debtChartsCard #barsFemBrands > div{
+  border-bottom: 1px solid rgba(255,255,255,.07) !important;
+}
+
+/* мобілка */
+@media (max-width: 768px){
+  #debtChartsCard .debt-hero-total{ font-size: 34px; }
+  #debtChartsCard .debt-hero-grid{ grid-template-columns: 1fr; }
+}
+
+.debt-mini.active,
+#debtChartsDetails .btn.active{
+  border: 1px solid rgba(102,242,168,.55);
+  box-shadow: 0 0 0 1px rgba(102,242,168,.25) inset;
+}
+
+.debt-mini{
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 14px;
+}
+

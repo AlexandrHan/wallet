@@ -12,6 +12,12 @@
       .replace(/\u00A0/g, ' ');
   }
 
+  function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, (m) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+    }[m]));
+  }
+
   function ensureChartJs() {
     return new Promise((resolve, reject) => {
       if (window.Chart) return resolve();
@@ -30,8 +36,8 @@
   }
 
   function asPositiveRows(labels, values) {
-    const rows = labels
-      .map((label, i) => ({ label: String(label), value: Number(values[i] || 0) }))
+    const rows = (labels || [])
+      .map((label, i) => ({ label: String(label), value: Number((values || [])[i] || 0) }))
       .filter(r => r.value > 0);
 
     rows.sort((a, b) => b.value - a.value);
@@ -39,7 +45,7 @@
   }
 
   ///////////////////////////////////////////////////////////////
-  // UI card
+  // UI
   ///////////////////////////////////////////////////////////////
 
   function makeCard() {
@@ -54,76 +60,188 @@
     card.style.marginBottom = '14px';
 
     card.innerHTML = `
-      <div style="font-size:14px; opacity:.7; text-align:center">
-        Загальний борг
-      </div>
+      <details id="debtChartsDetails">
+        <summary class="debt-hero">
+        <div class="debt-hero-head">
+            <div class="debt-hero-title">SG Holding</div>
+            <div class="debt-hero-pill">USD</div>
+        </div>
 
-      <div style="font-size:20px; font-weight:700; margin-top:6px; text-align:center">
-        <span id="debtTotalVal">0</span> $
-      </div>
+        <div class="debt-hero-total">
+            <span id="debtTotalVal">0</span> $
+        </div>
 
-      <div style="margin-top:12px;">
-        <!-- TOTAL -->
-        <details open>
-          <summary class="stock-cat-summary" style="padding:6px 2px;">
-            <div class="stock-cat-left">
-              <span class="stock-cat-title">Структура боргу</span>
+        <!-- ✅ СТРУКТУРА БОРГУ — ВГОРІ -->
+        <div style="margin-top:12px;">
+            <button type="button" class="btn" data-view="total" style="width:100%;">
+            📊 Структура боргу
+            </button>
+        </div>
+
+        <!-- ✅ ПЛИТКИ — НИЖЧЕ -->
+        <div class="debt-hero-grid" style="width:100%; display:flex;">
+            <div class="debt-mini btn" role="button" tabindex="0" data-view="inverter" style="width:100%; text-align:center;">
+            <div class="debt-mini-top">⚡<br> Обладнання</div>
+            <div class="debt-mini-val"><span id="debtInvVal">0</span> $</div>
             </div>
-            <div class="stock-cat-right"><span class="chev">›</span></div>
-          </summary>
 
-          <div class="stock-cat-body">
+            <div class="debt-mini btn" role="button" tabindex="0" data-view="fem" style="width:100%; text-align:center;">
+            <div class="debt-mini-top">☀️<br> ФЕМ</div>
+            <div class="debt-mini-val"><span id="debtFemVal">0</span> $</div>
+            </div>
+        </div>
+
+        </summary>
+
+
+        <div class="debt-hero-body">
+
+          <!-- TOTAL -->
+          <div class="card" id="debtSectionTotal" style="margin-top:10px;">
+            <div style="font-weight:700; text-align:center; margin-bottom:10px;">Структура боргу</div>
+
             <div style="height:220px;">
               <canvas id="pieTotal"></canvas>
             </div>
 
             <div id="barsTotal" style="margin-top:10px;"></div>
           </div>
-        </details>
 
-        <!-- INVERTER CATS -->
-        <details style="margin-top:10px;">
-          <summary class="stock-cat-summary" style="padding:6px 2px;">
-            <div class="stock-cat-left">
-              <span class="stock-cat-title">Інвертори: борг по категоріях</span>
-            </div>
-            <div class="stock-cat-right"><span class="chev">›</span></div>
-          </summary>
+          <!-- INVERTERS -->
+          <div class="card" id="debtSectionInverter" style="margin-top:10px;">
+            <div style="font-weight:700; text-align:center; margin-bottom:10px;">Інвертори: по категоріях</div>
 
-          <div class="stock-cat-body">
             <div style="height:220px;">
               <canvas id="pieInverterCats"></canvas>
             </div>
 
             <div id="barsInverterCats" style="margin-top:10px;"></div>
           </div>
-        </details>
 
-        <!-- FEM BRANDS -->
-        <details style="margin-top:10px;">
-          <summary class="stock-cat-summary" style="padding:6px 2px;">
-            <div class="stock-cat-left">
-              <span class="stock-cat-title">ФЕМ: борг по виробниках</span>
-            </div>
-            <div class="stock-cat-right"><span class="chev">›</span></div>
-          </summary>
+          <!-- FEM -->
+          <div class="card" id="debtSectionFem" style="margin-top:10px;">
+            <div style="font-weight:700; text-align:center; margin-bottom:10px;">ФЕМ: по виробниках</div>
 
-          <div class="stock-cat-body">
             <div style="height:220px;">
               <canvas id="pieFemBrands"></canvas>
             </div>
 
             <div id="barsFemBrands" style="margin-top:10px;"></div>
           </div>
-        </details>
-      </div>
+
+        </div>
+      </details>
     `;
 
     main.insertAdjacentElement('afterbegin', card);
   }
 
+
+
+
+///////////////////////////////////////////////////////////////
+// View switching + toggle open/close + active highlight
+///////////////////////////////////////////////////////////////
+
+let currentView = 'total';
+
+function setView(view) {
+  currentView = view;
+
+  const secTotal = document.getElementById('debtSectionTotal');
+  const secInv   = document.getElementById('debtSectionInverter');
+  const secFem   = document.getElementById('debtSectionFem');
+
+  if (secTotal) secTotal.style.display = (view === 'total') ? '' : 'none';
+  if (secInv)   secInv.style.display   = (view === 'inverter') ? '' : 'none';
+  if (secFem)   secFem.style.display   = (view === 'fem') ? '' : 'none';
+}
+
+function setActive(view) {
+  const details = document.getElementById('debtChartsDetails');
+  if (!details) return;
+
+  details.querySelectorAll('[data-view]').forEach(el => {
+    el.classList.toggle('active', el.getAttribute('data-view') === view);
+  });
+}
+
+function hookViewClicks() {
+  const details = document.getElementById('debtChartsDetails');
+  if (!details) return;
+
+  // ✅ guard: щоб не навішувати слухачі повторно (якщо скрипт підвантажився ще раз)
+  if (details.dataset.bound === '1') return;
+  details.dataset.bound = '1';
+
+  // стартовий стан
+  details.open = false;
+  details.dataset.view = details.dataset.view || 'total';
+  setView(details.dataset.view);
+  setActive(''); // коли закрито - нічого не підсвічуємо
+
+    const toggleView = (view) => {
+    const current = details.dataset.view || 'total';
+
+    // повторний клік по тому ж -> закрити
+    if (details.open && current === view) {
+        details.open = false;
+        return;
+    }
+
+    // записуємо поточний view
+    details.dataset.view = view;
+
+    // якщо details вже відкритий -> toggle не спрацює, тому міняємо UI руками
+    if (details.open) {
+        setView(view);
+        setActive(view);
+
+        const sec =
+        view === 'total' ? document.getElementById('debtSectionTotal') :
+        view === 'inverter' ? document.getElementById('debtSectionInverter') :
+        document.getElementById('debtSectionFem');
+
+        if (sec) setTimeout(() => sec.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+        return;
+    }
+
+    // якщо був закритий -> відкриваємо (toggle listener сам підхопить setView/setActive)
+    details.open = true;
+    };
+
+
+  // ✅ тільки CLICK (не pointerdown + click разом)
+  details.querySelectorAll('[data-view]').forEach(el => {
+    const handler = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleView(el.getAttribute('data-view'));
+    };
+
+    el.addEventListener('click', handler);
+
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') handler(e);
+    });
+  });
+
+  // ✅ коли details відкривається/закривається нативно (клік по summary)
+  details.addEventListener('toggle', () => {
+    if (details.open) {
+      const view = details.dataset.view || 'total';
+      setView(view);
+      setActive(view);
+    } else {
+      setActive('');
+    }
+  });
+}
+
+
+
   ///////////////////////////////////////////////////////////////
-  // Bars (як у wallet: назва + прогрес + %)
+  // Bars (wallet-like)
   ///////////////////////////////////////////////////////////////
 
   function renderBars(el, labels, values) {
@@ -161,19 +279,12 @@
       `);
     });
 
-    // прибираємо останній бордер
     const last = el.lastElementChild;
     if (last) last.style.borderBottom = 'none';
   }
 
-  function escapeHtml(s) {
-    return String(s ?? '').replace(/[&<>"']/g, (m) => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
-    }[m]));
-  }
-
   ///////////////////////////////////////////////////////////////
-  // Charts (як у wallet: фікс палітра + світла легенда)
+  // Charts (pie)
   ///////////////////////////////////////////////////////////////
 
   let chartTotal = null;
@@ -186,10 +297,9 @@
 
     const rows = asPositiveRows(labels, data);
 
-    // щоб pie не ламався на 0
     const safeLabels = rows.length ? rows.map(r => r.label) : ['Нема боргу'];
-    const safeData = rows.length ? rows.map(r => r.value) : [1];
-    const colors = safeLabels.map((_, i) => PALETTE[i % PALETTE.length]);
+    const safeData   = rows.length ? rows.map(r => r.value) : [1];
+    const colors     = safeLabels.map((_, i) => PALETTE[i % PALETTE.length]);
 
     if (chartRef) {
       chartRef.data.labels = safeLabels;
@@ -226,11 +336,10 @@
           tooltip: {
             callbacks: {
               label: (item) => {
-                const v = Number(item.raw || 0);
-                // якщо "Нема боргу" (штучний 1) показуємо 0
                 if (safeLabels.length === 1 && safeLabels[0] === 'Нема боргу') {
                   return `${item.label}: 0 $`;
                 }
+                const v = Number(item.raw || 0);
                 return `${item.label}: ${fmt0(v)} $`;
               }
             }
@@ -250,10 +359,16 @@
 
     const d = await res.json();
 
+    // верхні цифри
     const totalEl = document.getElementById('debtTotalVal');
-    if (totalEl) totalEl.innerText = fmt0(d.total_debt || 0);
+    const invEl   = document.getElementById('debtInvVal');
+    const femEl   = document.getElementById('debtFemVal');
 
-    // TOTAL (inverter vs fem)
+    if (totalEl) totalEl.innerText = fmt0(d.total_debt || 0);
+    if (invEl)   invEl.innerText   = fmt0(d.inverter_debt || 0);
+    if (femEl)   femEl.innerText   = fmt0(d.fem_debt || 0);
+
+    // TOTAL
     const totalLabels = ['Інвертори', 'ФЕМ'];
     const totalData = [Number(d.inverter_debt || 0), Number(d.fem_debt || 0)];
     chartTotal = upsertPie(chartTotal, 'pieTotal', totalLabels, totalData);
@@ -276,10 +391,9 @@
 
   async function boot() {
     makeCard();
+    hookViewClicks();
     await ensureChartJs();
     await loadAndRender();
-
-    // не часто, щоб не душити сторінку
     setInterval(() => loadAndRender().catch(() => {}), 15000);
   }
 

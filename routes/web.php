@@ -1053,16 +1053,41 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
             $inverterDebtTotal = max(0, $salesTotal - $paidTotal);
 
             // ---------- 2) Інверторне: борг по категоріях ----------
-            // Без CONCAT/GREATEST: якщо нема текстової категорії, групуємо по category_id і даємо лейбл у PHP
-            if (\Illuminate\Support\Facades\Schema::hasColumn('products', 'category')) {
-                $salesByCat = DB::table('sales as s')
-                    ->join('products as p', 'p.id', '=', 's.product_id')
-                    ->groupBy('p.category')
-                    ->select('p.category as key', DB::raw("SUM(s.qty * s.supplier_price) as sales_total"))
+            // ✅ беремо НАЗВИ категорій з таблиці product_categories, щоб не було "Категорія #4"
+            if (\Illuminate\Support\Facades\Schema::hasTable('product_categories')
+                && \Illuminate\Support\Facades\Schema::hasColumn('products', 'category_id')) {
+
+                // всі існуючі категорії (навіть якщо зараз 0 продажів)
+                $salesByCat = DB::table('product_categories as pc')
+                    ->leftJoin('products as p', 'p.category_id', '=', 'pc.id')
+                    ->leftJoin('sales as s', 's.product_id', '=', 'p.id')
+                    ->groupBy('pc.id', 'pc.name')
+                    ->select(
+                        'pc.name as key',
+                        DB::raw("COALESCE(SUM(s.qty * s.supplier_price),0) as sales_total")
+                    )
                     ->get()
-                    ->map(fn($r) => ['label' => trim($r->key ?: 'Без категорії'), 'sales_total' => (float)$r->sales_total]);
+                    ->map(fn($r) => [
+                        'label' => trim($r->key ?: 'Без категорії'),
+                        'sales_total' => (float) $r->sales_total
+                    ]);
+
+                // окремо: товари без category_id (якщо такі є)
+                $uncatSales = (float) DB::table('sales as s')
+                    ->join('products as p', 'p.id', '=', 's.product_id')
+                    ->whereNull('p.category_id')
+                    ->sum(DB::raw('s.qty * s.supplier_price'));
+
+                if ($uncatSales > 0) {
+                    $salesByCat = $salesByCat->push([
+                        'label' => 'Без категорії',
+                        'sales_total' => $uncatSales
+                    ]);
+                }
 
             } elseif (\Illuminate\Support\Facades\Schema::hasColumn('products', 'category_name')) {
+
+                // fallback: якщо в products прямо зберігається category_name
                 $salesByCat = DB::table('sales as s')
                     ->join('products as p', 'p.id', '=', 's.product_id')
                     ->groupBy('p.category_name')
@@ -1070,20 +1095,14 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
                     ->get()
                     ->map(fn($r) => ['label' => trim($r->key ?: 'Без категорії'), 'sales_total' => (float)$r->sales_total]);
 
-            } elseif (\Illuminate\Support\Facades\Schema::hasColumn('products', 'category_id')) {
-                $salesByCat = DB::table('sales as s')
-                    ->join('products as p', 'p.id', '=', 's.product_id')
-                    ->groupBy('p.category_id')
-                    ->select('p.category_id as key', DB::raw("SUM(s.qty * s.supplier_price) as sales_total"))
-                    ->get()
-                    ->map(fn($r) => ['label' => 'Категорія #' . (int)($r->key ?? 0), 'sales_total' => (float)$r->sales_total]);
-
             } else {
-                // взагалі немає категорій
+
+                // взагалі немає нормальних категорій
                 $salesByCat = collect([
                     ['label' => 'Без категорії', 'sales_total' => $salesTotal]
                 ]);
             }
+
 
             $sumCatSales = (float) $salesByCat->sum('sales_total');
 
@@ -1098,6 +1117,11 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
                     'debt' => round($debt, 2),
                 ];
             })->sortByDesc('debt')->values();
+
+
+
+
+
 
             // ---------- 3) ФЕМ: борг загальний + по виробниках (усе в PHP, без SUBSTRING_INDEX/GREATEST) ----------
             $containers = DB::table('fem_containers as c')
@@ -1146,6 +1170,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
                 'fem_debt' => round($femTotalDebt, 2),
                 'fem_by_brand' => $femByBrand,
             ]);
+            
         });
 
 
