@@ -358,6 +358,7 @@ header .wrap{
   color:var(--text);
   cursor:pointer;
   transition:.2s ease;
+  margin-bottom: 14px;
 }
 .btn:hover{ background:rgba(255,255,255,.14); }
 .btn.primary{ background:rgba(84, 192, 134, 0.71); border-color:rgba(158, 158, 158, 0.6); }
