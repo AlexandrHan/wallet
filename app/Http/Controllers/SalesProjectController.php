@@ -208,9 +208,61 @@ class SalesProjectController extends Controller
         ]);
 
         // створюємо transfer
+
+        $user = auth()->user();
+
+        // ✅ Якщо аванс створює OWNER — одразу зараховуємо в його кеш і ставимо accepted
+        if ($user && $user->role === 'owner') {
+
+            $wallet = \Illuminate\Support\Facades\DB::table('wallets')
+                ->where('owner', $user->actor)
+                ->where('currency', $currency)
+                ->where('type', 'cash')
+                ->first();
+
+            if (!$wallet) {
+                return response()->json(['error' => 'Wallet not found'], 422);
+            }
+
+            \Illuminate\Support\Facades\DB::transaction(function () use ($wallet, $amount, $project, $currency, $exchangeRate, $usdAmount, $user, &$transfer) {
+
+                // income одразу в кеш власника
+                \Illuminate\Support\Facades\DB::table('entries')->insert([
+                    'wallet_id'    => $wallet->id,
+                    'entry_type'   => 'income',
+                    'amount'       => $amount,
+                    'comment'      => 'Аванс: ' . ($project->client_name ?? ''),
+                    'posting_date' => date('Y-m-d'),
+                    'created_at'   => now(),
+                    'updated_at'   => now(),
+                ]);
+
+                // transfer одразу accepted (без НТО, без вибору власника, без кнопки "Прийняти")
+                $transfer = \App\Models\CashTransfer::create([
+                    'project_id'     => $project->id,
+                    'from_wallet_id' => null,
+                    'to_wallet_id'   => $wallet->id,
+                    'amount'         => $amount,
+                    'currency'       => $currency,
+                    'exchange_rate'  => $exchangeRate,
+                    'usd_amount'     => $usdAmount,
+                    'status'         => 'accepted',
+                    'target_owner'   => $user->actor,
+                    'created_by'     => $user->id,
+                    'accepted_at'    => now(),
+                ]);
+            });
+
+            return response()->json([
+                'ok' => true,
+                'transfer' => $transfer
+            ]);
+        }
+
+        // 🔵 Якщо аванс створює НЕ owner (НТО) — лишаємо як було: pending
         $transfer = \App\Models\CashTransfer::create([
             'project_id' => $project->id,
-            'from_wallet_id' => $wallet->id,
+            'from_wallet_id' => null,
             'to_wallet_id' => null,
             'amount' => $amount,
             'currency' => $currency,

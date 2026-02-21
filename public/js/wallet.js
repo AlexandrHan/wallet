@@ -716,7 +716,7 @@ visible.forEach(w => {
 
 
   // ================= BANK =================
-  const visibleBanks = (AUTH_USER.role === 'worker') ? [] : state.bankAccounts;
+  const visibleBanks = (AUTH_USER.role === 'worker' || AUTH_USER.role === 'ntv') ? [] : state.bankAccounts;
 
 
 

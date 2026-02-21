@@ -166,6 +166,12 @@ document.addEventListener('DOMContentLoaded', function () {
               </button>
             `;
 
+        const hasNtoMoney = Number(p.pending_amount || 0) > 0;
+
+          if (hasNtoMoney) {
+            card.style.border = '2px solid #f2c200';
+          }
+
         card.innerHTML = `
           <div class="project-toggle" style="display:flex; justify-content:space-between;">
             <div style="font-weight:600;">
@@ -195,12 +201,11 @@ document.addEventListener('DOMContentLoaded', function () {
             <div style="margin-top:10px; font-weight:600;">Аванси:</div>
             ${transfersHtml}
 
-            <div style="margin-top:12px;"> 
-              <button class="btn create-advance-btn" style="width:100%;margin-bottom:34px;" data-id="${p.id}">➕ Створити аванс</button>
+            ${(AUTH_USER && AUTH_USER.role !== 'owner') ? `
               <hr>
               <div style="font-size:16px; font-weight:800; margin-bottom: 14px; text-align:center;margin-top:24px;">Передати кошти</div>
               ${transferButtonsHtml}
-            </div>
+            ` : ``}
 
           </div>
         `;
