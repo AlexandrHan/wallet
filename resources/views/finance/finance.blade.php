@@ -9,12 +9,13 @@
 
 
 
-<main class="wrap">
+<main class="">
+
 
   <div class="card">
     <div>
-      <div style="text-align:center; font-weight:700; margin-bottom:14px;">Продажі</div>
-      <button id="createProjectBtn" class="btn" style="align-items:center;width: 100%;">➕ Новий проект</button>
+
+      <button id="createProjectBtn" class="btn" style="align-items:center;width: 100%;background:rgba(84, 192, 134, 0.71); margin-bottom:0;">➕ Новий проект</button>
     </div>
   </div>
 
@@ -60,6 +61,7 @@
 
   </div>
 </div>
+
 
 </main>
 
@@ -197,6 +199,14 @@ document.addEventListener('DOMContentLoaded', function () {
             <div>
               Очікує підтвердження: ${formatMoney(p.pending_amount, p.currency)}
             </div>
+            
+            ${(AUTH_USER && (AUTH_USER.role === 'ntv' || AUTH_USER.role === 'owner')) ? `
+            <div style="margin-top:12px;">
+              <button class="btn create-advance-btn" style="width:100%;" data-id="${p.id}">
+                ➕ Створити аванс
+              </button>
+            </div>
+          ` : ``}
 
             <div style="margin-top:10px; font-weight:600;">Аванси:</div>
             ${transfersHtml}
@@ -401,6 +411,270 @@ document.addEventListener('click', function(e){
     }
   });
 });
+
+
+(() => {
+  ///////////////////////////////////////////////////////////////
+  // helpers
+  ///////////////////////////////////////////////////////////////
+
+  const PALETTE = ['#66f2a8', '#4c7dff', '#ffb86c', '#ff6b6b', '#9aa6bc'];
+
+  function fmt0(n) {
+    const num = Number(String(n ?? 0).replace(',', '.')) || 0;
+    return new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 })
+      .format(Math.round(num))
+      .replace(/\u00A0/g, ' ');
+  }
+
+  function ensureChartJs() {
+    return new Promise((resolve, reject) => {
+      if (window.Chart) return resolve();
+
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error('Не вдалося завантажити Chart.js'));
+      document.head.appendChild(s);
+    });
+  }
+
+  function getCanvasCtx(id) {
+    const c = document.getElementById(id);
+    return c ? c.getContext('2d') : null;
+  }
+
+  ///////////////////////////////////////////////////////////////
+  // UI
+  ///////////////////////////////////////////////////////////////
+
+  function makeSalesCard() {
+    if (document.getElementById('salesChartsCard')) return;
+
+    const main = document.querySelector('main.wrap');
+    if (!main) return;
+
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.id = 'salesChartsCard';
+    card.style.marginBottom = '15px';
+    card.style.listStyle = 'none';
+    card.style.cursor = 'pointer';
+    card.style.padding = '18px 18px 16px';
+    card.style.borderRadius = '22px';
+    card.style.background = 'radial-gradient(120% 180% at 50% 0%, rgba(102, 242, 168, .22) 0%, rgba(255, 255, 255, .08) 35%, rgba(255, 255, 255, .05) 70%, rgba(255, 255, 255, .04) 100%)';
+    card.style.border = '1px solid rgba(255, 255, 255, .10)';
+    card.style.boxShadow = '0 18px 48px rgba(0, 0, 0, .42), inset 0 1px 0 rgba(255, 255, 255, .12)';
+    card.style.backdropFilter = 'blur(18px)';
+    // ✅ прибрати маркер summary (трикутник)
+    const st = document.createElement('style');
+    st.textContent = `
+      #salesChartsDetails > summary { list-style: none; }
+      #salesChartsDetails > summary::-webkit-details-marker { display: none; }
+      #salesChartsDetails > summary::marker { content: ""; }
+    `;
+    document.head.appendChild(st);
+
+    card.innerHTML = `
+      <details id="salesChartsDetails">
+        <summary style="cursor:pointer;">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+            <div style="font-weight:800;font-size: 22px;
+              font-weight: 800;
+              letter-spacing: .2px;
+              opacity: .95;">SG Holding</div>
+            <div style="display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                padding: 6px 12px;
+                border-radius: 999px;
+                font-weight: 800;
+                font-size: 13px;
+                color: #0b0d10;
+                background: rgba(102, 242, 168, .95);
+                box-shadow: 0 6px 16px rgba(0, 0, 0, .25);">
+              USD
+            </div>
+          </div>
+
+          <div style="margin-top:10px; font-size:28px; font-weight:900; letter-spacing:.3px;text-align:center;">
+            <span id="salesTotalVal">0</span> $
+          </div>
+
+          <div style="margin-top:10px; display:flex; gap:10px;">
+            <div class="btn" style="flex:1; text-align:center; padding:10px 8px; background:rgba(255, 255, 255, 0.1); border:1px solid rgba(255, 255, 255, 0.25);">
+              <div style="opacity:.85; font-weight:700; font-size:12px;">✅ Авансовано</div>
+              <div style="font-weight:900; margin-top:4px;"><span id="salesAdvVal">0</span> $</div>
+            </div>
+
+            <div class="btn" style="flex:1; text-align:center; padding:10px 8px; background:rgba(255, 255, 255, 0.1); border:1px solid rgba(255, 255, 255, 0.25);">
+              <div style="opacity:.85; font-weight:700; font-size:12px;">🟡 Залишок</div>
+              <div style="font-weight:900; margin-top:4px;"><span id="salesRemVal">0</span> $</div>
+            </div>
+          </div>
+
+        </summary>
+
+        <div style="margin-top:12px;">
+          <div class="card" style="margin-top:10px;">
+            <div style="font-weight:800; text-align:center; margin-bottom:10px;">Загальний бюджет / авансовано / залишок</div>
+
+            <div style="height:220px;">
+              <canvas id="pieSales"></canvas>
+            </div>
+
+            <div id="barsSales" style="margin-top:10px;"></div>
+          </div>
+        </div>
+      </details>
+    `;
+
+      // ✅ статистика завжди найперша в main
+      main.insertAdjacentElement('afterbegin', card);
+  }
+
+  ///////////////////////////////////////////////////////////////
+  // Bars (wallet-like)
+  ///////////////////////////////////////////////////////////////
+
+  function renderBars(el, labels, values) {
+    if (!el) return;
+
+    const rows = labels.map((label, i) => ({
+      label,
+      value: Number(values[i] || 0),
+    }));
+
+    const total = rows.reduce((s, r) => s + r.value, 0) || 1;
+
+    el.innerHTML = '';
+
+    rows.forEach((r, idx) => {
+      const pct = Math.round((r.value / total) * 100);
+      const color = PALETTE[idx % PALETTE.length];
+
+      el.insertAdjacentHTML('beforeend', `
+        <div style="display:flex; align-items:center; gap:10px; padding:10px 4px; border-bottom:1px solid rgba(255,255,255,.06);">
+          <div style="flex:1; min-width:0;">
+            <div style="font-weight:800; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+              ${r.label}
+            </div>
+            <div style="margin-top:6px; height:10px; border-radius:999px; background:rgba(255,255,255,.08); overflow:hidden;">
+              <div style="height:100%; width:${pct}%; background:${color};"></div>
+            </div>
+          </div>
+
+          <div style="text-align:right; min-width:88px;">
+            <div style="font-weight:900;">${pct}%</div>
+            <div style="opacity:.7; font-size:12px;">${fmt0(r.value)} $</div>
+          </div>
+        </div>
+      `);
+    });
+
+    const last = el.lastElementChild;
+    if (last) last.style.borderBottom = 'none';
+  }
+
+  ///////////////////////////////////////////////////////////////
+  // Chart
+  ///////////////////////////////////////////////////////////////
+
+  let chartSales = null;
+
+  function upsertPie(labels, data) {
+    const ctx = getCanvasCtx('pieSales');
+    if (!ctx) return;
+
+    const colors = labels.map((_, i) => PALETTE[i % PALETTE.length]);
+
+    if (chartSales) {
+      chartSales.data.labels = labels;
+      chartSales.data.datasets[0].data = data;
+      chartSales.data.datasets[0].backgroundColor = colors;
+      chartSales.update();
+      return;
+    }
+
+    chartSales = new Chart(ctx, {
+      type: 'pie',
+      data: {
+        labels,
+        datasets: [{
+          data,
+          backgroundColor: colors,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: true,
+            position: 'bottom',
+            labels: {
+              color: '#e9eef6',
+              boxWidth: 10,
+              boxHeight: 10,
+              padding: 12,
+              font: { size: 12, weight: '600' }
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: (item) => `${item.label}: ${fmt0(Number(item.raw || 0))} $`
+            }
+          }
+        }
+      }
+    });
+  }
+
+  ///////////////////////////////////////////////////////////////
+  // Data
+  ///////////////////////////////////////////////////////////////
+
+  async function loadAndRenderSales() {
+    const res = await fetch('/api/sales-projects', { credentials: 'same-origin' });
+    if (!res.ok) throw new Error(`GET /api/sales-projects failed (${res.status})`);
+    const projects = await res.json();
+
+    // ✅ беремо тільки USD (як у твоєму борговому блоці USD-пілл)
+    const usd = Array.isArray(projects) ? projects.filter(p => p.currency === 'USD') : [];
+
+    const totalBudget = usd.reduce((s, p) => s + Number(p.total_amount || 0), 0);
+
+    // "Авансовано" = прийнято + очікує (бо це вже внесені суми по проекту, просто частина ще в НТО)
+    const advanced = usd.reduce((s, p) => s + Number(p.paid_amount || 0) + Number(p.pending_amount || 0), 0);
+
+    const remaining = Math.max(0, totalBudget - advanced);
+
+    const totalEl = document.getElementById('salesTotalVal');
+    const advEl   = document.getElementById('salesAdvVal');
+    const remEl   = document.getElementById('salesRemVal');
+
+    if (totalEl) totalEl.innerText = fmt0(totalBudget);
+    if (advEl)   advEl.innerText   = fmt0(advanced);
+    if (remEl)   remEl.innerText   = fmt0(remaining);
+
+    const labels = ['✅ Авансовано', '🟡 Залишок'];
+    const data   = [advanced, remaining];
+
+    upsertPie(labels, data);
+    renderBars(document.getElementById('barsSales'), labels, data);
+  }
+
+  async function boot() {
+    makeSalesCard();
+    await ensureChartJs();
+    await loadAndRenderSales();
+    setInterval(() => loadAndRenderSales().catch(() => {}), 15000);
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    boot().catch((e) => console.warn('Sales charts:', e.message));
+  });
+})();
 </script>
 
 

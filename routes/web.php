@@ -1038,6 +1038,9 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
     });
 
     Route::get('/finance', function () {
+        $u = auth()->user();
+        if (!$u || !in_array($u->role, ['owner', 'ntv'], true)) abort(403);
+
         return view('finance.finance');
     });
 
