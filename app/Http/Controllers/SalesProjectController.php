@@ -95,6 +95,12 @@ class SalesProjectController extends Controller
             $paid = $transfers->where('status', 'accepted')->sum('usd_amount');
             $pending = $transfers->where('status', 'pending')->sum('usd_amount');
 
+            $pendingTargetOwner = $transfers
+                ->where('status', 'pending')
+                ->pluck('target_owner')
+                ->filter()
+                ->first(); // якщо НТО вже вибрав власника — тут буде actor
+
             return [
                 'id' => $project->id,
                 'client_name' => $project->client_name,
@@ -105,6 +111,7 @@ class SalesProjectController extends Controller
                 'currency' => $project->currency,
                 'status' => $project->status,
                 'created_at' => $project->created_at->format('d.m.Y H:i'),
+                'pending_target_owner' => $pendingTargetOwner,
                 'transfers' => $transfers->map(function ($t) {
                     return [
                         'id' => $t->id,
@@ -113,6 +120,7 @@ class SalesProjectController extends Controller
                         'exchange_rate' => $t->exchange_rate, // ✅ додаємо
                         'usd_amount' => $t->usd_amount,      // ✅ додаємо
                         'status' => $t->status,
+                        'target_owner' => $t->target_owner,
                         'created_at' => \Carbon\Carbon::parse($t->created_at)->format('d.m.Y H:i'),
                     ];
                 })->values(),
@@ -197,7 +205,7 @@ class SalesProjectController extends Controller
             'posting_date' => date('Y-m-d'),
             'created_at'   => now(),
             'updated_at'   => now(),
-]);
+        ]);
 
         // створюємо transfer
         $transfer = \App\Models\CashTransfer::create([
@@ -217,4 +225,57 @@ class SalesProjectController extends Controller
             'transfer' => $transfer
         ]);
     }
+
+    public function setTargetOwner(Request $request, $id)
+    {
+        // НТО/менеджер задає кому здає. Owner тут не потрібен.
+        $u = auth()->user();
+        if (!$u || $u->role === 'owner') {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
+        $data = $request->validate([
+            'target_owner' => 'required|in:hlushchenko,kolisnyk',
+        ]);
+
+        $project = \App\Models\SalesProject::find($id);
+        if (!$project) {
+            return response()->json(['error' => 'Проект не знайдено'], 404);
+        }
+
+        // Ставимо target_owner для ВСІХ pending-авансів цього проекту
+        \Illuminate\Support\Facades\DB::table('cash_transfers')
+            ->where('project_id', $project->id)
+            ->where('status', 'pending')
+            ->update([
+                'target_owner' => $data['target_owner'],
+                'updated_at' => now(),
+            ]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function cancelTargetOwner(Request $request, $id)
+    {
+        $u = auth()->user();
+        if (!$u || $u->role === 'owner') {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
+        $project = \App\Models\SalesProject::find($id);
+        if (!$project) {
+            return response()->json(['error' => 'Проект не знайдено'], 404);
+        }
+
+        // скидаємо вибір власника для всіх pending авансів цього проекту
+        \Illuminate\Support\Facades\DB::table('cash_transfers')
+            ->where('project_id', $project->id)
+            ->where('status', 'pending')
+            ->update([
+                'target_owner' => null,
+                'updated_at' => now(),
+            ]);
+
+        return response()->json(['ok' => true]);
+}
 }

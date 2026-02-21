@@ -70,16 +70,19 @@ document.addEventListener('DOMContentLoaded', function () {
   const IS_OWNER = AUTH_USER && AUTH_USER.role === 'owner';
 
   const formatMoney = (value, currency) => {
-    const symbols = {
-      UAH: '₴',
-      USD: '$',
-      EUR: '€'
-    };
-
+    const symbols = { UAH: '₴', USD: '$', EUR: '€' };
     const formatted = new Intl.NumberFormat('uk-UA').format(value);
     return `${formatted} ${symbols[currency] ?? currency}`;
   };
-  
+
+  // ✅ FIX: запам'ятовуємо відкриту картку, щоб після reload вона не згорталась
+  const OPEN_KEY = 'finance_open_project_id';
+  const rememberOpenProject = (id) => localStorage.setItem(OPEN_KEY, String(id));
+  const getOpenProject = () => {
+    const v = localStorage.getItem(OPEN_KEY);
+    return v ? Number(v) : null;
+  };
+  const openId = getOpenProject();
 
   fetch('/api/sales-projects')
     .then(r => r.json())
@@ -97,8 +100,74 @@ document.addEventListener('DOMContentLoaded', function () {
 
         const debt = p.remaining_amount;
 
+        const transfersHtml = (p.transfers.length === 0)
+          ? `<div style="opacity:.6;">Немає авансів</div>`
+          : p.transfers.map(t => {
+
+              const convertedInfo =
+                (t.currency !== 'USD' && t.exchange_rate)
+                  ? `
+                      <div style="font-size:12px; opacity:.7;">
+                        ≈ ${formatMoney(t.usd_amount, 'USD')}
+                      </div>
+                      <div style="font-size:12px; opacity:.6;">
+                        Курс: ${t.exchange_rate}
+                      </div>
+                    `
+                  : '';
+
+              const canAccept = IS_OWNER && t.target_owner && (t.target_owner === AUTH_USER.actor);
+
+              const statusBlock = t.status === 'accepted'
+                ? `— ✅ Прийнято`
+                : (
+                    canAccept
+                      ? `
+                          — ⏳ В очікуванні
+                          <button 
+                            class="btn accept-advance-btn"
+                            data-id="${t.id}"
+                            style="margin-top:6px; width:100%;">
+                            ✔ Прийняти
+                          </button>
+                        `
+                      : `— ⏳ В очікуванні`
+                  );
+
+              return `
+                <div style="margin-top:5px; padding:8px; background:#111; border-radius:6px;">
+                  <div>
+                    ${formatMoney(t.amount, t.currency)} ${statusBlock}
+                  </div>
+                  <div style="font-size:12px; opacity:.6;">
+                    ${t.created_at}
+                  </div>
+                  ${convertedInfo}
+                </div>
+              `;
+          }).join('');
+
+        // блок "Передати кошти" (НТО: або 2 кнопки, або 1 "Відмінити")
+        const transferButtonsHtml = (AUTH_USER && AUTH_USER.role !== 'owner' && p.pending_target_owner)
+          ? `
+              <button 
+                class="btn cancel-owner-btn"
+                data-project="${p.id}"
+                style="width:100%; background:#333;">
+                ↩️ Відмінити переказ
+              </button>
+            `
+          : `
+              <button class="btn send-owner-btn" data-project="${p.id}" data-owner="hlushchenko" style="margin-right:5px;">
+                💸 Глущенко
+              </button>
+              <button class="btn send-owner-btn" data-project="${p.id}" data-owner="kolisnyk">
+                💸 Колісник
+              </button>
+            `;
+
         card.innerHTML = `
-          <div style="display:flex; justify-content:space-between;">
+          <div class="project-toggle" style="display:flex; justify-content:space-between;">
             <div style="font-weight:600;">
               ${p.client_name}
             </div>
@@ -124,87 +193,46 @@ document.addEventListener('DOMContentLoaded', function () {
             </div>
 
             <div style="margin-top:10px; font-weight:600;">Аванси:</div>
-
-${
-  p.transfers.length === 0
-    ? `<div style="opacity:.6;">Немає авансів</div>`
-    : p.transfers.map(t => {
-
-        const convertedInfo =
-          (t.currency !== 'USD' && t.exchange_rate)
-            ? `
-                <div style="font-size:12px; opacity:.7;">
-                  ≈ ${formatMoney(t.usd_amount, 'USD')}
-                </div>
-                <div style="font-size:12px; opacity:.6;">
-                  Курс: ${t.exchange_rate}
-                </div>
-              `
-            : '';
-
-        const statusBlock = t.status === 'accepted'
-          ? `— ✅ Прийнято`
-          : (
-              IS_OWNER
-                ? `
-                    — ⏳ В очікуванні
-                    <button 
-                      class="btn accept-advance-btn"
-                      data-id="${t.id}"
-                      style="margin-top:6px; width:100%;">
-                      ✔ Прийняти
-                    </button>
-                  `
-                : `— ⏳ В очікуванні`
-            );
-
-        return `
-          <div style="margin-top:5px; padding:8px; background:#111; border-radius:6px;">
-            <div>
-              ${formatMoney(t.amount, t.currency)} ${statusBlock}
-            </div>
-            <div style="font-size:12px; opacity:.6;">
-              ${t.created_at}
-            </div>
-            ${convertedInfo}
-          </div>
-        `;
-
-      }).join('')
-}
+            ${transfersHtml}
 
             <div style="margin-top:12px;"> 
-              <button class="btn create-advance-btn"  style="width:100%;margin-bottom:34px;" data-id="${p.id}">➕ Створити аванс</button>
+              <button class="btn create-advance-btn" style="width:100%;margin-bottom:34px;" data-id="${p.id}">➕ Створити аванс</button>
               <hr>
               <div style="font-size:16px; font-weight:800; margin-bottom: 14px; text-align:center;margin-top:24px;">Передати кошти</div>
-              <button class="btn send-owner-btn" data-project="${p.id}" data-owner="hlushchenko" style="margin-right:5px;">
-                💸 Глущенко
-              </button>
-              <button class="btn send-owner-btn" data-project="${p.id}" data-owner="kolisnyk">
-                💸 Колісник
-              </button>
+              ${transferButtonsHtml}
             </div>
 
           </div>
         `;
 
-        card.addEventListener('click', function(e) {
-          if (e.target.tagName === 'BUTTON') return;
-
+        // ✅ відкривати/закривати тільки по кліку на шапку
+        card.querySelector('.project-toggle')?.addEventListener('click', function() {
           const details = card.querySelector('.project-details');
-          details.style.display =
-            details.style.display === 'none' ? 'block' : 'none';
+          const isOpen = details.style.display !== 'none';
+
+          if (isOpen) {
+            details.style.display = 'none';
+            localStorage.removeItem(OPEN_KEY);
+          } else {
+            details.style.display = 'block';
+            rememberOpenProject(p.id);
+          }
         });
 
         container.appendChild(card);
+
+        // ✅ після reload залишаємо відкритою потрібну картку
+        if (openId && Number(p.id) === openId) {
+          const details = card.querySelector('.project-details');
+          if (details) details.style.display = 'block';
+        }
       });
 
     });
 
 });
 
-// ===== Модалка =====
-
+// ===== Модалка проекту =====
 const modal = document.getElementById('projectModal');
 
 document.getElementById('createProjectBtn').onclick = () => {
@@ -227,11 +255,7 @@ document.getElementById('saveProjectBtn').onclick = () => {
       'Content-Type': 'application/json',
       'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
     },
-    body: JSON.stringify({
-      client_name,
-      total_amount,
-      currency
-    })
+    body: JSON.stringify({ client_name, total_amount, currency })
   })
   .then(r => r.json())
   .then(res => {
@@ -245,6 +269,7 @@ document.getElementById('saveProjectBtn').onclick = () => {
 
 };
 
+// ===== Модалка авансу =====
 const advanceModal = document.getElementById('advanceModal');
 const exchangeInput = document.getElementById('exchangeRate');
 
@@ -260,12 +285,10 @@ document.getElementById('advanceCurrency').addEventListener('change', function()
 let currentProjectId = null;
 
 document.addEventListener('click', function(e){
-
   if(e.target.classList.contains('create-advance-btn')){
     currentProjectId = e.target.dataset.id;
     advanceModal.style.display = 'flex';
   }
-
 });
 
 document.getElementById('closeAdvanceBtn').onclick = () => {
@@ -284,26 +307,22 @@ document.getElementById('saveAdvanceBtn').onclick = function(){
       'Content-Type': 'application/json',
       'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
     },
-    body: JSON.stringify({
-      amount,
-      currency,
-      exchange_rate
-    })
+    body: JSON.stringify({ amount, currency, exchange_rate })
   })
   .then(r => r.json())
   .then(res => {
-
     if(res.ok){
       advanceModal.style.display = 'none';
+      localStorage.setItem('finance_open_project_id', String(currentProjectId)); // ✅ ключове
       location.reload();
     } else {
       alert(res.error || 'Помилка');
     }
-
   });
 
 };
 
+// ===== Прийняти аванс =====
 document.addEventListener('click', function(e){
 
   if(e.target.classList.contains('accept-advance-btn')){
@@ -329,9 +348,55 @@ document.addEventListener('click', function(e){
 
 });
 
+// ===== НТО: вибір власника =====
+document.addEventListener('click', function(e){
+  if(!e.target.classList.contains('send-owner-btn')) return;
 
+  const projectId = e.target.dataset.project;
+  const owner = e.target.dataset.owner;
+
+  fetch(`/api/sales-projects/${projectId}/target-owner`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+    },
+    body: JSON.stringify({ target_owner: owner })
+  })
+  .then(r => r.json())
+  .then(res => {
+    if(res.ok){
+      localStorage.setItem('finance_open_project_id', String(projectId));
+      location.reload();
+    } else {
+      alert(res.error || 'Помилка');
+    }
+  });
+});
+
+// ===== НТО: відмінити переказ =====
+document.addEventListener('click', function(e){
+  if(!e.target.classList.contains('cancel-owner-btn')) return;
+
+  const projectId = e.target.dataset.project;
+
+  fetch(`/api/sales-projects/${projectId}/target-owner-cancel`, {
+    method: 'POST',
+    headers: {
+      'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+    }
+  })
+  .then(r => r.json())
+  .then(res => {
+    if(res.ok){
+      localStorage.setItem('finance_open_project_id', String(projectId));
+      location.reload();
+    } else {
+      alert(res.error || 'Помилка');
+    }
+  });
+});
 </script>
-
 
 
 

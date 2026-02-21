@@ -51,6 +51,9 @@ class CashTransferController extends Controller
             if ($user->role !== 'owner') {
                 return response()->json(['error' => 'Forbidden'], 403);
             }
+            if ($transfer->target_owner && $transfer->target_owner !== $user->actor) {
+                return response()->json(['error' => 'Forbidden'], 403);
+            }
 
             DB::transaction(function () use ($transfer) {
 
@@ -63,6 +66,40 @@ class CashTransferController extends Controller
                 if (!$wallet) {
                     throw new \Exception('Wallet not found');
                 }
+
+                // 0️⃣ Списуємо гроші з кешу НТО (expense)
+                $fromWalletId = $transfer->from_wallet_id;
+
+                // fallback для старих авансів, де from_wallet_id міг бути null
+                if (!$fromWalletId) {
+                    $creator = DB::table('users')->where('id', $transfer->created_by)->first();
+                    if ($creator && isset($creator->actor)) {
+                        $fromWalletId = DB::table('wallets')
+                            ->where('owner', $creator->actor)
+                            ->where('currency', $transfer->currency)
+                            ->where('type', 'cash')
+                            ->value('id');
+                    }
+                }
+
+                if (!$fromWalletId) {
+                    throw new \Exception('NTO wallet not found');
+                }
+
+                $projectName = \App\Models\SalesProject::find($transfer->project_id)->client_name ?? '';
+
+                $ownerActor = auth()->user()->actor; // хто зараз приймає (owner)
+                $ownerLabel = $ownerActor === 'hlushchenko' ? 'Глущенко' : ($ownerActor === 'kolisnyk' ? 'Колісник' : $ownerActor);
+
+                DB::table('entries')->insert([
+                    'wallet_id'    => $fromWalletId,
+                    'entry_type'   => 'expense',
+                    'amount'       => $transfer->amount,
+                    'comment'      => 'Передано: ' . $ownerLabel . ' | Аванс: ' . $projectName,
+                    'posting_date' => date('Y-m-d'),
+                    'created_at'   => now(),
+                    'updated_at'   => now(),
+                ]);
 
                 // 2️⃣ Додаємо income в кеш
                 DB::table('entries')->insert([

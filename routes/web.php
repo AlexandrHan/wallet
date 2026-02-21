@@ -103,6 +103,10 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         
         Route::post('/send-project-money', [\App\Http\Controllers\CashTransferController::class, 'sendProjectMoney']);
 
+        Route::post('/sales-projects/{id}/target-owner', [\App\Http\Controllers\SalesProjectController::class, 'setTargetOwner']);
+
+        Route::post('/sales-projects/{id}/target-owner-cancel', [\App\Http\Controllers\SalesProjectController::class, 'cancelTargetOwner']);
+
         
 
         Route::get('/stock', function (Request $request) {
