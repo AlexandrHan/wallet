@@ -66,6 +66,9 @@
 <script>
 document.addEventListener('DOMContentLoaded', function () {
 
+  const AUTH_USER = @json(auth()->user());
+  const IS_OWNER = AUTH_USER && AUTH_USER.role === 'owner';
+
   const formatMoney = (value, currency) => {
     const symbols = {
       UAH: '₴',
@@ -141,15 +144,19 @@ ${
 
         const statusBlock = t.status === 'accepted'
           ? `— ✅ Прийнято`
-          : `
-              — ⏳ В очікуванні
-              <button 
-                class="btn accept-advance-btn"
-                data-id="${t.id}"
-                style="margin-top:6px; width:100%;">
-                ✔ Прийняти
-              </button>
-            `;
+          : (
+              IS_OWNER
+                ? `
+                    — ⏳ В очікуванні
+                    <button 
+                      class="btn accept-advance-btn"
+                      data-id="${t.id}"
+                      style="margin-top:6px; width:100%;">
+                      ✔ Прийняти
+                    </button>
+                  `
+                : `— ⏳ В очікуванні`
+            );
 
         return `
           <div style="margin-top:5px; padding:8px; background:#111; border-radius:6px;">

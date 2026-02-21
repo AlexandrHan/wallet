@@ -69,7 +69,7 @@ class CashTransferController extends Controller
                     'wallet_id'    => $wallet->id,
                     'entry_type'   => 'income',
                     'amount'       => $transfer->amount,
-                    'comment'      => 'Аванс по проекту #' . $transfer->project_id,
+                    'comment'      => 'Аванс: ' . (\App\Models\SalesProject::find($transfer->project_id)->client_name ?? ''),
                     'posting_date' => date('Y-m-d'),
                     'created_at'   => now(),
                     'updated_at'   => now(),

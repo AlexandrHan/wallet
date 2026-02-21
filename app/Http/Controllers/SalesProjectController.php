@@ -164,10 +164,45 @@ class SalesProjectController extends Controller
             $usdAmount = round($amount / $exchangeRate, 2);
         }
 
+        $u = auth()->user();
+        $ownerActor = $u->actor;
+
+        // 1) знайти або створити кеш НТО по валюті авансу
+        $wallet = \Illuminate\Support\Facades\DB::table('wallets')
+            ->where('owner', $ownerActor)
+            ->where('type', 'cash')
+            ->where('currency', $currency)
+            ->first();
+
+        if (!$wallet) {
+            $walletId = \Illuminate\Support\Facades\DB::table('wallets')->insertGetId([
+                'name' => 'КЕШ НТО (' . $currency . ')',
+                'currency' => $currency,
+                'type' => 'cash',
+                'owner' => $ownerActor,
+                'is_active' => 1,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $wallet = (object)['id' => $walletId];
+        }
+
+        // 2) одразу записуємо прихід у кеш НТО (операції)
+        \Illuminate\Support\Facades\DB::table('entries')->insert([
+            'wallet_id'    => $wallet->id,
+            'entry_type'   => 'income',
+            'amount'       => $amount,
+            'comment'      => 'Аванс: ' . $project->client_name,
+            'posting_date' => date('Y-m-d'),
+            'created_at'   => now(),
+            'updated_at'   => now(),
+]);
+
         // створюємо transfer
         $transfer = \App\Models\CashTransfer::create([
             'project_id' => $project->id,
-            'from_wallet_id' => null, // поки не передаємо з каси
+            'from_wallet_id' => $wallet->id,
             'to_wallet_id' => null,
             'amount' => $amount,
             'currency' => $currency,
