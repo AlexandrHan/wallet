@@ -584,9 +584,20 @@ const CURRENCY_SYMBOLS = {
       const cls = signed >= 0 ? 'pos' : 'neg';
       const sign = signed >= 0 ? '+' : '';
 
-      const editable =
-        isToday(e.posting_date) &&
-        canWriteWallet(state.selectedWallet.owner);
+      const lockedWalletNames = new Set([
+        'КЕШ НТВ (UAH)',
+        'КЕШ НТВ (USD)',
+        'КЕШ НТВ (EUR)',
+      ]);
+
+      const isLockedNtvCash =
+        state.selectedWallet?.type !== 'bank' && // тільки cash
+        lockedWalletNames.has(String(state.selectedWallet?.name || ''));
+
+    const editable =
+      isToday(e.posting_date) &&
+      canWriteWallet(state.selectedWallet.owner) &&
+      !isLockedNtvCash;
 
       const isActive = state.activeEntryId === e.id;
 
@@ -2379,6 +2390,11 @@ function isToday(dateStr) {
 
 
 async function deleteEntry(id){
+  const entry = state.entries.find(e => e.id === id);
+  if (entry?.is_locked) {
+    alert('🔒 Це системна операція з авансу. Видалення заборонено.');
+    return;
+  }
   if (!confirm('Видалити операцію?')) return;
 
   const res = await fetch(`/api/entries/${id}`, {
@@ -2400,6 +2416,11 @@ async function deleteEntry(id){
 async function editEntry(id){
   const entry = state.entries.find(e => e.id === id);
   if (!entry) return;
+
+  if (entry.is_locked) {
+    alert('🔒 Це системна операція з авансу. Редагування заборонено.');
+    return;
+  }
 
   if (!isToday(entry.posting_date)) {
     alert('Можна редагувати лише сьогоднішні операції');
@@ -3067,6 +3088,26 @@ function deleteFeedback() {
   vibrate([60, 40, 60, 40, 120]); // “сирена”
 }
 
+
+// FULLSCREEN MENU ACTIONS (works for multiple buttons)
+document.addEventListener('click', (e) => {
+  const rates = e.target.closest('.js-show-rates');
+  if (rates) {
+    e.preventDefault();
+    // повторюємо твій існуючий тригер (якщо лишився в хедері)
+    document.getElementById('showRatesBtn')?.click();
+    location.hash = ''; // закрити меню
+    return;
+  }
+
+  const staff = e.target.closest('.js-staff-cash');
+  if (staff) {
+    e.preventDefault();
+    window.openStaffCash?.();
+    location.hash = ''; // закрити меню
+    return;
+  }
+});
 
 
 

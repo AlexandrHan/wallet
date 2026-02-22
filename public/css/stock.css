@@ -285,7 +285,7 @@
 
 .stock-cat-title{
   font-size: 16px;
-  color: #66f2a8;
+  color: #ffffff;
 }
 
 .stock-cat-right{
@@ -301,6 +301,7 @@
   transform: rotate(0deg);
   transition: transform .15s ease;
   font-weight: 900;
+  color: #fff;
 }
 
 .stock-cat[open] .chev{

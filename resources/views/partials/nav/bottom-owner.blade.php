@@ -1,46 +1,26 @@
 @php
-  $path = request()->path(); // '' для /
+  $path = trim(request()->path(), '/'); // '' для /
   $is = function(string $p): bool {
     $p = trim($p, '/');
     return request()->is($p) || request()->is($p.'/*');
   };
 
   // ✅ активні стани
-  $activeWallet     = ($path === '');          // тільки /
-  $activeDeliveries = $is('deliveries');       // /deliveries/*
- 
+  $activeWallet = ($path === '');
+  $activeSales  = $is('finance');               // /finance/*
+  $activeDebts  = $is('stock/supplier-cash');   // /stock/supplier-cash/*
+  $activeStock  = $is('stock') && !$activeDebts; // /stock/* крім боргів
 
-  // ✅ борги тільки тут
-  $activeDebts      = $is('stock/supplier-cash'); // /stock/supplier-cash
-
-  // ✅ склад: все /stock/*, КРІМ /stock/supplier-cash
-  $activeStock      = $is('stock') && !$activeDebts;
-
-  // ✅ контекст (потім розширимо)
-  $context = match(true) {
-    $activeStock || $activeDeliveries || $activeDebts => 'stock',
-  
-    $activeWallet => 'wallet',
-    default => 'wallet',
-  };
-
-  // ✅ таби
-  $tabs = match($context) {
-    'stock' => [
-      ['href'=>'/',                   'icon'=>'💼', 'label'=>'Гаманець', 'active'=>$activeWallet],
-      ['href'=>'/stock',              'icon'=>'📦', 'label'=>'Склад',    'active'=>$activeStock],
-      ['href'=>'/deliveries',         'icon'=>'🚚', 'label'=>'Поставки', 'active'=>$activeDeliveries],
-      ['href'=>'/stock/supplier-cash','icon'=>'💸', 'label'=>'Борги',    'active'=>$activeDebts],
-
-    ],
-    default => [
-      ['href'=>'/',                   'icon'=>'💼', 'label'=>'Гаманець', 'active'=>$activeWallet],
-      ['href'=>'/stock',              'icon'=>'📦', 'label'=>'Склад',    'active'=>$activeStock],
-      ['href'=>'/deliveries',         'icon'=>'🚚', 'label'=>'Поставки', 'active'=>$activeDeliveries],
-      ['href'=>'/stock/supplier-cash','icon'=>'💸', 'label'=>'Борги',    'active'=>$activeDebts],
-    ],
-  };
+  // ✅ вкладки (ОДИН список на весь застосунок)
+  $tabs = [
+    ['href'=>'/',                    'icon'=>'💼', 'label'=>'Гаманець', 'active'=>$activeWallet],
+    ['href'=>'/finance',             'icon'=>'📈', 'label'=>'Продажі',  'active'=>$activeSales],
+    ['href'=>'/stock/supplier-cash', 'icon'=>'💸', 'label'=>'Борги',    'active'=>$activeDebts],
+    ['href'=>'/stock',               'icon'=>'📦', 'label'=>'Склад',    'active'=>$activeStock],
+  ];
 @endphp
+
+
 
 
 
@@ -55,19 +35,75 @@
   </div>
 
   <div class="tg-fab-wrap">
-    <button type="button" class="tg-fab" id="tgFabBtn" aria-expanded="false">☰</button>
-
-    <div class="tg-fab-menu hidden" id="tgFabMenu">
-      <a class="tg-fab-item" href="/profile">🔐 Адмінка / пароль</a>
-      <a class="tg-fab-item" href="/">💼 Гаманець</a>
-
-      <form method="POST" action="{{ route('logout') }}">
-        @csrf
-        <button type="submit" class="tg-fab-item danger">🚪 Вийти</button>
-      </form>
-    </div>
+    {{-- Відкриття БЕЗ JS: працює навіть коли JS-кліки глючать --}}
+    <a class="tg-fab" href="#tgOwnerMenu" aria-label="Меню">
+  <span class="tg-fab-ico">☰</span>
+</a>
   </div>
 </nav>
+
+{{-- FULLSCREEN MENU --}}
+<div id="tgOwnerMenu" class="tg-menu">
+  <div class="tg-menu__top">
+    <div class="tg-menu__title">Меню</div>
+    <a class="tg-menu__close" href="#" aria-label="Закрити">✕</a>
+  </div>
+
+  <div class="tg-menu__content">
+
+    <details class="tg-acc" >
+      <summary class="tg-acc__title">💳 Гаманець</summary>
+      <div class="tg-acc__body">
+        <a class="tg-menu__item" href="/">🏦 Мій гаманець</a>
+
+        @if(auth()->user()->role === 'owner')
+          <button type="button" class="tg-menu__item js-staff-cash">👥 КЕШ співробітників</button>
+        @endif
+
+        <button type="button" class="tg-menu__item js-show-rates">💱 Обмінник</button>
+      </div>
+    </details>
+
+    <details class="tg-acc">
+      <summary class="tg-acc__title">📈 Продажі</summary>
+      <div class="tg-acc__body">
+        <a class="tg-menu__item" href="/finance">🧾 Сторінка продажів</a>
+        <a class="tg-menu__item" href="/sales">📋 Проєкти</a>
+      </div>
+    </details>
+
+    <details class="tg-acc">
+      <summary class="tg-acc__title">💸 Борги</summary>
+      <div class="tg-acc__body">
+        <a class="tg-menu__item" href="/stock/supplier-cash">💸 Борги постачальнику</a>
+      </div>
+    </details>
+
+    <details class="tg-acc">
+      <summary class="tg-acc__title">📦 Склад</summary>
+      <div class="tg-acc__body">
+        <a class="tg-menu__item" href="/stock">📦 Склад SunFix</a>
+        <a class="tg-menu__item" href="/deliveries">🚚 Поставки</a>
+        <a class="tg-menu__item" href="{{ route('reclamations.index') }}">🧾 Рекламації</a>
+      </div>
+    </details>
+
+    <details class="tg-acc">
+      <summary class="tg-acc__title">🔐 Профіль</summary>
+      <div class="tg-acc__body">
+        <a class="tg-menu__item" href="/profile">🔐 Адмінка / пароль</a>
+      </div>
+    </details>
+
+  </div>
+
+  <div class="tg-menu__bottom">
+    <form method="POST" action="{{ route('logout') }}">
+      @csrf
+      <button type="submit" class="tg-menu__item danger">🚪 Вийти</button>
+    </form>
+  </div>
+</div>
 
 <script>
 (function(){

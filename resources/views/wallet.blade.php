@@ -47,20 +47,28 @@
 
 <body>
   <div class="app-bg"></div>
+
+
 <header>
   <div style="margin-top:-1rem;" class="wrap row">
+
     <div class="top-area">
-       <a href="/" class="logo">
-          <img src="/img/logo.png" alt="SolarGlass">
-        </a>
 
-        <div class="userName">        <span style="font-weight:800;">
-          {{ collect(explode(' ', trim(auth()->user()->name)))->first() }}
-        </span></div>
+      <a href="/" class="logo">
+        <img src="/img/logo.png" alt="SolarGlass">
+      </a>
+
+        <div class="userName">        
+          <span style="font-weight:800;">
+            {{ collect(explode(' ', trim(auth()->user()->name)))->first() }}
+          </span>
+        </div>
+
         <div class="burger-wrap">
-        <button type="button" id="burgerBtn" class="burger-btn">☰</button>
+          <button type="button" id="burgerBtn" class="burger-btn">☰</button>
 
-        <div id="burgerMenu" class="burger-menu hidden">
+          <div id="burgerMenu" class="burger-menu hidden">
+            
             <a href="/profile" class="burger-item">🔐 Адмінка / пароль</a>
             @if(in_array(auth()->user()?->role, ['owner', 'accountant'], true))
               <a href="/stock" class="burger-item">📦 Склад SunFix</a>
@@ -69,37 +77,38 @@
               <a href="{{ route('reclamations.index') }}" class="burger-item">🧾 Рекламації</a>
             @endif
 
-        <div id="staffCashBtn" class="menu-item burger-item hidden" onclick="openStaffCash()">
-          👥 КЕШ співробітників
-        </div>
+            <div id="staffCashBtn" class="menu-item burger-item hidden" onclick="openStaffCash()">
+              👥 КЕШ співробітників
+            </div>
 
 
-        <div class="burger-actions">
-          <button id="showRatesBtn" type="button" class="burger-item">💱 Обмінник</button>
+            <div class="burger-actions">
+              <button id="showRatesBtn" type="button" class="burger-item">💱 Обмінник</button>
 
-          <form method="POST" action="{{ route('logout') }}">
-            @csrf
-            <button type="submit" class="burger-item danger">🚪 Вийти</button>
-          </form>
-        </div>
+              <form method="POST" action="{{ route('logout') }}">
+                @csrf
+                <button type="submit" class="burger-item danger">🚪 Вийти</button>
+              </form>
+            </div>
 
-        </div>
-        </div>
+          </div>
+
+      </div>
 
     </div>
 
-<div class="header-right">
-  <span class="tag" id="actorTag" style="display:none"></span>
-</div>
+    <div class="header-right">
+      <span class="tag" id="actorTag" style="display:none"></span>
+    </div>
 
-@if(auth()->user()->role !== 'accountant')
-<div class="header-center">
-  <div class="segmented">
-    <button type="button" id="view-h" data-owner="hlushchenko">Глущенко</button>
-    <button type="button" id="view-k" data-owner="kolisnyk">Колісник</button>
-  </div>
-</div>
-@endif
+    @if(auth()->user()->role !== 'accountant')
+    <div class="header-center">
+      <div class="segmented">
+        <button type="button" id="view-h" data-owner="hlushchenko">Глущенко</button>
+        <button type="button" id="view-k" data-owner="kolisnyk">Колісник</button>
+      </div>
+    </div>
+    @endif
 
   </div>
 </header>
@@ -321,9 +330,13 @@
 </div>
 
 </main>
-@include('partials.nav.bottom-accountant')
-@include('partials.nav.bottom-wallet')
-
+@auth
+  @if(auth()->user()->role === 'accountant')
+    @include('partials.nav.bottom-accountant')
+  @elseif(auth()->user()->role === 'owner')
+    @include('partials.nav.bottom-owner')
+  @endif
+@endauth
 
 <div id="staffCashModal" class="modal hidden">
 
@@ -411,6 +424,9 @@
 <script>
   window.AUTH_USER = @json(auth()->user());
 </script>
+
+
+
 
 </body>
 </html>

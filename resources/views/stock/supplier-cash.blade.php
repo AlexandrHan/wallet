@@ -18,7 +18,7 @@
 
   @if(auth()->check() && auth()->user()->role === 'owner')
     <div class="card" style="margin-bottom:14px;">
-      <button class="btn primary" onclick="openSendCashModal()" style="width:100%">
+      <button class="btn primary" onclick="openSendCashModal()" style="width:100%; margin-bottom:0;">
         Передати кошти менеджеру
       </button>
     </div>

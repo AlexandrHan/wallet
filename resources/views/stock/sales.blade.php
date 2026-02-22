@@ -35,7 +35,7 @@
     </div>
 
     <div class="stock-row-bottom" style="margin-top:10px;">
-      <button class="btn primary" onclick="saveSales()" style="width:100%">
+      <button class="btn primary" onclick="saveSales()" style="width:100%;margin-top:14px;">
         Зберегти продажі
       </button>
     </div>
