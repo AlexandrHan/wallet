@@ -54,19 +54,6 @@
     @endforeach
   </div>
 
-  <div class="tg-fab-wrap">
-    <button type="button" class="tg-fab" id="tgFabBtn" aria-expanded="false">☰</button>
-
-    <div class="tg-fab-menu hidden" id="tgFabMenu">
-      <a class="tg-fab-item" href="/profile">🔐 Адмінка / пароль</a>
-      <a class="tg-fab-item" href="/">💼 Гаманець</a>
-
-      <form method="POST" action="{{ route('logout') }}">
-        @csrf
-        <button type="submit" class="tg-fab-item danger">🚪 Вийти</button>
-      </form>
-    </div>
-  </div>
 </nav>
 
 <script>

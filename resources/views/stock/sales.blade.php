@@ -42,20 +42,7 @@
 
 </main>
 
-@auth
-  @php
-    $navView = match(auth()->user()->role){
-      'sunfix_manager' => 'partials.nav.bottom-sunfix-manager',
-      'owner' => 'partials.nav.bottom-owner',
-      'accountant' => 'partials.nav.bottom-accountant',
-      default => null,
-    };
-  @endphp
-
-  @if($navView)
-    @include($navView)
-  @endif
-@endauth
+@include('partials.nav.bottom')
 <script>
 function iso(d){
   const z = n => String(n).padStart(2,'0');

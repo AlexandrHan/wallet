@@ -680,9 +680,7 @@ document.addEventListener('click', function(e){
 
 
 
-  @auth
-    @include('partials.nav.bottom-wallet')
-  @endauth
+@include('partials.nav.bottom')
 
 </body>
 @endsection
