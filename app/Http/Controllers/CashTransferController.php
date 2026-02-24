@@ -206,4 +206,57 @@ class CashTransferController extends Controller
             'transfer' => $transfer
         ]);
     }
+
+    public function update(Request $request, $id)
+    {
+        $transfer = CashTransfer::find($id);
+
+        if (!$transfer) {
+            return response()->json(['error' => 'Not found'], 404);
+        }
+
+        // 🔒 тільки pending
+        if ($transfer->status !== 'pending') {
+            return response()->json(['error' => 'Аванс вже підтверджений'], 403);
+        }
+
+        // 🔒 тільки в день створення
+        if ($transfer->created_at->toDateString() !== now()->toDateString()) {
+            return response()->json([
+                'error' => 'Редагувати можна тільки в день створення'
+            ], 403);
+        }
+
+        // 🔒 тільки той хто створив
+        if ($transfer->created_by !== auth()->id()) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
+        $data = $request->validate([
+            'amount' => 'required|numeric|min:0.01'
+        ]);
+
+        $oldAmount = $transfer->amount;
+        $newAmount = $data['amount'];
+
+        $transfer->update([
+            'amount' => $newAmount,
+        ]);
+
+        // 🔥 знайти пов’язану системну операцію
+        $entry = \App\Models\Entry::where('cash_transfer_id', $transfer->id)->first();
+
+        if ($entry) {
+            $difference = $newAmount - $oldAmount;
+
+            // якщо це витрата (аванс) — signed_amount від’ємний
+            $entry->signed_amount = -$newAmount;
+            $entry->save();
+        };
+
+        return response()->json([
+            'success' => true,
+            'transfer' => $transfer
+        ]);
+    }
 }

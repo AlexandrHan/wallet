@@ -9,6 +9,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\WalletController;
 use App\Http\Controllers\ReclamationController;
 use App\Http\Controllers\FemDebtController;
+use App\Http\Controllers\CashTransferController;
 
 
 use App\Models\BankTransactionRaw;
@@ -106,6 +107,8 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         Route::post('/sales-projects/{id}/target-owner', [\App\Http\Controllers\SalesProjectController::class, 'setTargetOwner']);
 
         Route::post('/sales-projects/{id}/target-owner-cancel', [\App\Http\Controllers\SalesProjectController::class, 'cancelTargetOwner']);
+
+        Route::put('/cash-transfers/{id}', [CashTransferController::class, 'update']);
 
         
 

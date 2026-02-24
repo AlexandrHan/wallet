@@ -120,24 +120,40 @@ document.addEventListener('DOMContentLoaded', function () {
 
               const canAccept = IS_OWNER && t.target_owner && (t.target_owner === AUTH_USER.actor);
 
+              const today = new Date();
+              const todayFormatted = today.toLocaleDateString('uk-UA');
+
+              const isToday = t.created_at.startsWith(todayFormatted);
+
               const statusBlock = t.status === 'accepted'
                 ? `— ✅ Прийнято`
-                : (
-                    canAccept
-                      ? `
-                          — ⏳ В очікуванні
-                          <button 
-                            class="btn accept-advance-btn"
-                            data-id="${t.id}"
-                            style="margin-top:6px; width:100%;">
-                            ✔ Прийняти
-                          </button>
-                        `
-                      : `— ⏳ В очікуванні`
-                  );
+                : `
+                    — ⏳ В очікуванні
+                    ${canAccept ? `
+                      <button 
+                        class="btn accept-advance-btn"
+                        data-id="${t.id}"
+                        style="margin-top:6px; width:100%;">
+                        ✔ Прийняти
+                      </button>
+                    ` : ''}
 
-              return `
-                <div style="margin-top:5px; padding:8px; background:#111; border-radius:6px;">
+                    ${isToday ? `
+                        <button 
+                          class="btn edit-advance-btn hidden-edit-btn"
+                          data-id="${t.id}"
+                          data-amount="${t.amount}"
+                          style="margin-top:6px; width:100%; background:#333; display:none;">
+                          ✏️ Редагувати
+                        </button>
+                    ` : ''} 
+                  `;
+
+                return `
+                  <div 
+                    class="advance-card"
+                    data-transfer-id="${t.id}"
+                    style="margin-top:5px; padding:8px; background:#111; border-radius:6px; cursor:pointer;">
                   <div>
                     ${formatMoney(t.amount, t.currency)} ${statusBlock}
                   </div>
@@ -247,6 +263,29 @@ document.addEventListener('DOMContentLoaded', function () {
 
 });
 
+// ===== Toggle кнопки редагування при кліку на аванс =====
+document.addEventListener('click', function(e){
+
+  const advanceCard = e.target.closest('.advance-card');
+  if(!advanceCard) return;
+
+  const editBtn = advanceCard.querySelector('.edit-advance-btn');
+  if(!editBtn) return;
+
+  const isVisible = editBtn.style.display === 'block';
+
+  // ховаємо всі кнопки
+  document.querySelectorAll('.edit-advance-btn').forEach(b => {
+    b.style.display = 'none';
+  });
+
+  // якщо вона не була відкрита — показуємо
+  if(!isVisible){
+    editBtn.style.display = 'block';
+  }
+
+});
+
 // ===== Модалка проекту =====
 const modal = document.getElementById('projectModal');
 
@@ -283,6 +322,8 @@ document.getElementById('saveProjectBtn').onclick = () => {
   });
 
 };
+
+
 
 // ===== Модалка авансу =====
 const advanceModal = document.getElementById('advanceModal');
@@ -360,6 +401,38 @@ document.addEventListener('click', function(e){
     });
 
   }
+
+});
+// ===== Редагувати аванс =====
+document.addEventListener('click', function(e){
+
+  if(!e.target.classList.contains('edit-advance-btn')) return;
+
+  const transferId = e.target.dataset.id;
+  const currentAmount = e.target.dataset.amount;
+
+  const newAmount = prompt('Нова сума авансу:', currentAmount);
+
+  if(!newAmount) return;
+
+  fetch(`/api/cash-transfers/${transferId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+    },
+    body: JSON.stringify({
+      amount: newAmount
+    })
+  })
+  .then(r => r.json())
+  .then(res => {
+    if(res.success){
+      location.reload();
+    } else {
+      alert(res.error || 'Помилка');
+    }
+  });
 
 });
 

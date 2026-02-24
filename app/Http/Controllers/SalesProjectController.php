@@ -62,7 +62,12 @@ class SalesProjectController extends Controller
                 ], 422);
             }
 
-            $usdAmount = round($advance / $exchangeRate, 2);
+            if ($transferCurrency === 'EUR') {
+                $usdAmount = round($advance * $exchangeRate, 2);
+            }
+            elseif ($transferCurrency === 'UAH') {
+                $usdAmount = round($advance / $exchangeRate, 2);
+            }
         }
 
         \App\Models\CashTransfer::create([
@@ -169,7 +174,14 @@ class SalesProjectController extends Controller
             }
 
             // перерахунок в USD
-            $usdAmount = round($amount / $exchangeRate, 2);
+            if ($currency === 'EUR') {
+                // 1 EUR = X USD
+                $usdAmount = round($amount * $exchangeRate, 2);
+            }
+            elseif ($currency === 'UAH') {
+                // 1 USD = X UAH
+                $usdAmount = round($amount / $exchangeRate, 2);
+            }
         }
 
         $u = auth()->user();
