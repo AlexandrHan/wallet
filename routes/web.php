@@ -110,15 +110,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         
 
         Route::get('/stock', function (Request $request) {
-            // ====== 1) Діапазон (за замовчуванням поточний тиждень ПН-НД) ======
-            $from = $request->query('from');
-            $to   = $request->query('to');
-
-            if (!$from || !$to) {
-                $now = \Carbon\Carbon::now();
-                $from = $now->copy()->startOfWeek(\Carbon\Carbon::MONDAY)->toDateString();
-                $to   = $now->copy()->startOfWeek(\Carbon\Carbon::MONDAY)->addDays(6)->toDateString();
-            }
+            
 
             // ====== 2) Прийнято (тільки accepted) ======
             $purchases = DB::table('supplier_delivery_items as i')
@@ -171,23 +163,9 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
                 ->orderBy('p.name')
                 ->get();
 
-            // ====== 5) Борг постачальнику за період = продажі - отримані кошти ======
 
-            // 5.1) Продажі за період (sold_at або created_at якщо sold_at null)
-            $salesPeriod = (float) DB::table('sales')
-                ->whereBetween(DB::raw("date(COALESCE(sold_at, created_at))"), [$from, $to])
-                ->sum(DB::raw('qty * supplier_price'));
 
-            // 5.2) Отримані кошти за період (received_at)
-            $paidPeriod = (float) DB::table('supplier_cash_transfers')
-                ->where('is_received', 1)
-                ->where('currency', 'USD')
-                ->whereNotNull('received_at')
-                ->whereBetween(DB::raw("date(received_at)"), [$from, $to])
-                ->sum('amount');
 
-            // 5.3) Нетто-борг
-            $supplierDebt = max(0, $salesPeriod - $paidPeriod);
 
             // ====== BALANCE CHECK ======
 
@@ -198,12 +176,14 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
                 ->where('is_received', 1)
                 ->sum('amount');
 
+           // Борг постачальнику (за весь час)
+            $supplierDebt = max(0, $soldCostTotal - $paidTotal);
+
+            // Баланс ок (логічна перевірка)
             $balanceOk = abs($soldCostTotal - ($paidTotal + $supplierDebt)) < 0.01;
 
 
             return response()->json([
-                'from' => $from,
-                'to' => $to,
                 'supplier_debt' => round($supplierDebt, 2),
                 'balance_ok' => $balanceOk,
                 'stock' => $rows,

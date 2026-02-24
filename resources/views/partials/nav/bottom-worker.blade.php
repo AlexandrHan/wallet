@@ -3,7 +3,6 @@
 
   $activeWallet = ($current === '/');
   $activeReclamations  = str_starts_with($current, '/reclamations');
-  $activeStock  = str_starts_with($current, '/stock');
 
   $tabs = [
     ['href'=>'/',        'icon'=>'💼', 'label'=>'Гаманець', 'active'=>$activeWallet],

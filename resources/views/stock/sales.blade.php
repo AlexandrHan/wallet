@@ -8,6 +8,7 @@
 
 <main class="wrap stock-wrap">
 
+  @if(auth()->check() && auth()->user()->role === 'owner')
 
     <div class="card">
         <div style="font-weight:700; text-align:center; margin-bottom:10px;">
@@ -25,6 +26,8 @@
         </div>
 
     </div>
+
+   @endif
 
     <div class="card" style="margin-top:14px;">
         <div style="font-weight:700; margin-bottom:10px;">
@@ -140,9 +143,14 @@ async function loadSalesForm(){
 }
 
 async function saveSales(){
-  const to = document.getElementById('to')?.value; // дата запису продажів
-  if (!to) { alert('Вибери дату "to"'); return; }
+let to = document.getElementById('to')?.value;
 
+  // якщо поля немає (бухгалтер) — ставимо сьогоднішню дату
+  if (!to) {
+    const today = new Date();
+    const z = n => String(n).padStart(2,'0');
+    to = today.getFullYear() + '-' + z(today.getMonth()+1) + '-' + z(today.getDate());
+  }
   const inputs = document.querySelectorAll('[data-product-id]');
   const items = [];
 
@@ -189,7 +197,8 @@ async function calcSummary(){
 
   console.log('SUMMARY RESPONSE:', out);
 
-  document.getElementById('summaryTotal').innerText = out.total ?? 0;
+  const el = document.getElementById('summaryTotal');
+    if (el) el.innerText = out.total ?? 0;
 }
 
 

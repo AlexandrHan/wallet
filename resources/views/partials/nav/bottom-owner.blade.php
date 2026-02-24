@@ -37,8 +37,8 @@
   <div class="tg-fab-wrap">
     {{-- Відкриття БЕЗ JS: працює навіть коли JS-кліки глючать --}}
     <a class="tg-fab" href="#tgOwnerMenu" aria-label="Меню">
-  <span class="tg-fab-ico">☰</span>
-</a>
+      <span class="tg-fab-ico">☰</span>
+    </a>
   </div>
 </nav>
 

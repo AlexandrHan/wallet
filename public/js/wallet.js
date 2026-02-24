@@ -397,6 +397,7 @@ let _chartJsPromise = null;
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 async function loadWallets() {
+
   // 1) Швидко вантажимо тільки кешові (твій /api/wallets)
   const res = await fetch('/api/wallets');
   state.wallets = res.ok ? await res.json() : [];
@@ -1331,27 +1332,33 @@ async function submitEntry(entry_type, amount, comment){
 
 
 
+    
 
+const burgerBtn = document.getElementById('burgerBtn');
+const burgerMenu = document.getElementById('burgerMenu');
 
-    const burgerBtn = document.getElementById('burgerBtn');
-    const burgerMenu = document.getElementById('burgerMenu');
+if (!burgerBtn || !burgerMenu) {
+  // на сторінках без хедера/бургера просто нічого не робимо
+  // і не ламаємо весь wallet.js
+} else {
 
-    burgerBtn.onclick = (e) => {
+  burgerBtn.onclick = (e) => {
     e.stopPropagation();
     burgerMenu.classList.toggle('hidden');
-    };
+  };
 
-    // клік поза меню — закрити
-    document.addEventListener('click', () => {
+  // клік поза меню — закрити
+  document.addEventListener('click', () => {
     if (!burgerMenu.classList.contains('hidden')) {
-        burgerMenu.classList.add('hidden');
+      burgerMenu.classList.add('hidden');
     }
-    });
+  });
 
-    function fmt(n) {
-  return Number(n || 0).toLocaleString('uk-UA');
 }
 
+function fmt(n) {
+  return Number(n || 0).toLocaleString('uk-UA');
+}
 
 
 
