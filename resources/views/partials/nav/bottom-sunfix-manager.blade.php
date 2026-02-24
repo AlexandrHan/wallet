@@ -24,4 +24,39 @@
     <a class="tg-tab {{ $activeDeliveries ? 'is-active' : '' }}" href="/deliveries">🚚<span>Поставки</span></a>
     <a class="tg-tab {{ $activeService ? 'is-active' : '' }}" href="/reclamations">🛠️<span>Сервіс</span></a>
   </div>
+
+      <div class="tg-fab-wrap">
+    {{-- Відкриття БЕЗ JS: працює навіть коли JS-кліки глючать --}}
+      <a class="tg-fab" href="#tgOwnerMenu" aria-label="Меню">
+        <span class="tg-fab-ico">☰</span>
+      </a>
+    </div>
 </nav>
+{{-- FULLSCREEN MENU --}}
+<div id="tgOwnerMenu" class="tg-menu">
+  <div class="tg-menu__top">
+    <div class="tg-menu__title">Меню</div>
+    <a class="tg-menu__close" href="#" aria-label="Закрити">✕</a>
+  </div>
+
+  <div class="tg-menu__content">
+        <a class="tg-menu__item" style="margin-bottom:15px;" href="/stock/supplier-cash">💸 Борги</a>
+
+        <a class="tg-menu__item" style="margin-bottom:15px;" href="/stock">📦 Склад SunFix</a>
+
+        <a class="tg-menu__item" style="margin-bottom:15px;" href="/deliveries">🚚 Поставки</a>
+
+        <a class="tg-menu__item" style="margin-bottom:15px;" href="/stock">📦 Сервіс</a>
+
+        <a class="tg-menu__item" href="/profile">🔐 Адмінка / пароль</a>
+
+
+  </div>
+
+  <div class="tg-menu__bottom">
+    <form method="POST" action="{{ route('logout') }}">
+      @csrf
+      <button type="submit" class="tg-menu__item danger">🚪 Вийти</button>
+    </form>
+  </div>
+</div>

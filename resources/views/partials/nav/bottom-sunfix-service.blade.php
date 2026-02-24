@@ -1,13 +1,20 @@
 @php
-  $current = '/'.trim(request()->path(), '/'); // '/', ...'
-
-  $activeWallet = ($current === '/');
-
+  $activeReclamations = request()->routeIs('reclamations.index');
+  $activeCreate       = request()->routeIs('reclamations.new');
 
   $tabs = [
-    ['href'=>'/',        'icon'=>'💼', 'label'=>'Мій гаманець', 'active'=>$activeWallet],
-
-
+    [
+      'href'   => route('reclamations.index'),
+      'icon'   => '🛠️',
+      'label'  => 'Сервіс',
+      'active' => $activeReclamations
+    ],
+    [
+      'href'   => route('reclamations.new'),
+      'icon'   => '📦',
+      'label'  => 'Створити',
+      'active' => $activeCreate
+    ],
   ];
 @endphp
 
@@ -20,16 +27,13 @@
     @endforeach
   </div>
 
-    <div class="tg-fab-wrap">
+      <div class="tg-fab-wrap">
     {{-- Відкриття БЕЗ JS: працює навіть коли JS-кліки глючать --}}
       <a class="tg-fab" href="#tgOwnerMenu" aria-label="Меню">
         <span class="tg-fab-ico">☰</span>
       </a>
     </div>
-  
-
 </nav>
-
 {{-- FULLSCREEN MENU --}}
 <div id="tgOwnerMenu" class="tg-menu">
   <div class="tg-menu__top">
@@ -39,9 +43,7 @@
 
   <div class="tg-menu__content">
 
-
-        <a class="tg-menu__item" style="margin-bottom:15px;" href="/">🏦 Мій гаманець</a>
-
+        <a class="tg-menu__item" style="margin-bottom:15px;" href="/stock">📦 Сервіс</a>
 
         <a class="tg-menu__item" href="/profile">🔐 Адмінка / пароль</a>
 
@@ -55,4 +57,3 @@
     </form>
   </div>
 </div>
-

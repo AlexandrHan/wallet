@@ -1,13 +1,29 @@
 @php
-  $current = '/'.trim(request()->path(), '/'); // '/', ...'
+  $route = request()->route()?->getName();
 
-  $activeWallet = ($current === '/');
-
+  $activeWallet       = $route === 'home' || $route === 'wallet.index';
+  $activeReclamations = str_starts_with($route ?? '', 'reclamations.');
+  $activeStock        = str_starts_with($route ?? '', 'stock.');
 
   $tabs = [
-    ['href'=>'/',        'icon'=>'💼', 'label'=>'Мій гаманець', 'active'=>$activeWallet],
-
-
+    [
+      'href'   => route('home'),
+      'icon'   => '💼',
+      'label'  => 'Мій гаманець',
+      'active' => $activeWallet
+    ],
+    [
+      'href'   => route('reclamations.index'),
+      'icon'   => '🛠️',
+      'label'  => 'Сервіс',
+      'active' => $activeReclamations
+    ],
+    [
+      'href'   => url('/stock'),
+      'icon'   => '📦',
+      'label'  => 'Склад',
+      'active' => $activeStock
+    ],
   ];
 @endphp
 
@@ -42,6 +58,7 @@
 
         <a class="tg-menu__item" style="margin-bottom:15px;" href="/">🏦 Мій гаманець</a>
 
+        <a class="tg-menu__item" style="margin-bottom:15px;" href="/stock">📦 Склад SunFix</a>
 
         <a class="tg-menu__item" href="/profile">🔐 Адмінка / пароль</a>
 

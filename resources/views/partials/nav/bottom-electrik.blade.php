@@ -1,12 +1,12 @@
 @php
-  $current = '/'.trim(request()->path(), '/'); // '/', ...'
+  $current = '/'.trim(request()->path(), '/'); // '/', '/reclamations/', ...'
 
   $activeWallet = ($current === '/');
-
+  $activeReclamations  = str_starts_with($current, '/reclamations');
 
   $tabs = [
     ['href'=>'/',        'icon'=>'💼', 'label'=>'Мій гаманець', 'active'=>$activeWallet],
-
+    ['href'=>'/reclamations', 'icon'=>'🛠️', 'label'=>'Сервіс',  'active'=>$activeReclamations],
 
   ];
 @endphp
@@ -42,6 +42,7 @@
 
         <a class="tg-menu__item" style="margin-bottom:15px;" href="/">🏦 Мій гаманець</a>
 
+        <a class="tg-menu__item" style="margin-bottom:15px;" href="/reclamations">🛠️ Сервіс</a>
 
         <a class="tg-menu__item" href="/profile">🔐 Адмінка / пароль</a>
 

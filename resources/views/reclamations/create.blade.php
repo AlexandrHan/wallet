@@ -39,21 +39,8 @@
         <div class="userName"><span style="font-weight:800;">{{ collect(explode(' ', trim(auth()->user()->name)))->first() }}</span></div>
 
         <div class="burger-wrap">
-          <button type="button" id="burgerBtn" class="burger-btn">☰</button>
-          <div id="burgerMenu" class="burger-menu hidden">
-            <a href="/profile" class="burger-item">🔐 Адмінка / пароль</a>
-            @if(auth()->user()->role !== 'sunfix')
-              <a href="{{ url('/') }}" class="burger-item">💼 Гаманець</a>
-            @endif
+          <button class="burger-btn"></button>
 
-            <a href="{{ route('reclamations.index') }}" class="burger-item">🧾 Рекламації</a>
-            <div class="burger-actions">
-              <form method="POST" action="{{ route('logout') }}">
-                @csrf
-                <button type="submit" class="burger-item danger">🚪 Вийти</button>
-              </form>
-            </div>
-          </div>
         </div>
       </div>
 

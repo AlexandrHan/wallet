@@ -45,6 +45,7 @@ if (AUTH_USER.role !== 'accountant' && !AUTH_ACTOR) {
 
 
 let isRenderingWallets = false;
+let isLoadingWallets = false;
 
 // =======================
 // Lazy load Chart.js (ONE implementation)
@@ -392,50 +393,68 @@ let _chartJsPromise = null;
 
 
 
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 async function loadWallets() {
 
-  // 1) Швидко вантажимо тільки кешові (твій /api/wallets)
-  const res = await fetch('/api/wallets');
-  state.wallets = res.ok ? await res.json() : [];
+  if (isLoadingWallets) return;
+  isLoadingWallets = true;
 
-  renderWallets();   // покаже кеш (bankAccounts ще порожній)
+  try {
 
+    const res = await fetch('/api/wallets');
+    state.wallets = res.ok ? await res.json() : [];
 
-  // 2) Догружаємо "важке" у фоні, не блокуючи UI
-  setTimeout(async () => {
-    try {
-      // Якщо worker, банки йому не потрібні, навіть не запитуємо
-      if (AUTH_USER.role !== 'worker' && !state.bankAccounts.length) {
-        const [r1, r2, r3, r4, r5] = await Promise.all([
-          fetch('/api/bank/accounts'),
-          fetch('/api/bank/accounts-sggroup'),
-          fetch('/api/bank/accounts-solarglass'),
-          fetch('/api/bank/accounts-monobank'),
-          fetch('/api/bank/accounts-privat'),
-        ]);
+    renderWallets();
 
-        const a1 = r1.ok ? await r1.json() : [];
-        const a2 = r2.ok ? await r2.json() : [];
-        const a3 = r3.ok ? await r3.json() : [];
-        const a4 = r4.ok ? await r4.json() : [];
-        const a5 = r5.ok ? await r5.json() : [];
+    setTimeout(async () => {
+      try {
 
-        state.bankAccounts = [...a1, ...a2, ...a3, ...a4, ...a5];
+        if (AUTH_USER.role !== 'worker' && !state.bankAccounts.length) {
+
+          const requests = [
+            '/api/bank/accounts',
+            '/api/bank/accounts-sggroup',
+            '/api/bank/accounts-solarglass',
+            '/api/bank/accounts-monobank',
+            '/api/bank/accounts-privat',
+          ];
+
+          const results = await Promise.allSettled(
+            requests.map(url => fetch(url))
+          );
+
+          const data = await Promise.all(
+            results.map(async r =>
+              r.status === 'fulfilled' && r.value.ok
+                ? await r.value.json()
+                : []
+            )
+          );
+
+          state.bankAccounts = data.flat();
+        }
+
+        await loadFx();
+
+        renderHoldingCard();
+        renderWallets();
+
+      } catch (e) {
+        console.error('Background load failed', e);
+      } finally {
+        isLoadingWallets = false;
       }
 
-      // курс теж у фоні
-      await loadFx();
+    }, 0);
 
-      renderHoldingCard();
-      renderWallets(); // тепер додасть банки
-    } catch (e) {
-      console.error('Background load failed', e);
-    }
-  }, 0);
+  } catch (e) {
+    console.error('Wallet load failed', e);
+    isLoadingWallets = false;
+  }
 }
 
 

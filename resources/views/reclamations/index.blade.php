@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#0b0d10">
 
   <!-- iOS home screen -->
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="SG Wallet">
@@ -66,27 +66,8 @@
         </div>
 
         <div class="burger-wrap">
-          <button type="button" id="burgerBtn" class="burger-btn">☰</button>
+          <button class="burger-btn"></button>
 
-          <div id="burgerMenu" class="burger-menu hidden">
-            <a href="/profile" class="burger-item">🔐 Адмінка / пароль</a>
-            @if(!in_array(auth()->user()->role, ['sunfix', 'sunfix_manager'], true))
-              <a href="{{ url('/') }}" class="burger-item">💼 Гаманець</a>
-            @endif
-
-            @if(in_array(auth()->user()?->role, ['owner', 'accountant', 'sunfix_manager'], true))
-              <a href="/stock" class="burger-item">📦 Склад SunFix</a>
-            @endif
-
-            <a href="{{ route('reclamations.index') }}" class="burger-item">🧾 Рекламації</a>
-
-            <div class="burger-actions">
-              <form method="POST" action="{{ route('logout') }}">
-                @csrf
-                <button type="submit" class="burger-item danger">🚪 Вийти</button>
-              </form>
-            </div>
-          </div>
         </div>
       </div>
 
