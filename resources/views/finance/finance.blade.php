@@ -264,27 +264,25 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 // ===== Toggle кнопки редагування при кліку на аванс =====
-document.addEventListener('click', function(e){
-
-  const advanceCard = e.target.closest('.advance-card');
-  if(!advanceCard) return;
-
-  const editBtn = advanceCard.querySelector('.edit-advance-btn');
-  if(!editBtn) return;
-
-  const isVisible = editBtn.style.display === 'block';
-
-  // ховаємо всі кнопки
-  document.querySelectorAll('.edit-advance-btn').forEach(b => {
-    b.style.display = 'none';
-  });
-
-  // якщо вона не була відкрита — показуємо
-  if(!isVisible){
-    editBtn.style.display = 'block';
-  }
-
-});
+// document.addEventListener('click', function(e){
+//
+//   const advanceCard = e.target.closest('.advance-card');
+//   if(!advanceCard) return;
+//
+//   const editBtn = advanceCard.querySelector('.edit-advance-btn');
+//   if(!editBtn) return;
+//
+//   const isVisible = editBtn.style.display === 'block';
+//
+//   document.querySelectorAll('.edit-advance-btn').forEach(b => {
+//     b.style.display = 'none';
+//   });
+//
+//   if(!isVisible){
+//     editBtn.style.display = 'block';
+//   }
+//
+// });
 
 // ===== Модалка проекту =====
 const modal = document.getElementById('projectModal');
