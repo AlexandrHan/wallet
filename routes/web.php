@@ -109,7 +109,6 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         Route::post('/sales-projects/{id}/target-owner-cancel', [\App\Http\Controllers\SalesProjectController::class, 'cancelTargetOwner']);
 
         Route::put('/cash-transfers/{id}', [CashTransferController::class, 'update']);
-        
 
         
 
@@ -1212,6 +1211,11 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
     Route::get('/reclamations/{reclamation}/history', [ReclamationController::class, 'history'])
         ->name('reclamations.history')
         ->middleware(['reclamations.access']);
+        
+
+    Route::middleware(['auth'])->get('/projects', function () {
+        return view('projects.project');
+    });
 
 
 });

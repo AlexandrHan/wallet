@@ -59,6 +59,13 @@
         <a class="tg-menu__item" style="margin-bottom:15px;" href="/">🏦 Мій гаманець</a>
 
         <a class="tg-menu__item" style="margin-bottom:15px;" href="/stock">📦 Склад SunFix</a>
+        
+        <details class="tg-acc">
+          <summary class="tg-acc__title">🏗 Будівництво</summary>
+          <div class="tg-acc__body">
+            <a class="tg-menu__item" href="/projects"> 🧾 Проекти</a>
+          </div>
+        </details>
 
         <a class="tg-menu__item" href="/profile">🔐 Адмінка / пароль</a>
 

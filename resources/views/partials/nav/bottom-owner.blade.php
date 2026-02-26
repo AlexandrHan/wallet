@@ -90,6 +90,13 @@
     </details>
 
     <details class="tg-acc">
+      <summary class="tg-acc__title">🏗 Будівництво</summary>
+      <div class="tg-acc__body">
+        <a class="tg-menu__item" href="/projects"> 🧾 Проекти</a>
+      </div>
+    </details>
+
+    <details class="tg-acc">
       <summary class="tg-acc__title">🔐 Профіль</summary>
       <div class="tg-acc__body">
         <a class="tg-menu__item" href="/profile">🔐 Адмінка / пароль</a>

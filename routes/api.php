@@ -177,15 +177,17 @@ Route::delete('/wallets/{walletId}', function (int $walletId) {
 });
 
 
-function erpCashAccount(string $owner, string $currency): string
-{
-    $ownerName = match ($owner) {
-        'kolisnyk' => 'Колісник',
-        'hlushchenko' => 'Глущенко',
-        default => throw new Exception('Unknown owner'),
-    };
+if (!function_exists('erpCashAccount')) {
+    function erpCashAccount(string $owner, string $currency): string
+    {
+        $ownerName = match ($owner) {
+            'kolisnyk' => 'Колісник',
+            'hlushchenko' => 'Глущенко',
+            default => $owner
+        };
 
-    return "{$currency} {$ownerName} КЕШ - SGH";
+        return "КЕШ {$ownerName} ({$currency})";
+    }
 }
 
 

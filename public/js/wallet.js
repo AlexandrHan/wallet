@@ -2917,6 +2917,7 @@ function updateExchange(source = 'from'){
 // ВІДКРИТТЯ МОДАЛКИ
 // ВІДКРИТТЯ МОДАЛКИ
 window.openStaffCash = function () {
+  
 
   const OWNER_ACTORS = ['hlushchenko', 'kolisnyk']; // власники (виключаємо)
 
