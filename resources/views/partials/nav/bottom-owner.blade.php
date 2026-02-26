@@ -50,15 +50,16 @@
   </div>
 
   <div class="tg-menu__content">
+    @if(auth()->user()->role === 'owner' && $activeWallet)
+      <button type="button" class="tg-menu__item js-staff-cash">👥 КЕШ співробітників</button>
+      <div style="height:10px"></div>
+    @endif
 
     <details class="tg-acc" >
       <summary class="tg-acc__title">💳 Гаманець</summary>
       <div class="tg-acc__body">
         <a class="tg-menu__item" href="/">🏦 Мій гаманець</a>
 
-        @if(auth()->user()->role === 'owner')
-          <button type="button" class="tg-menu__item js-staff-cash">👥 КЕШ співробітників</button>
-        @endif
 
         <button type="button" class="tg-menu__item js-show-rates">💱 Обмінник</button>
       </div>

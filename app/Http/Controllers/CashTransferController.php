@@ -132,6 +132,7 @@ class CashTransferController extends Controller
         }
 
         DB::transaction(function () use ($transfer) {
+            
 
             DB::table('entries')->insert([
                 'wallet_id'    => $transfer->from_wallet_id,

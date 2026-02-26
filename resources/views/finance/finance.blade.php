@@ -349,6 +349,8 @@ document.getElementById('closeAdvanceBtn').onclick = () => {
   advanceModal.style.display = 'none';
 };
 
+
+// ===== Прямий аванс в гаманець власника аванс =====
 document.getElementById('saveAdvanceBtn').onclick = function(){
 
   const amount = document.getElementById('advanceAmount').value;

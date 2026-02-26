@@ -2915,48 +2915,57 @@ function updateExchange(source = 'from'){
 // КЕШ співробітників — МОДАЛКА
 //////////////////////////////////////////////////////////////////////////////////////
 // ВІДКРИТТЯ МОДАЛКИ
+// ВІДКРИТТЯ МОДАЛКИ
 window.openStaffCash = function () {
 
-  const staffWallets = state.wallets.filter(w =>
-    w.owner === 'accountant' ||
-    w.owner === 'foreman' ||
-    w.owner === 'serviceman_1' ||
-    w.owner === 'serviceman_2'
-  );
+  const OWNER_ACTORS = ['hlushchenko', 'kolisnyk']; // власники (виключаємо)
+
+  // ✅ всі кеш-рахунки, де owner заданий і це НЕ власники
+  const staffWallets = state.wallets.filter(w => {
+    const owner = w.owner;
+    if (!owner) return false;
+    if (OWNER_ACTORS.includes(owner)) return false;
+    if ((w.type || 'cash') !== 'cash') return false; // на всяк: тільки cash
+    return true;
+  });
+
+  const ROLE_LABELS = {
+    accountant: 'Бухгалтер',
+    foreman: 'Прораб',
+    ntv: 'НТВ',
+    serviceman_1: 'Савенков',
+    serviceman_2: 'Малінін',
+  };
 
   const list = document.getElementById('staffCashList');
 
   list.innerHTML = staffWallets.map(w => {
-
-    const badge =
-      w.owner === 'accountant'
-        ? '<div class="staff-badge">Бухгалтер</div>'
-        : '<div class="staff-badge" style="background:rgba(76,125,255,.15);border-color:rgba(76,125,255,.35);color:#4c7dff">Прораб</div>';
+    const label = ROLE_LABELS[w.owner] || w.owner;
 
     return `
       <div class="rate-card" onclick="openStaffWallet(${w.id})">
-
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <div class="rate-title">${w.name}</div>
-          ${badge}
+          <div class="staff-badge">${label}</div>
         </div>
 
         <div style="margin-top:6px;font-size:16px;font-weight:700;">
           ${Number(w.balance).toFixed(2)} ${w.currency}
         </div>
-
       </div>
     `;
   }).join('');
 
   document.getElementById('staffCashModal').classList.remove('hidden');
-}
+  document.body.classList.add('modal-open');
+};
 
 
 
 // ЗАКРИТТЯ
 window.closeStaffCash = function(){
   document.getElementById('staffCashModal').classList.add('hidden');
+  document.body.classList.remove('modal-open');
 }
 
 
@@ -2967,7 +2976,9 @@ window.openStaffWallet = async function(walletId){
 }
 
 
-
+document.addEventListener('click', (e) => {
+  if (e.target.closest('#staffCashClose')) window.closeStaffCash?.();
+}); 
 
 
 document.addEventListener('DOMContentLoaded', () => {

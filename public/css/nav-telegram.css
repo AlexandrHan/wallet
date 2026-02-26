@@ -174,8 +174,8 @@ html{ scrollbar-gutter: stable; }
   inset: 0;
   z-index: 9999;
   display: none;
-  background: rgba(11, 13, 16, .92);
-  backdrop-filter: blur(10px);
+  background: rgba(0, 0, 0, 0.712);
+  backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(10px);
   padding: max(14px, env(safe-area-inset-top)) 14px max(14px, env(safe-area-inset-bottom));
 }

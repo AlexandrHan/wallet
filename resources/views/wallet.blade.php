@@ -321,7 +321,7 @@
 
     <div class="modal-header">
       <div class="modal-title modal-cash">Кеш співробітників</div>
-   
+      <button type="button" id="staffCashClose" class="modal-close">✕</button>
     </div>
 
     <div class="modal-body" id="staffCashList">

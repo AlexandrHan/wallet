@@ -109,6 +109,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         Route::post('/sales-projects/{id}/target-owner-cancel', [\App\Http\Controllers\SalesProjectController::class, 'cancelTargetOwner']);
 
         Route::put('/cash-transfers/{id}', [CashTransferController::class, 'update']);
+        
 
         
 
@@ -1214,5 +1215,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
 
 
 });
+
+
 
 require __DIR__ . '/auth.php';

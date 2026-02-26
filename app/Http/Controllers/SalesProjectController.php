@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use App\Models\SalesProject;
+use App\Models\CashTransfer;
 
 class SalesProjectController extends Controller
 {
@@ -18,9 +20,8 @@ class SalesProjectController extends Controller
             'to_wallet_id'   => 'nullable|integer',
         ]);
 
-        $advance = $data['advance_amount'] ?? 0;
-
-        $remaining = $data['total_amount'] - $advance;
+        $advance = (float)($data['advance_amount'] ?? 0);
+        $remaining = (float)$data['total_amount'] - $advance;
 
         if ($remaining < 0) {
             return response()->json([
@@ -37,50 +38,48 @@ class SalesProjectController extends Controller
             'created_by'       => auth()->id(),
             'status'           => 'active',
         ]);
-        
-        // Якщо є аванс — створюємо pending transfer
+
+        // Якщо є аванс — створюємо pending transfer (старе/необов’язкове, залишаю як у тебе)
         if ($advance > 0 && $request->from_wallet_id && $request->to_wallet_id) {
 
-        $transferCurrency = $data['currency'];
-        $exchangeRate = null;
-        $usdAmount = $advance;
+            $transferCurrency = $data['currency'];
+            $exchangeRate = null;
+            $usdAmount = $advance;
 
-        // якщо проект в USD, але аванс в іншій валюті
-        if ($transferCurrency !== 'USD') {
+            if ($transferCurrency !== 'USD') {
 
-            if (!$request->exchange_rate) {
-                return response()->json([
-                    'error' => 'Потрібно ввести курс для перерахунку в USD'
-                ], 422);
+                if (!$request->exchange_rate) {
+                    return response()->json([
+                        'error' => 'Потрібно ввести курс для перерахунку в USD'
+                    ], 422);
+                }
+
+                $exchangeRate = (float)$request->exchange_rate;
+
+                if ($exchangeRate <= 0) {
+                    return response()->json([
+                        'error' => 'Некоректний курс'
+                    ], 422);
+                }
+
+                if ($transferCurrency === 'EUR') {
+                    $usdAmount = round($advance * $exchangeRate, 2);
+                } elseif ($transferCurrency === 'UAH') {
+                    $usdAmount = round($advance / $exchangeRate, 2);
+                }
             }
 
-            $exchangeRate = (float)$request->exchange_rate;
-
-            if ($exchangeRate <= 0) {
-                return response()->json([
-                    'error' => 'Некоректний курс'
-                ], 422);
-            }
-
-            if ($transferCurrency === 'EUR') {
-                $usdAmount = round($advance * $exchangeRate, 2);
-            }
-            elseif ($transferCurrency === 'UAH') {
-                $usdAmount = round($advance / $exchangeRate, 2);
-            }
-        }
-
-        \App\Models\CashTransfer::create([
-            'project_id'     => $project->id,
-            'from_wallet_id' => $request->from_wallet_id,
-            'to_wallet_id'   => $request->to_wallet_id,
-            'amount'         => $advance,
-            'currency'       => $transferCurrency,
-            'exchange_rate'  => $exchangeRate,
-            'usd_amount'     => $usdAmount,
-            'status'         => 'pending',
-            'created_by'     => auth()->id(),
-        ]);
+            CashTransfer::create([
+                'project_id'     => $project->id,
+                'from_wallet_id' => $request->from_wallet_id,
+                'to_wallet_id'   => $request->to_wallet_id,
+                'amount'         => $advance,
+                'currency'       => $transferCurrency,
+                'exchange_rate'  => $exchangeRate,
+                'usd_amount'     => $usdAmount,
+                'status'         => 'pending',
+                'created_by'     => auth()->id(),
+            ]);
         }
 
         return response()->json([
@@ -91,28 +90,28 @@ class SalesProjectController extends Controller
 
     public function index()
     {
-        $projects = \App\Models\SalesProject::orderByDesc('id')->get()->map(function ($project) {
+        $projects = SalesProject::orderByDesc('id')->get()->map(function ($project) {
 
-            $transfers = \App\Models\CashTransfer::where('project_id', $project->id)
+            $transfers = CashTransfer::where('project_id', $project->id)
                 ->orderByDesc('id')
                 ->get();
 
-            $paid = $transfers->where('status', 'accepted')->sum('usd_amount');
-            $pending = $transfers->where('status', 'pending')->sum('usd_amount');
+            $paid = (float)$transfers->where('status', 'accepted')->sum('usd_amount');
+            $pending = (float)$transfers->where('status', 'pending')->sum('usd_amount');
 
             $pendingTargetOwner = $transfers
                 ->where('status', 'pending')
                 ->pluck('target_owner')
                 ->filter()
-                ->first(); // якщо НТО вже вибрав власника — тут буде actor
+                ->first();
 
             return [
                 'id' => $project->id,
                 'client_name' => $project->client_name,
-                'total_amount' => $project->total_amount,
+                'total_amount' => (float)$project->total_amount,
                 'paid_amount' => $paid,
                 'pending_amount' => $pending,
-                'remaining_amount' => $project->total_amount - $paid,
+                'remaining_amount' => (float)$project->total_amount - $paid,
                 'currency' => $project->currency,
                 'status' => $project->status,
                 'created_at' => $project->created_at->format('d.m.Y H:i'),
@@ -120,10 +119,10 @@ class SalesProjectController extends Controller
                 'transfers' => $transfers->map(function ($t) {
                     return [
                         'id' => $t->id,
-                        'amount' => $t->amount,
-                        'currency' => $t->currency,          // ✅ додаємо
-                        'exchange_rate' => $t->exchange_rate, // ✅ додаємо
-                        'usd_amount' => $t->usd_amount,      // ✅ додаємо
+                        'amount' => (float)$t->amount,
+                        'currency' => $t->currency,
+                        'exchange_rate' => $t->exchange_rate,
+                        'usd_amount' => (float)$t->usd_amount,
                         'status' => $t->status,
                         'target_owner' => $t->target_owner,
                         'created_at' => \Carbon\Carbon::parse($t->created_at)->format('d.m.Y H:i'),
@@ -137,7 +136,7 @@ class SalesProjectController extends Controller
 
     public function addAdvance(Request $request, $id)
     {
-        $project = \App\Models\SalesProject::find($id);
+        $project = SalesProject::find($id);
 
         if (!$project) {
             return response()->json(['error' => 'Проект не знайдено'], 404);
@@ -154,7 +153,7 @@ class SalesProjectController extends Controller
         $exchangeRate = null;
         $usdAmount = null;
 
-        // якщо аванс в USD
+        // USD -> USD
         if ($currency === 'USD') {
             $usdAmount = $amount;
         } else {
@@ -173,74 +172,37 @@ class SalesProjectController extends Controller
                 ], 422);
             }
 
-            // перерахунок в USD
             if ($currency === 'EUR') {
-                // 1 EUR = X USD
                 $usdAmount = round($amount * $exchangeRate, 2);
-            }
-            elseif ($currency === 'UAH') {
-                // 1 USD = X UAH
+            } elseif ($currency === 'UAH') {
                 $usdAmount = round($amount / $exchangeRate, 2);
             }
         }
 
-        $u = auth()->user();
-        $ownerActor = $u->actor;
-
-        // 1) знайти або створити кеш НТО по валюті авансу
-        $wallet = \Illuminate\Support\Facades\DB::table('wallets')
-            ->where('owner', $ownerActor)
-            ->where('type', 'cash')
-            ->where('currency', $currency)
-            ->first();
-
-        if (!$wallet) {
-            $walletId = \Illuminate\Support\Facades\DB::table('wallets')->insertGetId([
-                'name' => 'КЕШ НТО (' . $currency . ')',
-                'currency' => $currency,
-                'type' => 'cash',
-                'owner' => $ownerActor,
-                'is_active' => 1,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-
-            $wallet = (object)['id' => $walletId];
-        }
-
-        // 2) одразу записуємо прихід у кеш НТО (операції)
-        \Illuminate\Support\Facades\DB::table('entries')->insert([
-            'wallet_id'    => $wallet->id,
-            'entry_type'   => 'income',
-            'amount'       => $amount,
-            'comment'      => 'Аванс: ' . $project->client_name,
-            'posting_date' => date('Y-m-d'),
-            'created_at'   => now(),
-            'updated_at'   => now(),
-        ]);
-
-        // створюємо transfer
-
         $user = auth()->user();
 
-        // ✅ Якщо аванс створює OWNER — одразу зараховуємо в його кеш і ставимо accepted
+        // =========================
+        // ✅ OWNER: 1 операція + 1 transfer accepted (БЕЗ ДУБЛІВ)
+        // =========================
         if ($user && $user->role === 'owner') {
 
-            $wallet = \Illuminate\Support\Facades\DB::table('wallets')
+            $ownerWallet = DB::table('wallets')
                 ->where('owner', $user->actor)
                 ->where('currency', $currency)
                 ->where('type', 'cash')
                 ->first();
 
-            if (!$wallet) {
+            if (!$ownerWallet) {
                 return response()->json(['error' => 'Wallet not found'], 422);
             }
 
-            \Illuminate\Support\Facades\DB::transaction(function () use ($wallet, $amount, $project, $currency, $exchangeRate, $usdAmount, $user, &$transfer) {
+            $transfer = null;
 
-                // income одразу в кеш власника
-                \Illuminate\Support\Facades\DB::table('entries')->insert([
-                    'wallet_id'    => $wallet->id,
+            DB::transaction(function () use ($ownerWallet, $amount, $project, $currency, $exchangeRate, $usdAmount, $user, &$transfer) {
+
+                // ✅ тільки ОДНА операція income
+                DB::table('entries')->insert([
+                    'wallet_id'    => $ownerWallet->id,
                     'entry_type'   => 'income',
                     'amount'       => $amount,
                     'comment'      => 'Аванс: ' . ($project->client_name ?? ''),
@@ -249,11 +211,11 @@ class SalesProjectController extends Controller
                     'updated_at'   => now(),
                 ]);
 
-                // transfer одразу accepted (без НТО, без вибору власника, без кнопки "Прийняти")
-                $transfer = \App\Models\CashTransfer::create([
+                // ✅ transfer одразу accepted
+                $transfer = CashTransfer::create([
                     'project_id'     => $project->id,
                     'from_wallet_id' => null,
-                    'to_wallet_id'   => $wallet->id,
+                    'to_wallet_id'   => $ownerWallet->id,
                     'amount'         => $amount,
                     'currency'       => $currency,
                     'exchange_rate'  => $exchangeRate,
@@ -271,17 +233,51 @@ class SalesProjectController extends Controller
             ]);
         }
 
-        // 🔵 Якщо аванс створює НЕ owner (НТО) — лишаємо як було: pending
-        $transfer = \App\Models\CashTransfer::create([
-            'project_id' => $project->id,
-            'from_wallet_id' => null,
-            'to_wallet_id' => null,
-            'amount' => $amount,
-            'currency' => $currency,
-            'exchange_rate' => $exchangeRate,
-            'usd_amount' => $usdAmount,
-            'status' => 'pending',
-            'created_by' => auth()->id(),
+        // =========================
+        // 🔵 НЕ owner (НТВ): спочатку гроші падають у кеш НТВ, transfer pending
+        // =========================
+        $ntvWallet = DB::table('wallets')
+            ->where('owner', $user->actor)
+            ->where('type', 'cash')
+            ->where('currency', $currency)
+            ->first();
+
+        if (!$ntvWallet) {
+            $walletId = DB::table('wallets')->insertGetId([
+                'name'       => 'КЕШ НТВ (' . $currency . ')',
+                'currency'   => $currency,
+                'type'       => 'cash',
+                'owner'      => $user->actor,
+                'is_active'  => 1,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $ntvWallet = (object)['id' => $walletId];
+        }
+
+        // ✅ прихід у кеш НТВ (ОДИН раз)
+        DB::table('entries')->insert([
+            'wallet_id'    => $ntvWallet->id,
+            'entry_type'   => 'income',
+            'amount'       => $amount,
+            'comment'      => 'Аванс: ' . ($project->client_name ?? ''),
+            'posting_date' => date('Y-m-d'),
+            'created_at'   => now(),
+            'updated_at'   => now(),
+        ]);
+
+        // ✅ pending transfer (щоб owner потім “прийняв”)
+        $transfer = CashTransfer::create([
+            'project_id'     => $project->id,
+            'from_wallet_id' => $ntvWallet->id,
+            'to_wallet_id'   => null,
+            'amount'         => $amount,
+            'currency'       => $currency,
+            'exchange_rate'  => $exchangeRate,
+            'usd_amount'     => $usdAmount,
+            'status'         => 'pending',
+            'created_by'     => $user->id,
         ]);
 
         return response()->json([
@@ -292,7 +288,6 @@ class SalesProjectController extends Controller
 
     public function setTargetOwner(Request $request, $id)
     {
-        // НТО/менеджер задає кому здає. Owner тут не потрібен.
         $u = auth()->user();
         if (!$u || $u->role === 'owner') {
             return response()->json(['error' => 'Forbidden'], 403);
@@ -302,13 +297,12 @@ class SalesProjectController extends Controller
             'target_owner' => 'required|in:hlushchenko,kolisnyk',
         ]);
 
-        $project = \App\Models\SalesProject::find($id);
+        $project = SalesProject::find($id);
         if (!$project) {
             return response()->json(['error' => 'Проект не знайдено'], 404);
         }
 
-        // Ставимо target_owner для ВСІХ pending-авансів цього проекту
-        \Illuminate\Support\Facades\DB::table('cash_transfers')
+        DB::table('cash_transfers')
             ->where('project_id', $project->id)
             ->where('status', 'pending')
             ->update([
@@ -326,13 +320,12 @@ class SalesProjectController extends Controller
             return response()->json(['error' => 'Forbidden'], 403);
         }
 
-        $project = \App\Models\SalesProject::find($id);
+        $project = SalesProject::find($id);
         if (!$project) {
             return response()->json(['error' => 'Проект не знайдено'], 404);
         }
 
-        // скидаємо вибір власника для всіх pending авансів цього проекту
-        \Illuminate\Support\Facades\DB::table('cash_transfers')
+        DB::table('cash_transfers')
             ->where('project_id', $project->id)
             ->where('status', 'pending')
             ->update([
@@ -341,5 +334,5 @@ class SalesProjectController extends Controller
             ]);
 
         return response()->json(['ok' => true]);
-}
+    }
 }
