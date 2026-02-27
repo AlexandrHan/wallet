@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use App\Models\SalesProject;
 use App\Models\CashTransfer;
 
@@ -170,6 +172,13 @@ class SalesProjectController extends Controller
                 ->pluck('target_owner')
                 ->filter()
                 ->first();
+            
+            $attachments = Schema::hasTable('project_attachments')
+                ? DB::table('project_attachments')
+                    ->where('project_id', $project->id)
+                    ->orderByDesc('id')
+                    ->get()
+                : collect();
 
             return [
                 'id' => $project->id,
@@ -180,8 +189,36 @@ class SalesProjectController extends Controller
                 'remaining_amount' => (float)$project->total_amount - $paid,
                 'currency' => $project->currency,
                 'status' => $project->status,
+                'telegram_group_link' => $project->telegram_group_link,
+                'inverter' => $project->inverter,
+                'bms' => $project->bms,
+                'battery_name' => $project->battery_name,
+                'battery_qty' => $project->battery_qty,
+                'panel_name' => $project->panel_name,
+                'panel_qty' => $project->panel_qty,
+                'electrician' => $project->electrician,
+                'installation_team' => $project->installation_team,
+                'extra_works' => $project->extra_works,
+                'defects_note' => $project->defects_note,
+                'defects_photo_url' => $project->defects_photo_path
+                    ? Storage::disk('public')->url($project->defects_photo_path)
+                    : null,
+                'closed_at' => $project->closed_at
+                    ? \Carbon\Carbon::parse($project->closed_at)->format('d.m.Y H:i')
+                    : null,
                 'created_at' => $project->created_at->format('d.m.Y H:i'),
                 'pending_target_owner' => $pendingTargetOwner,
+                'attachments' => $attachments->map(function ($a) {
+                    $mime = (string)($a->mime ?? '');
+                    $isImage = str_starts_with($mime, 'image/');
+                    return [
+                        'id' => (int)$a->id,
+                        'name' => $a->original_name ?: basename((string)$a->path),
+                        'mime' => $mime,
+                        'url' => Storage::disk('public')->url($a->path),
+                        'is_image' => $isImage,
+                    ];
+                })->values(),
                 'transfers' => $transfers->map(function ($t) use ($projectCurrency) {
                     $projectAmount = null;
                     try {
@@ -403,6 +440,228 @@ class SalesProjectController extends Controller
                 'target_owner' => null,
                 'updated_at' => now(),
             ]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function updateConstruction(Request $request, $id)
+    {
+        $project = SalesProject::find($id);
+        if (!$project) {
+            return response()->json(['error' => 'Проект не знайдено'], 404);
+        }
+
+        $data = $request->validate([
+            'telegram_group_link' => 'nullable|string|max:1000',
+            'inverter' => 'nullable|string|max:255',
+            'bms' => 'nullable|string|max:255',
+            'battery_name' => 'nullable|string|max:255',
+            'battery_qty' => 'nullable|integer|min:0|max:1000000',
+            'panel_name' => 'nullable|string|max:255',
+            'panel_qty' => 'nullable|integer|min:0|max:1000000',
+            'electrician' => 'nullable|string|max:255',
+            'installation_team' => 'nullable|string|max:255',
+            'extra_works' => 'nullable|string|max:1000',
+            'defects_note' => 'nullable|string|max:5000',
+            'defects_photo' => 'nullable|image|max:10240',
+            'photos' => 'nullable|array',
+            'photos.*' => 'image|max:10240',
+            'attachments' => 'nullable|array',
+            'attachments.*' => 'file|max:20480',
+        ]);
+
+        if ($request->hasFile('defects_photo')) {
+            if ($project->defects_photo_path) {
+                Storage::disk('public')->delete($project->defects_photo_path);
+            }
+
+            $data['defects_photo_path'] = $request->file('defects_photo')->store('project-defects', 'public');
+        }
+
+        unset($data['defects_photo']);
+        unset($data['photos']);
+        unset($data['attachments']);
+        $project->update($data);
+
+        if (Schema::hasTable('project_attachments')) {
+            foreach ((array)$request->file('photos', []) as $file) {
+                if (!$file) continue;
+                $path = $file->store('project-attachments', 'public');
+                DB::table('project_attachments')->insert([
+                    'project_id' => $project->id,
+                    'path' => $path,
+                    'original_name' => $file->getClientOriginalName(),
+                    'mime' => $file->getMimeType(),
+                    'size' => $file->getSize(),
+                    'created_by' => auth()->id(),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+
+            foreach ((array)$request->file('attachments', []) as $file) {
+                if (!$file) continue;
+                $path = $file->store('project-attachments', 'public');
+                DB::table('project_attachments')->insert([
+                    'project_id' => $project->id,
+                    'path' => $path,
+                    'original_name' => $file->getClientOriginalName(),
+                    'mime' => $file->getMimeType(),
+                    'size' => $file->getSize(),
+                    'created_by' => auth()->id(),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+        }
+
+        return response()->json([
+            'ok' => true,
+            'project' => [
+                'id' => $project->id,
+                'defects_photo_url' => $project->defects_photo_path
+                    ? Storage::disk('public')->url($project->defects_photo_path)
+                    : null,
+                'closed_at' => $project->closed_at
+                    ? \Carbon\Carbon::parse($project->closed_at)->format('d.m.Y H:i')
+                    : null,
+                'status' => $project->status,
+            ],
+        ]);
+    }
+
+    public function closeProject(Request $request, $id)
+    {
+        $project = SalesProject::find($id);
+        if (!$project) {
+            return response()->json(['error' => 'Проект не знайдено'], 404);
+        }
+
+        if (trim((string)($project->defects_note ?? '')) !== '') {
+            return response()->json([
+                'error' => 'Не можна закрити проект, поки заповнені недоліки'
+            ], 422);
+        }
+
+        if ($project->status === 'completed') {
+            return response()->json(['ok' => true]);
+        }
+
+        $project->status = 'completed';
+        $project->closed_at = now();
+        $project->closed_by = auth()->id();
+        $project->save();
+
+        return response()->json([
+            'ok' => true,
+            'closed_at' => $project->closed_at->format('d.m.Y H:i'),
+        ]);
+    }
+
+    public function constructionStaffOptions()
+    {
+        $defaults = [
+            'electrician' => ['Малінін', 'Савенков', 'Комаренко'],
+            'installation_team' => ['Кукуяка', 'Шевченко', 'Крижановський'],
+        ];
+
+        if (!Schema::hasTable('construction_staff_options')) {
+            return response()->json([
+                'electrician' => collect($defaults['electrician'])->map(fn ($name) => ['id' => null, 'name' => $name])->values(),
+                'installation_team' => collect($defaults['installation_team'])->map(fn ($name) => ['id' => null, 'name' => $name])->values(),
+            ]);
+        }
+
+        foreach (['electrician', 'installation_team'] as $type) {
+            $hasRows = DB::table('construction_staff_options')->where('type', $type)->exists();
+            if (!$hasRows) {
+                foreach ($defaults[$type] as $name) {
+                    DB::table('construction_staff_options')->insert([
+                        'type' => $type,
+                        'name' => $name,
+                        'created_by' => null,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                }
+            }
+        }
+
+        $rows = DB::table('construction_staff_options')
+            ->whereIn('type', ['electrician', 'installation_team'])
+            ->orderBy('name')
+            ->get(['id', 'type', 'name']);
+
+        $result = [
+            'electrician' => [],
+            'installation_team' => [],
+        ];
+
+        foreach ($rows as $row) {
+            $result[$row->type][] = [
+                'id' => (int)$row->id,
+                'name' => $row->name,
+            ];
+        }
+
+        return response()->json($result);
+    }
+
+    public function addConstructionStaffOption(Request $request)
+    {
+        $user = auth()->user();
+        if (!$user || $user->role !== 'owner') {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
+        $data = $request->validate([
+            'type' => 'required|in:electrician,installation_team',
+            'name' => 'required|string|min:2|max:255',
+        ]);
+
+        if (!Schema::hasTable('construction_staff_options')) {
+            return response()->json(['error' => 'Довідник співробітників ще не ініціалізовано'], 422);
+        }
+
+        $name = trim($data['name']);
+        if ($name === '') {
+            return response()->json(['error' => 'Вкажіть імʼя'], 422);
+        }
+
+        $exists = DB::table('construction_staff_options')
+            ->where('type', $data['type'])
+            ->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])
+            ->exists();
+
+        if ($exists) {
+            return response()->json(['ok' => true, 'already_exists' => true]);
+        }
+
+        DB::table('construction_staff_options')->insert([
+            'type' => $data['type'],
+            'name' => $name,
+            'created_by' => $user->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function deleteConstructionStaffOption($id)
+    {
+        $user = auth()->user();
+        if (!$user || $user->role !== 'owner') {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
+        if (!Schema::hasTable('construction_staff_options')) {
+            return response()->json(['error' => 'Довідник співробітників ще не ініціалізовано'], 422);
+        }
+
+        DB::table('construction_staff_options')
+            ->where('id', (int)$id)
+            ->delete();
 
         return response()->json(['ok' => true]);
     }
