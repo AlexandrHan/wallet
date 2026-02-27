@@ -64,31 +64,32 @@
           </span>
         </div>
 
-        <div class="burger-wrap">
-          <button class="burger-btn"></button>
+
+
+
+          @include('partials.nav.top-avatar-placeholder')
 
 
             
 
 
-          </div>
 
       </div>
 
     </div>
 
-    <div class="header-right">
-      <span class="tag" id="actorTag" style="display:none"></span>
-    </div>
-
-    @if(auth()->user()->role !== 'accountant')
-    <div class="header-center">
-      <div class="segmented">
-        <button type="button" id="view-h" data-owner="hlushchenko">Глущенко</button>
-        <button type="button" id="view-k" data-owner="kolisnyk">Колісник</button>
+      <div class="header-right">
+        <span class="tag" id="actorTag" style="display:none"></span>
       </div>
-    </div>
-    @endif
+
+      @if(auth()->user()->role !== 'accountant')
+      <div class="header-center">
+        <div class="segmented">
+          <button type="button" id="view-h" data-owner="hlushchenko">Глущенко</button>
+          <button type="button" id="view-k" data-owner="kolisnyk">Колісник</button>
+        </div>
+      </div>
+      @endif
 
   </div>
 </header>

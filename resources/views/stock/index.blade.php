@@ -26,6 +26,9 @@
     <div class="list-item" style="font-weight:700; margin-bottom:10px; text-align:center;">
       Товари на складі
     </div>
+    <button id="expandAllStockBtn" class="btn" style="width:100%; margin-bottom:10px;">
+      Дивитись всі товари
+    </button>
     <div id="stockList" class="delivery-list"></div>
   </div>
 
@@ -149,7 +152,20 @@ async function loadStock() {
   }).join('');
 }
 
-document.addEventListener('DOMContentLoaded', loadStock);
+function expandAllStockCategories() {
+  document.querySelectorAll('#stockList details.stock-cat').forEach(el => {
+    el.open = true;
+  });
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadStock();
+
+  const expandBtn = document.getElementById('expandAllStockBtn');
+  if (!expandBtn) return;
+
+  expandBtn.addEventListener('click', expandAllStockCategories);
+});
 </script>
 
 

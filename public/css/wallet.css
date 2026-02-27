@@ -1689,3 +1689,11 @@ body.modal-open{
 #staffCashModal .modal-close:active{
   transform: translateY(1px);
 }
+
+.avatar-image{
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  object-fit: cover;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.336);
+}

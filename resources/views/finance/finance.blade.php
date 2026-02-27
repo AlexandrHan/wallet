@@ -2,10 +2,11 @@
 
 @push('styles')
   <link rel="stylesheet" href="/css/nav-telegram.css?v={{ filemtime(public_path('css/nav-telegram.css')) }}">
+
 @endpush
 
 @section('content')
-<body class="{{ auth()->check() ? 'has-tg-nav' : '' }}">
+<body class="{{ auth()->check() ? 'has-tg-nav' : '' }} finance-openclaw">
 
 
 
@@ -80,6 +81,7 @@ document.addEventListener('DOMContentLoaded', function () {
   // ✅ FIX: запам'ятовуємо відкриту картку, щоб після reload вона не згорталась
   const OPEN_KEY = 'finance_open_project_id';
   const OPEN_PAID_KEY = 'finance_open_paid_projects';
+  const OPEN_ACTIVE_KEY = 'finance_open_active_projects';
   const rememberOpenProject = (id) => localStorage.setItem(OPEN_KEY, String(id));
   const getOpenProject = () => {
     const v = localStorage.getItem(OPEN_KEY);
@@ -95,6 +97,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const openId = getOpenProject();
     const isPaidOpen = localStorage.getItem(OPEN_PAID_KEY) === '1';
+    const isActiveOpen = localStorage.getItem(OPEN_ACTIVE_KEY) !== '0';
     container.innerHTML = '';
 
     const byName = (a, b) => String(a.client_name || '').localeCompare(String(b.client_name || ''), 'uk', { sensitivity: 'base' });
@@ -291,17 +294,32 @@ document.addEventListener('DOMContentLoaded', function () {
       container.appendChild(paidCard);
     }
 
-    activeProjects.forEach(p => {
-      container.appendChild(buildProjectCard(p));
+    const activeCard = document.createElement('div');
+    activeCard.className = 'card';
+    activeCard.style.marginTop = '15px';
+    activeCard.innerHTML = `
+      <div class="active-projects-toggle" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
+        <div style="font-weight:700;">🟡 Проавансовані</div>
+        <div style="opacity:.75;">${activeProjects.length}</div>
+      </div>
+      <div class="active-projects-details" style="display:${isActiveOpen ? 'block' : 'none'}; margin-top:12px; border-top:1px solid #ffffff; padding-top:10px;"></div>
+    `;
+
+    const activeDetails = activeCard.querySelector('.active-projects-details');
+    if (activeProjects.length > 0) {
+      activeProjects.forEach(p => activeDetails.appendChild(buildProjectCard(p)));
+    } else {
+      activeDetails.innerHTML = `<div style="opacity:.75; text-align:center;">Немає активних проектів</div>`;
+    }
+
+    activeCard.querySelector('.active-projects-toggle')?.addEventListener('click', function () {
+      const details = activeCard.querySelector('.active-projects-details');
+      const nextOpen = details.style.display === 'none';
+      details.style.display = nextOpen ? 'block' : 'none';
+      localStorage.setItem(OPEN_ACTIVE_KEY, nextOpen ? '1' : '0');
     });
 
-    if (activeProjects.length === 0) {
-      const emptyCard = document.createElement('div');
-      emptyCard.className = 'card';
-      emptyCard.style.marginTop = '15px';
-      emptyCard.innerHTML = `<div style="opacity:.75; text-align:center;">Немає активних проектів</div>`;
-      container.appendChild(emptyCard);
-    }
+    container.appendChild(activeCard);
   }
 
   function loadProjects(opts = {}) {

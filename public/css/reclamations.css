@@ -1121,3 +1121,10 @@ html.no-scroll, body.no-scroll{ overflow:hidden !important; }
     0 2px 8px rgba(42,42,42,.15);
 }
 
+.avatar-image{
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  object-fit: cover;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.336);
+}
