@@ -9,6 +9,54 @@ use App\Models\CashTransfer;
 
 class SalesProjectController extends Controller
 {
+    private function toProjectAmount(float $amount, string $advanceCurrency, string $projectCurrency, ?float $exchangeRate): float
+    {
+        if ($advanceCurrency === $projectCurrency) {
+            return round($amount, 2);
+        }
+
+        if (!$exchangeRate || $exchangeRate <= 0) {
+            throw new \InvalidArgumentException('EXCHANGE_RATE_REQUIRED');
+        }
+
+        // Курс задається так:
+        // USD+EUR: EUR->USD (крос), USD+UAH: USD->UAH,
+        // UAH+USD: USD->UAH, UAH+EUR: EUR->UAH,
+        // EUR+USD: USD->EUR, EUR+UAH: EUR->UAH.
+        if ($projectCurrency === 'USD' && $advanceCurrency === 'EUR') return round($amount * $exchangeRate, 2);
+        if ($projectCurrency === 'USD' && $advanceCurrency === 'UAH') return round($amount / $exchangeRate, 2);
+        if ($projectCurrency === 'UAH' && $advanceCurrency === 'USD') return round($amount * $exchangeRate, 2);
+        if ($projectCurrency === 'UAH' && $advanceCurrency === 'EUR') return round($amount * $exchangeRate, 2);
+        if ($projectCurrency === 'EUR' && $advanceCurrency === 'USD') return round($amount * $exchangeRate, 2);
+        if ($projectCurrency === 'EUR' && $advanceCurrency === 'UAH') return round($amount / $exchangeRate, 2);
+
+        throw new \InvalidArgumentException('UNSUPPORTED_CURRENCY_PAIR');
+    }
+
+    private function exchangeRateHint(string $projectCurrency, string $advanceCurrency): string
+    {
+        if ($projectCurrency === 'USD' && $advanceCurrency === 'EUR') {
+            return 'Потрібен крос-курс EUR→USD (приклад: 1 EUR → 1.12 USD).';
+        }
+        if ($projectCurrency === 'USD' && $advanceCurrency === 'UAH') {
+            return 'Потрібен курс USD→UAH (приклад: 1 USD → 43.50 UAH).';
+        }
+        if ($projectCurrency === 'UAH' && $advanceCurrency === 'USD') {
+            return 'Потрібен курс USD→UAH (приклад: 1 USD → 43.50 UAH).';
+        }
+        if ($projectCurrency === 'UAH' && $advanceCurrency === 'EUR') {
+            return 'Потрібен курс EUR→UAH (приклад: 1 EUR → 45.00 UAH).';
+        }
+        if ($projectCurrency === 'EUR' && $advanceCurrency === 'USD') {
+            return 'Потрібен крос-курс USD→EUR (приклад: 1 USD → 0.89 EUR).';
+        }
+        if ($projectCurrency === 'EUR' && $advanceCurrency === 'UAH') {
+            return 'Потрібен курс EUR→UAH (приклад: 1 EUR → 45.00 UAH).';
+        }
+
+        return 'Вкажіть курс для цієї валютної пари.';
+    }
+
     public function store(Request $request)
     {
         $data = $request->validate([
@@ -18,6 +66,7 @@ class SalesProjectController extends Controller
             'currency'       => 'required|in:UAH,USD,EUR',
             'from_wallet_id' => 'nullable|integer',
             'to_wallet_id'   => 'nullable|integer',
+            'exchange_rate' => 'nullable|numeric|min:0.000001',
         ]);
 
         $advance = (float)($data['advance_amount'] ?? 0);
@@ -43,30 +92,23 @@ class SalesProjectController extends Controller
         if ($advance > 0 && $request->from_wallet_id && $request->to_wallet_id) {
 
             $transferCurrency = $data['currency'];
-            $exchangeRate = null;
-            $usdAmount = $advance;
+            $exchangeRate = $request->exchange_rate !== null ? (float)$request->exchange_rate : null;
 
-            if ($transferCurrency !== 'USD') {
-
-                if (!$request->exchange_rate) {
+            try {
+                // Історично поле називається usd_amount, але тут зберігаємо суму у валюті проєкту.
+                $usdAmount = $this->toProjectAmount(
+                    (float)$advance,
+                    (string)$transferCurrency,
+                    (string)$project->currency,
+                    $exchangeRate
+                );
+            } catch (\InvalidArgumentException $e) {
+                if ($e->getMessage() === 'EXCHANGE_RATE_REQUIRED') {
                     return response()->json([
-                        'error' => 'Потрібно ввести курс для перерахунку в USD'
+                        'error' => '⚠️ Невірний/відсутній курс. ' . $this->exchangeRateHint((string)$project->currency, (string)$transferCurrency)
                     ], 422);
                 }
-
-                $exchangeRate = (float)$request->exchange_rate;
-
-                if ($exchangeRate <= 0) {
-                    return response()->json([
-                        'error' => 'Некоректний курс'
-                    ], 422);
-                }
-
-                if ($transferCurrency === 'EUR') {
-                    $usdAmount = round($advance * $exchangeRate, 2);
-                } elseif ($transferCurrency === 'UAH') {
-                    $usdAmount = round($advance / $exchangeRate, 2);
-                }
+                return response()->json(['error' => 'Некоректна валютна пара'], 422);
             }
 
             CashTransfer::create([
@@ -96,8 +138,32 @@ class SalesProjectController extends Controller
                 ->orderByDesc('id')
                 ->get();
 
-            $paid = (float)$transfers->where('status', 'accepted')->sum('usd_amount');
-            $pending = (float)$transfers->where('status', 'pending')->sum('usd_amount');
+            $paid = 0.0;
+            $pending = 0.0;
+            $projectCurrency = (string)$project->currency;
+
+            foreach ($transfers as $t) {
+                $projectAmount = null;
+                try {
+                    $projectAmount = $this->toProjectAmount(
+                        (float)$t->amount,
+                        (string)$t->currency,
+                        $projectCurrency,
+                        $t->exchange_rate !== null ? (float)$t->exchange_rate : null
+                    );
+                } catch (\Throwable $e) {
+                    $projectAmount = (float)($t->usd_amount ?? 0);
+                }
+
+                if ($t->status === 'accepted') {
+                    $paid += $projectAmount;
+                } elseif ($t->status === 'pending') {
+                    $pending += $projectAmount;
+                }
+            }
+
+            $paid = round($paid, 2);
+            $pending = round($pending, 2);
 
             $pendingTargetOwner = $transfers
                 ->where('status', 'pending')
@@ -116,13 +182,26 @@ class SalesProjectController extends Controller
                 'status' => $project->status,
                 'created_at' => $project->created_at->format('d.m.Y H:i'),
                 'pending_target_owner' => $pendingTargetOwner,
-                'transfers' => $transfers->map(function ($t) {
+                'transfers' => $transfers->map(function ($t) use ($projectCurrency) {
+                    $projectAmount = null;
+                    try {
+                        $projectAmount = $this->toProjectAmount(
+                            (float)$t->amount,
+                            (string)$t->currency,
+                            $projectCurrency,
+                            $t->exchange_rate !== null ? (float)$t->exchange_rate : null
+                        );
+                    } catch (\Throwable $e) {
+                        $projectAmount = (float)($t->usd_amount ?? 0);
+                    }
+
                     return [
                         'id' => $t->id,
                         'amount' => (float)$t->amount,
                         'currency' => $t->currency,
                         'exchange_rate' => $t->exchange_rate,
                         'usd_amount' => (float)$t->usd_amount,
+                        'project_amount' => (float)$projectAmount,
                         'status' => $t->status,
                         'target_owner' => $t->target_owner,
                         'created_at' => \Carbon\Carbon::parse($t->created_at)->format('d.m.Y H:i'),
@@ -150,33 +229,25 @@ class SalesProjectController extends Controller
 
         $amount = (float)$data['amount'];
         $currency = $data['currency'];
-        $exchangeRate = null;
+        $exchangeRate = $data['exchange_rate'] !== null ? (float)$data['exchange_rate'] : null;
         $usdAmount = null;
 
-        // USD -> USD
-        if ($currency === 'USD') {
-            $usdAmount = $amount;
-        } else {
-
-            if (!$data['exchange_rate']) {
+        try {
+            // Історично поле називається usd_amount, але тут зберігаємо суму у валюті проєкту.
+            $usdAmount = $this->toProjectAmount(
+                $amount,
+                (string)$currency,
+                (string)$project->currency,
+                $exchangeRate
+            );
+        } catch (\InvalidArgumentException $e) {
+            if ($e->getMessage() === 'EXCHANGE_RATE_REQUIRED') {
                 return response()->json([
-                    'error' => 'Потрібно вказати курс для перерахунку в USD'
+                    'error' => '⚠️ Невірний/відсутній курс. ' . $this->exchangeRateHint((string)$project->currency, (string)$currency)
                 ], 422);
             }
 
-            $exchangeRate = (float)$data['exchange_rate'];
-
-            if ($exchangeRate <= 0) {
-                return response()->json([
-                    'error' => 'Некоректний курс'
-                ], 422);
-            }
-
-            if ($currency === 'EUR') {
-                $usdAmount = round($amount * $exchangeRate, 2);
-            } elseif ($currency === 'UAH') {
-                $usdAmount = round($amount / $exchangeRate, 2);
-            }
+            return response()->json(['error' => 'Некоректна валютна пара'], 422);
         }
 
         $user = auth()->user();

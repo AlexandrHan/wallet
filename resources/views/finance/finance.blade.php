@@ -79,118 +79,123 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // ✅ FIX: запам'ятовуємо відкриту картку, щоб після reload вона не згорталась
   const OPEN_KEY = 'finance_open_project_id';
+  const OPEN_PAID_KEY = 'finance_open_paid_projects';
   const rememberOpenProject = (id) => localStorage.setItem(OPEN_KEY, String(id));
   const getOpenProject = () => {
     const v = localStorage.getItem(OPEN_KEY);
     return v ? Number(v) : null;
   };
-  const openId = getOpenProject();
+  const POLL_MS = 4000;
+  let isProjectsLoading = false;
+  let projectsPollTimer = null;
 
-  fetch('/api/sales-projects')
-    .then(r => r.json())
-    .then(projects => {
+  function renderProjects(projects) {
+    const container = document.getElementById('projectsContainer');
+    if (!container) return;
 
-      const container = document.getElementById('projectsContainer');
-      container.innerHTML = '';
+    const openId = getOpenProject();
+    const isPaidOpen = localStorage.getItem(OPEN_PAID_KEY) === '1';
+    container.innerHTML = '';
 
-      projects.forEach(p => {
+    const byName = (a, b) => String(a.client_name || '').localeCompare(String(b.client_name || ''), 'uk', { sensitivity: 'base' });
+    const activeProjects = (projects || [])
+      .filter(p => Number(p.remaining_amount || 0) > 0)
+      .sort(byName);
+    const paidProjects = (projects || [])
+      .filter(p => Number(p.remaining_amount || 0) <= 0)
+      .sort(byName);
 
-        const card = document.createElement('div');
-        card.className = 'card';
-        card.style.marginTop = '15px';
-        card.style.cursor = 'pointer';
+    function buildProjectCard(p) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.style.marginTop = '15px';
+      card.style.cursor = 'pointer';
 
-        const debt = p.remaining_amount;
+      const debt = p.remaining_amount;
 
-        const transfersHtml = (p.transfers.length === 0)
-          ? `<div style="opacity:.6;">Немає авансів</div>`
-          : p.transfers.map(t => {
+      const transfersHtml = (p.transfers.length === 0)
+        ? `<div style="opacity:.6;">Немає авансів</div>`
+        : p.transfers.map(t => {
+            const convertedInfo =
+              (t.currency !== p.currency && t.exchange_rate)
+                ? `
+                    <div style="font-size:12px; opacity:.7;">
+                      ≈ ${formatMoney(t.project_amount ?? t.usd_amount, p.currency)}
+                    </div>
+                    <div style="font-size:12px; opacity:.6;">
+                      Курс: ${t.exchange_rate}
+                    </div>
+                  `
+                : '';
 
-              const convertedInfo =
-                (t.currency !== 'USD' && t.exchange_rate)
-                  ? `
-                      <div style="font-size:12px; opacity:.7;">
-                        ≈ ${formatMoney(t.usd_amount, 'USD')}
-                      </div>
-                      <div style="font-size:12px; opacity:.6;">
-                        Курс: ${t.exchange_rate}
-                      </div>
-                    `
-                  : '';
+            const canAccept = IS_OWNER && t.target_owner && (t.target_owner === AUTH_USER.actor);
+            const today = new Date();
+            const todayFormatted = today.toLocaleDateString('uk-UA');
+            const isToday = t.created_at.startsWith(todayFormatted);
 
-              const canAccept = IS_OWNER && t.target_owner && (t.target_owner === AUTH_USER.actor);
-
-              const today = new Date();
-              const todayFormatted = today.toLocaleDateString('uk-UA');
-
-              const isToday = t.created_at.startsWith(todayFormatted);
-
-              const statusBlock = t.status === 'accepted'
-                ? `— ✅ Прийнято`
-                : `
-                    — ⏳ В очікуванні
-                    ${canAccept ? `
+            const statusBlock = t.status === 'accepted'
+              ? `— ✅ Прийнято`
+              : `
+                  — ⏳ В очікуванні
+                  ${canAccept ? `
+                    <button 
+                      class="btn accept-advance-btn"
+                      data-id="${t.id}"
+                      style="margin-top:6px; width:100%;">
+                      ✔ Прийняти
+                    </button>
+                  ` : ''}
+                  ${isToday ? `
                       <button 
-                        class="btn accept-advance-btn"
+                        class="btn edit-advance-btn hidden-edit-btn"
                         data-id="${t.id}"
-                        style="margin-top:6px; width:100%;">
-                        ✔ Прийняти
+                        data-amount="${t.amount}"
+                        style="margin-top:6px; width:100%; background:#333; display:none;">
+                        ✏️ Редагувати
                       </button>
-                    ` : ''}
+                  ` : ''} 
+                `;
 
-                    ${isToday ? `
-                        <button 
-                          class="btn edit-advance-btn hidden-edit-btn"
-                          data-id="${t.id}"
-                          data-amount="${t.amount}"
-                          style="margin-top:6px; width:100%; background:#333; display:none;">
-                          ✏️ Редагувати
-                        </button>
-                    ` : ''} 
-                  `;
-
-                return `
-                  <div 
-                    class="advance-card"
-                    data-transfer-id="${t.id}"
-                    style="margin-top:5px; padding:8px; background:#111; border-radius:6px; cursor:pointer;">
-                  <div>
-                    ${formatMoney(t.amount, t.currency)} ${statusBlock}
-                  </div>
-                  <div style="font-size:12px; opacity:.6;">
-                    ${t.created_at}
-                  </div>
-                  ${convertedInfo}
+            return `
+              <div 
+                class="advance-card"
+                data-transfer-id="${t.id}"
+                style="margin-top:5px; padding:8px; background:#111; border-radius:6px; cursor:pointer;">
+                <div>
+                  ${formatMoney(t.amount, t.currency)} ${statusBlock}
                 </div>
-              `;
-          }).join('');
-
-        // блок "Передати кошти" (НТО: або 2 кнопки, або 1 "Відмінити")
-        const transferButtonsHtml = (AUTH_USER && AUTH_USER.role !== 'owner' && p.pending_target_owner)
-          ? `
-              <button 
-                class="btn cancel-owner-btn"
-                data-project="${p.id}"
-                style="width:100%; background:#333;">
-                ↩️ Відмінити переказ
-              </button>
-            `
-          : `
-              <button class="btn send-owner-btn" data-project="${p.id}" data-owner="hlushchenko" style="margin-right:5px;">
-                💸 Глущенко
-              </button>
-              <button class="btn send-owner-btn" data-project="${p.id}" data-owner="kolisnyk">
-                💸 Колісник
-              </button>
+                <div style="font-size:12px; opacity:.6;">
+                  ${t.created_at}
+                </div>
+                ${convertedInfo}
+              </div>
             `;
+        }).join('');
 
-        const hasNtoMoney = Number(p.pending_amount || 0) > 0;
+      const transferButtonsHtml = (AUTH_USER && AUTH_USER.role !== 'owner' && p.pending_target_owner)
+        ? `
+            <button 
+              class="btn cancel-owner-btn"
+              data-project="${p.id}"
+              style="width:100%; background:#333;">
+              ↩️ Відмінити переказ
+            </button>
+          `
+        : `
+            <button class="btn send-owner-btn" data-project="${p.id}" data-owner="hlushchenko" style="margin-right:5px;">
+              💸 Глущенко
+            </button>
+            <button class="btn send-owner-btn" data-project="${p.id}" data-owner="kolisnyk">
+              💸 Колісник
+            </button>
+          `;
 
-          if (hasNtoMoney) {
-            card.style.border = '2px solid #f2c200';
-          }
+      const hasNtoMoney = Number(p.pending_amount || 0) > 0;
+      if (hasNtoMoney) {
+        card.style.border = '2px solid #f2c200';
+      }
 
-        card.innerHTML = `
+      card.innerHTML = `
           <div class="project-toggle" style="display:flex; justify-content:space-between;">
             <div style="font-weight:600;">
               ${p.client_name}
@@ -218,7 +223,7 @@ document.addEventListener('DOMContentLoaded', function () {
             
             ${(AUTH_USER && (AUTH_USER.role === 'ntv' || AUTH_USER.role === 'owner')) ? `
             <div style="margin-top:12px;">
-              <button class="btn create-advance-btn" style="width:100%;" data-id="${p.id}">
+              <button class="btn create-advance-btn" style="width:100%;" data-id="${p.id}" data-currency="${p.currency}">
                 ➕ Створити аванс
               </button>
             </div>
@@ -236,30 +241,94 @@ document.addEventListener('DOMContentLoaded', function () {
           </div>
         `;
 
-        // ✅ відкривати/закривати тільки по кліку на шапку
-        card.querySelector('.project-toggle')?.addEventListener('click', function() {
-          const details = card.querySelector('.project-details');
-          const isOpen = details.style.display !== 'none';
+      card.addEventListener('click', function(e) {
+        if (e.target.closest('button, input, select, textarea, a, label')) return;
 
-          if (isOpen) {
-            details.style.display = 'none';
-            localStorage.removeItem(OPEN_KEY);
-          } else {
-            details.style.display = 'block';
-            rememberOpenProject(p.id);
-          }
-        });
+        const details = card.querySelector('.project-details');
+        const isOpen = details.style.display !== 'none';
 
-        container.appendChild(card);
-
-        // ✅ після reload залишаємо відкритою потрібну картку
-        if (openId && Number(p.id) === openId) {
-          const details = card.querySelector('.project-details');
-          if (details) details.style.display = 'block';
+        if (isOpen) {
+          details.style.display = 'none';
+          localStorage.removeItem(OPEN_KEY);
+        } else {
+          details.style.display = 'block';
+          rememberOpenProject(p.id);
         }
       });
 
+      if (openId && Number(p.id) === openId) {
+        const details = card.querySelector('.project-details');
+        if (details) details.style.display = 'block';
+      }
+
+      return card;
+    }
+
+    if (paidProjects.length > 0) {
+      const shouldOpenPaid = isPaidOpen || !!paidProjects.find(p => Number(p.id) === openId);
+
+      const paidCard = document.createElement('div');
+      paidCard.className = 'card';
+      paidCard.style.marginTop = '15px';
+      paidCard.innerHTML = `
+        <div class="paid-projects-toggle" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
+          <div style="font-weight:700;">✅ Оплачені</div>
+          <div style="opacity:.75;">${paidProjects.length}</div>
+        </div>
+        <div class="paid-projects-details" style="display:${shouldOpenPaid ? 'block' : 'none'}; margin-top:12px; border-top:1px solid #ffffff; padding-top:10px;"></div>
+      `;
+
+      const paidDetails = paidCard.querySelector('.paid-projects-details');
+      paidProjects.forEach(p => paidDetails.appendChild(buildProjectCard(p)));
+
+      paidCard.querySelector('.paid-projects-toggle')?.addEventListener('click', function () {
+        const details = paidCard.querySelector('.paid-projects-details');
+        const nextOpen = details.style.display === 'none';
+        details.style.display = nextOpen ? 'block' : 'none';
+        localStorage.setItem(OPEN_PAID_KEY, nextOpen ? '1' : '0');
+      });
+
+      container.appendChild(paidCard);
+    }
+
+    activeProjects.forEach(p => {
+      container.appendChild(buildProjectCard(p));
     });
+
+    if (activeProjects.length === 0) {
+      const emptyCard = document.createElement('div');
+      emptyCard.className = 'card';
+      emptyCard.style.marginTop = '15px';
+      emptyCard.innerHTML = `<div style="opacity:.75; text-align:center;">Немає активних проектів</div>`;
+      container.appendChild(emptyCard);
+    }
+  }
+
+  function loadProjects(opts = {}) {
+    const { silent = false } = opts;
+    if (isProjectsLoading) return;
+    isProjectsLoading = true;
+
+    return fetch('/api/sales-projects')
+      .then(r => r.json())
+      .then(projects => {
+        renderProjects(projects);
+      })
+      .catch(err => {
+        if (!silent) console.warn('Projects refresh error:', err);
+      })
+      .finally(() => {
+        isProjectsLoading = false;
+      });
+  }
+
+  window.refreshSalesProjects = () => loadProjects({ silent: false });
+
+  loadProjects();
+  projectsPollTimer = window.setInterval(() => loadProjects({ silent: true }), POLL_MS);
+  window.addEventListener('beforeunload', () => {
+    if (projectsPollTimer) window.clearInterval(projectsPollTimer);
+  });
 
 });
 
@@ -313,7 +382,7 @@ document.getElementById('saveProjectBtn').onclick = () => {
   .then(res => {
     if(res.ok){
       modal.style.display = 'none';
-      location.reload();
+      window.refreshSalesProjects?.();
     } else {
       alert(res.error || 'Помилка');
     }
@@ -327,22 +396,28 @@ document.getElementById('saveProjectBtn').onclick = () => {
 const advanceModal = document.getElementById('advanceModal');
 const exchangeInput = document.getElementById('exchangeRate');
 
-document.getElementById('advanceCurrency').addEventListener('change', function() {
-  if (this.value !== 'USD') {
-    exchangeInput.style.display = 'block';
-  } else {
-    exchangeInput.style.display = 'none';
-    exchangeInput.value = '';
-  }
-});
-
 let currentProjectId = null;
 
-document.addEventListener('click', function(e){
-  if(e.target.classList.contains('create-advance-btn')){
-    currentProjectId = e.target.dataset.id;
-    advanceModal.style.display = 'flex';
-  }
+document.addEventListener('click', function (e) {
+  const btn = e.target.closest('.create-advance-btn'); // ✅ ВАЖЛИВО: closest()
+  if (!btn) return;
+
+  currentProjectId = btn.dataset.id;
+
+  const pCur = String(btn.dataset.currency || 'USD').toUpperCase();
+
+  // reset полів
+  document.getElementById('advanceAmount').value = '';
+  document.getElementById('exchangeRate').value = '';
+
+  // ✅ валюта авансу по дефолту = валюті проекту
+  const advCurEl = document.getElementById('advanceCurrency');
+  advCurEl.value = pCur;
+
+  // ✅ встановлюємо валюту проекту ТИХО (без алертів)
+  window.setAdvanceProjectCurrency?.(pCur, { silent: true });
+
+  advanceModal.style.display = 'flex';
 });
 
 document.getElementById('closeAdvanceBtn').onclick = () => {
@@ -352,10 +427,15 @@ document.getElementById('closeAdvanceBtn').onclick = () => {
 
 // ===== Прямий аванс в гаманець власника аванс =====
 document.getElementById('saveAdvanceBtn').onclick = function(){
+  if (!window.validateAdvanceFx()) return;
+
 
   const amount = document.getElementById('advanceAmount').value;
   const currency = document.getElementById('advanceCurrency').value;
-  const exchange_rate = document.getElementById('exchangeRate').value;
+  const projectCurrency = String(window.ADV_PROJECT_CURRENCY || 'USD').toUpperCase();
+  const exchange_rate = (String(currency).toUpperCase() === projectCurrency)
+    ? 1
+    : document.getElementById('exchangeRate').value;
 
   fetch(`/api/sales-projects/${currentProjectId}/advance`, {
     method: 'POST',
@@ -370,7 +450,7 @@ document.getElementById('saveAdvanceBtn').onclick = function(){
     if(res.ok){
       advanceModal.style.display = 'none';
       localStorage.setItem('finance_open_project_id', String(currentProjectId)); // ✅ ключове
-      location.reload();
+      window.refreshSalesProjects?.();
     } else {
       alert(res.error || 'Помилка');
     }
@@ -394,7 +474,7 @@ document.addEventListener('click', function(e){
     .then(r => r.json())
     .then(res => {
       if(res.success){
-        location.reload();
+        window.refreshSalesProjects?.();
       } else {
         alert(res.error || 'Помилка');
       }
@@ -428,7 +508,7 @@ document.addEventListener('click', function(e){
   .then(r => r.json())
   .then(res => {
     if(res.success){
-      location.reload();
+      window.refreshSalesProjects?.();
     } else {
       alert(res.error || 'Помилка');
     }
@@ -455,7 +535,7 @@ document.addEventListener('click', function(e){
   .then(res => {
     if(res.ok){
       localStorage.setItem('finance_open_project_id', String(projectId));
-      location.reload();
+      window.refreshSalesProjects?.();
     } else {
       alert(res.error || 'Помилка');
     }
@@ -478,7 +558,7 @@ document.addEventListener('click', function(e){
   .then(res => {
     if(res.ok){
       localStorage.setItem('finance_open_project_id', String(projectId));
-      location.reload();
+      window.refreshSalesProjects?.();
     } else {
       alert(res.error || 'Помилка');
     }
@@ -524,7 +604,7 @@ document.addEventListener('click', function(e){
   function makeSalesCard() {
     if (document.getElementById('salesChartsCard')) return;
 
-    const main = document.querySelector('main.wrap');
+    const main = document.querySelector('main');
     if (!main) return;
 
     const card = document.createElement('div');
@@ -748,6 +828,154 @@ document.addEventListener('click', function(e){
     boot().catch((e) => console.warn('Sales charts:', e.message));
   });
 })();
+
+
+
+// ===============================
+// ADVANCE FX UI GUARD
+// - валюта проекту береться з window.ADV_PROJECT_CURRENCY
+// - алерти ТІЛЬКИ коли юзер руками змінив валюту авансу
+// ===============================
+(function () {
+  const advanceCurrencyEl = document.getElementById('advanceCurrency');
+  const exchangeRateEl    = document.getElementById('exchangeRate');
+
+  if (!advanceCurrencyEl || !exchangeRateEl) return;
+
+  // глобальний стан
+  window.ADV_PROJECT_CURRENCY = String(window.ADV_PROJECT_CURRENCY || 'USD').toUpperCase();
+
+  let userChanged = false;  // true тільки після ручної зміни select
+  let alertKey = null;      // антиспам
+
+  function showRateField(placeholderText) {
+    exchangeRateEl.style.display = '';
+    exchangeRateEl.required = true;
+    exchangeRateEl.placeholder = placeholderText || 'Курс';
+  }
+
+  function hideRateField() {
+    exchangeRateEl.style.display = 'none';
+    exchangeRateEl.required = false;
+    exchangeRateEl.value = '';
+    exchangeRateEl.placeholder = '';
+  }
+
+  function alertIfUser(text, key) {
+    if (!userChanged) return;          // ✅ тільки після ручної зміни
+    if (key && alertKey === key) return;
+    alertKey = key || null;
+    alert(text);
+  }
+
+  function syncAdvanceFxUI() {
+    const pCur = String(window.ADV_PROJECT_CURRENCY || 'USD').toUpperCase();
+    const aCur = String(advanceCurrencyEl.value || 'USD').toUpperCase();
+
+    // якщо валюта авансу = валюта проєкту -> курс не потрібен
+    if (aCur === pCur) {
+      hideRateField();
+      return;
+    }
+
+    // різні валюти -> показуємо поле з підказкою по напрямку
+    if (aCur === 'EUR' && pCur === 'USD') {
+      alertIfUser(
+        "⚠️ АВАНС У EUR, ПРОЄКТ У USD.\n" +
+        "Потрібен крос-курс EUR→USD.\n" +
+        "Приклад: 1 EUR → 1.12 USD.",
+        'eur_usd'
+      );
+      showRateField('Крос курс EUR→USD (1 -> 1.12)');
+      return;
+    }
+
+    if (aCur === 'UAH' && pCur === 'USD') {
+      showRateField('Курс USD→UAH (1 -> 43.50)');
+      return;
+    }
+
+    if (aCur === 'USD' && pCur === 'UAH') {
+      showRateField('Курс USD→UAH (1 -> 43.50)');
+      return;
+    }
+
+    if (aCur === 'EUR' && pCur === 'UAH') {
+      showRateField('Курс EUR→UAH (1 -> 45.00)');
+      return;
+    }
+
+    if (aCur === 'USD' && pCur === 'EUR') {
+      showRateField('Крос курс USD→EUR (1 -> 0.89)');
+      return;
+    }
+
+    if (aCur === 'UAH' && pCur === 'EUR') {
+      showRateField('Курс EUR→UAH (1 -> 45.00)');
+      return;
+    }
+
+    showRateField(`Курс ${aCur}→${pCur}`);
+  }
+
+  // доступ зовні
+  window.syncAdvanceFxUI = syncAdvanceFxUI;
+
+  // ✅ ця функція має бути "тиха" при відкритті модалки
+  window.setAdvanceProjectCurrency = function (cur, opts = {}) {
+    window.ADV_PROJECT_CURRENCY = String(cur || 'USD').toUpperCase();
+
+    if (opts.silent) {
+      userChanged = false;
+      alertKey = null;
+    }
+
+    syncAdvanceFxUI();
+  };
+
+  // init тихо
+  userChanged = false;
+  alertKey = null;
+  syncAdvanceFxUI();
+
+  // ✅ алерти тільки при ручній зміні валюти авансу
+  advanceCurrencyEl.addEventListener('change', () => {
+    userChanged = true;
+    alertKey = null;
+    syncAdvanceFxUI();
+  });
+
+  // ✅ валідація перед збереженням (без алертів тут, тільки блок)
+  window.validateAdvanceFx = function () {
+    const pCur = String(window.ADV_PROJECT_CURRENCY || 'USD').toUpperCase();
+    const aCur = String(advanceCurrencyEl.value || 'USD').toUpperCase();
+
+    if (aCur === pCur) return true;
+
+    const rate = Number(String(exchangeRateEl.value || '').replace(',', '.'));
+    if (!rate || rate <= 0) {
+      alert('Введи крос-курс');
+      exchangeRateEl.focus();
+      return false;
+    }
+
+    // для проєкту в UAH очікуємо звичайний курс (USD→UAH / EUR→UAH), тобто > 1
+    if (pCur === 'UAH' && (aCur === 'USD' || aCur === 'EUR') && rate < 1) {
+      alert('❌ Для проєкту в UAH введи звичайний курс, наприклад 43.50 або 45.00.');
+      exchangeRateEl.focus();
+      return false;
+    }
+
+    // швидкий захист від "53" там де має бути ~1.xx
+    if (pCur === 'USD' && aCur === 'EUR' && rate >= 10) {
+      alert('❌ Для EUR→USD має бути ~1.xx (типу 1.12), не 40/53.');
+      exchangeRateEl.focus();
+      return false;
+    }
+
+    return true;
+  };
+})();
 </script>
 
 
@@ -757,6 +985,3 @@ document.addEventListener('click', function(e){
 
 </body>
 @endsection
-
-
-
