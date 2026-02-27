@@ -97,7 +97,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const openId = getOpenProject();
     const isPaidOpen = localStorage.getItem(OPEN_PAID_KEY) === '1';
-    const isActiveOpen = localStorage.getItem(OPEN_ACTIVE_KEY) !== '0';
+    const isActiveOpen = localStorage.getItem(OPEN_ACTIVE_KEY) === '1';
     container.innerHTML = '';
 
     const byName = (a, b) => String(a.client_name || '').localeCompare(String(b.client_name || ''), 'uk', { sensitivity: 'base' });

@@ -1,6 +1,8 @@
 {
-  "name": "SG Wallet",
-  "short_name": "Wallet",
+  "name": "SG Holding",
+  "short_name": "SG Holding",
+  "description": "SG Holding app",
+  "lang": "uk-UA",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
