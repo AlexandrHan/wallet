@@ -1,10 +1,14 @@
+@push('styles')
+  <link rel="stylesheet" href="/css/project.css?v={{ filemtime(public_path('css/project.css')) }}">
+@endpush
+
 @extends('layouts.app')
 
 @section('content')
-<main class="">
+<main class="projects-main">
 
-  <div class="card" style="margin-bottom:15px;">
-    <div style="font-weight:800; font-size:18px; text-align:center;">
+  <div class="card projects-title-card">
+    <div class="projects-title">
       🏗 Проекти СЕС
     </div>
   </div>
@@ -191,6 +195,17 @@ function saveAllProjectsOnExit() {
   });
 }
 
+function setAllProjectSections(body, open) {
+  if (!body) return;
+  body.querySelectorAll('.project-section').forEach(section => {
+    section.classList.toggle('is-open', open);
+  });
+  const toggleBtn = body.querySelector('.project-expand-toggle');
+  if (toggleBtn) {
+    toggleBtn.textContent = open ? 'Згорнути проект' : 'Розкрити проект';
+  }
+}
+
 async function loadConstructionProjects() {
   try {
     const rStaff = await fetch('/api/construction-staff-options');
@@ -236,11 +251,11 @@ async function loadConstructionProjects() {
     const teamValues = [...STAFF_OPTIONS.installation_team];
     const imageThumbs = (p.attachments || [])
       .filter(a => a.is_image)
-      .map(a => `<a href="${a.url}" target="_blank"><img src="${a.url}" alt="${esc(a.name)}" style="width:54px; height:54px; object-fit:cover; border-radius:8px; border:1px solid #ffffff33;"></a>`)
+      .map(a => `<a href="${a.url}" target="_blank"><img src="${a.url}" alt="${esc(a.name)}" class="project-thumb"></a>`)
       .join('');
     const fileLinks = (p.attachments || [])
       .filter(a => !a.is_image)
-      .map(a => `<a href="${a.url}" target="_blank" style="display:block; font-size:12px; margin-top:4px;">📎 ${esc(a.name)}</a>`)
+      .map(a => `<a href="${a.url}" target="_blank" class="project-file-link">📎 ${esc(a.name)}</a>`)
       .join('');
 
     const electricianOptionsHtml = electricianValues.map(opt => `
@@ -251,142 +266,167 @@ async function loadConstructionProjects() {
     `).join('');
 
     const card = document.createElement('div');
-    card.className = 'card';
-    card.style.marginBottom = '12px';
-    card.style.cursor = 'pointer';
-    if (hasGreenTariff) {
-      card.style.background = 'linear-gradient(180deg, rgba(38,120,68,.28), rgba(18,56,33,.18)), rgba(255,255,255,.03)';
-      card.style.border = '1px solid rgba(102, 242, 168, .45)';
-      card.style.boxShadow = '0 10px 24px rgba(24,110,60,.10)';
-    }
-    if (hasDefects) {
-      card.style.border = '2px solid #e63946';
-      card.style.boxShadow = '0 0 0 1px rgba(230,57,70,.18), 0 10px 24px rgba(230,57,70,.08)';
-    }
+    card.className = 'card project-card';
+    if (hasGreenTariff) card.classList.add('project-card--green');
+    if (hasDefects) card.classList.add('project-card--defects');
     card.innerHTML = `
-      <div class="project-header" style="display:flex; justify-content:space-between;">
-        <div style="font-weight:700;">${esc(p.client_name)}</div>
-        <div style="opacity:.6; font-size:12px;">
-          ${esc(p.created_at)} ${isClosed ? '• ✅ Закритий' : ''}
+      <div class="project-header">
+        <div class="project-header-row">
+          <div class="project-header-name">${esc(p.client_name)}</div>
+          <div class="project-header-meta">
+            ${esc(p.created_at)} ${isClosed ? '• ✅ Закритий' : ''}
+          </div>
+        </div>
+        <div class="project-header-row project-header-sub">
+          <div>${esc(p.electrician || 'Електрик не вказаний')}</div>
+          <div class="project-header-meta" style="font-size:12px; opacity:.78;">
+            ${esc(p.installation_team || 'Бригада не вказана')}
+          </div>
         </div>
       </div>
 
-      <div class="project-body" style="display:none; margin-top:12px; border-top:1px solid #ffffff20; padding-top:12px;">
-       <div style="font-size:18px; font-weight:700; opacity:.9; margin-bottom:8px; text-align:center;">Дані клієнта</div>
-        <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Посилання на Telegram групу</div>
-        <input class="btn" data-field="telegram_group_link" value="${esc(p.telegram_group_link)}" placeholder="Вставте посилання на Telegram" style="width:100%; margin-bottom:8px;">
+      <div class="project-body">
+        <button type="button" class="btn project-expand-toggle">Розкрити проект</button>
 
-        <button class="btn open-telegram-btn" style="width:100%; margin-bottom:10px; background:#229ED9; border-color:#229ED9; color:#fff; display:inline-flex; align-items:center; justify-content:center; gap:10px; padding:10px 20px;">
-          <img src="/img/telegram.png" alt="Telegram" style="width:24px; height:24px; object-fit:contain;">
-          <span>Відкрити Telegram</span>
-        </button>
+        <div class="project-section" data-section>
+          <button type="button" class="project-section-toggle">
+            <span>Дані клієнта</span>
+            <span class="project-section-caret">▸</span>
+          </button>
+          <div class="project-section-body">
+            <div class="project-field-label">Посилання на Telegram групу</div>
+            <input class="btn project-input-full" data-field="telegram_group_link" value="${esc(p.telegram_group_link)}" placeholder="Вставте посилання на Telegram">
 
-        <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Посилання на геолокацію</div>
-        <input class="btn" data-field="geo_location_link" value="${esc(p.geo_location_link)}" placeholder="Вставте посилання на геолокацію" style="width:100%; margin-bottom:8px;">
+            <button class="btn project-action-btn project-action-btn--telegram open-telegram-btn">
+              <img src="/img/telegram.png" alt="Telegram" class="project-action-icon">
+              <span>Відкрити Telegram</span>
+            </button>
 
-        <button class="btn open-maps-btn" style="width:100%; margin-bottom:10px; background:#1a73e8; border-color:#1a73e8; color:#fff; display:inline-flex; align-items:center; justify-content:center; gap:10px; padding:10px 20px;">
-          <span style="font-size:18px; line-height:1;">📍</span>
-          <span>Відкрити Google Maps</span>
-        </button>
+            <div class="project-field-label">Посилання на геолокацію</div>
+            <input class="btn project-input-full" data-field="geo_location_link" value="${esc(p.geo_location_link)}" placeholder="Вставте посилання на геолокацію">
 
-        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; padding:10px 12px; border:1px solid #ffffff20; border-radius:12px;">
-          <div>
-            <div style="font-size:12px; opacity:.8;">Зелений тариф</div>
-            <div style="font-size:11px; opacity:.6;">${hasGreenTariff ? 'Є' : 'Немає'}</div>
-          </div>
-          <input type="checkbox" data-field="has_green_tariff" ${hasGreenTariff ? 'checked' : ''} style="width:18px; height:18px;">
-        </div>
+            <button class="btn project-action-btn project-action-btn--maps open-maps-btn">
+              <span style="font-size:18px; line-height:1;">📍</span>
+              <span>Відкрити Google Maps</span>
+            </button>
 
-        <hr style="border:none; border-top:1px solid #ffffff20; margin:12px 0 8px;">
-        <div style="font-size:18px; font-weight:700; opacity:.9; margin-bottom:8px; text-align:center;">Обладнання</div>
+            <div class="project-green-box">
+              <div>
+                <div class="project-field-label" style="margin-bottom:0;">Зелений тариф</div>
 
-        <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Інвертор</div>
-        <input class="btn" data-field="inverter" value="${esc(p.inverter)}" placeholder="Інвертор" style="width:100%; margin-bottom:8px;">
-        <div style="font-size:12px; opacity:.8; margin-bottom:4px;">BMS</div>
-        <input class="btn" data-field="bms" value="${esc(p.bms)}" placeholder="BMS" style="width:100%; margin-bottom:8px;">
-
-        <!-- АКБ -->
-        <div style="margin-bottom:12px;">
-          <div style="display:flex; gap:6px; margin-bottom:2px; font-size:11px; opacity:.7;">
-            <div style="flex:2;">АКБ</div>
-            <div style="flex:1; text-align:center;">К-сть</div>
-          </div>
-          <div style="display:flex; gap:6px;">
-            <input class="btn" data-field="battery_name" value="${esc(p.battery_name)}" placeholder="Назва АКБ" style="flex:2;">
-            <input type="number" class="btn" data-field="battery_qty" value="${p.battery_qty ?? ''}" placeholder="0" style="flex:1; text-align:center; width:70%;">
+              </div>
+              <input type="hidden" data-field="has_green_tariff" value="${hasGreenTariff ? '1' : '0'}">
+              <div class="segmented project-green-segmented">
+                <button type="button" class="green-tariff-btn ${hasGreenTariff ? 'active' : ''}" data-value="1">Є</button>
+                <button type="button" class="green-tariff-btn ${!hasGreenTariff ? 'active' : ''}" data-value="0">Немає</button>
+              </div>
+            </div>
           </div>
         </div>
 
-        <!-- ФЕМ -->
-        <div>
-          <div style="display:flex; gap:6px; margin-bottom:2px; font-size:11px; opacity:.7;">
-            <div style="flex:2;">ФЕМ</div>
-            <div style="flex:1; text-align:center;">К-сть</div>
-          </div>
-          <div style="display:flex; gap:6px;">
-            <input class="btn" data-field="panel_name" value="${esc(p.panel_name)}" placeholder="Назва ФЕМ" style="flex:2;">
-            <input type="number" class="btn" data-field="panel_qty" value="${p.panel_qty ?? ''}" placeholder="0" style="flex:1; text-align:center; width:70%;">
+        <div class="project-section" data-section>
+          <button type="button" class="project-section-toggle">
+            <span>Обладнання</span>
+            <span class="project-section-caret">▸</span>
+          </button>
+          <div class="project-section-body">
+            <div class="project-field-label">Інвертор</div>
+            <input class="btn project-input-full" data-field="inverter" value="${esc(p.inverter)}" placeholder="Інвертор">
+            <div class="project-field-label">BMS</div>
+            <input class="btn project-input-full" data-field="bms" value="${esc(p.bms)}" placeholder="BMS">
+
+            <div style="margin-bottom:12px;">
+              <div class="project-two-col-head">
+                <div class="project-two-col-head-main">АКБ</div>
+                <div class="project-two-col-head-side">К-сть</div>
+              </div>
+              <div class="project-two-col-row">
+                <input class="btn project-two-col-row-main" data-field="battery_name" value="${esc(p.battery_name)}" placeholder="Назва АКБ">
+                <input type="number" class="btn project-two-col-row-side" data-field="battery_qty" value="${p.battery_qty ?? ''}" placeholder="0">
+              </div>
+            </div>
+
+            <div>
+              <div class="project-two-col-head">
+                <div class="project-two-col-head-main">ФЕМ</div>
+                <div class="project-two-col-head-side">К-сть</div>
+              </div>
+              <div class="project-two-col-row">
+                <input class="btn project-two-col-row-main" data-field="panel_name" value="${esc(p.panel_name)}" placeholder="Назва ФЕМ">
+                <input type="number" class="btn project-two-col-row-side" data-field="panel_qty" value="${p.panel_qty ?? ''}" placeholder="0">
+              </div>
+            </div>
           </div>
         </div>
 
-        <hr style="border:none; border-top:1px solid #ffffff20; margin:12px 0 8px;">
-        <div style="font-size:18px; font-weight:700; opacity:.9; margin-bottom:8px; text-align:center;">Персонал</div>
+        <div class="project-section" data-section>
+          <button type="button" class="project-section-toggle">
+            <span>Персонал</span>
+            <span class="project-section-caret">▸</span>
+          </button>
+          <div class="project-section-body">
+            <div class="project-field-label">Електрик</div>
+            <select class="btn project-input-full" data-field="electrician">
+              <option value="">Оберіть електрика</option>
+              ${electricianOptionsHtml}
+              ${IS_OWNER ? '<option value="__add_new_electrician__">➕ Додати електрика...</option>' : ''}
+              ${IS_OWNER ? '<option value="__delete_current_electrician__" hidden>🗑 Видалити вибраного...</option>' : ''}
+            </select>
 
-        <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Електрик</div>
-        <select class="btn" data-field="electrician" style="width:100%; margin-bottom:8px;">
-          <option value="">Оберіть електрика</option>
-          ${electricianOptionsHtml}
-          ${IS_OWNER ? '<option value="__add_new_electrician__">➕ Додати електрика...</option>' : ''}
-          ${IS_OWNER ? '<option value="__delete_current_electrician__" hidden>🗑 Видалити вибраного...</option>' : ''}
-        </select>
+            <div class="project-field-label">Монтажна бригада</div>
+            <select class="btn project-input-full" data-field="installation_team">
+              <option value="">Оберіть бригаду</option>
+              ${teamOptionsHtml}
+              ${IS_OWNER ? '<option value="__add_new_installation_team__">➕ Додати монтажника...</option>' : ''}
+              ${IS_OWNER ? '<option value="__delete_current_installation_team__" hidden>🗑 Видалити вибраного...</option>' : ''}
+            </select>
 
+            <div class="project-field-label">Доп. роботи</div>
+            <input class="btn project-input-full" data-field="extra_works" value="${esc(p.extra_works)}" placeholder="Вкажіть додаткові роботи">
+          </div>
+        </div>
 
-        <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Монтажна бригада</div>
-        <select class="btn" data-field="installation_team" style="width:100%; margin-bottom:8px;">
-          <option value="">Оберіть бригаду</option>
-          ${teamOptionsHtml}
-          ${IS_OWNER ? '<option value="__add_new_installation_team__">➕ Додати монтажника...</option>' : ''}
-          ${IS_OWNER ? '<option value="__delete_current_installation_team__" hidden>🗑 Видалити вибраного...</option>' : ''}
-        </select>
-        
+        <div class="project-section" data-section>
+          <button type="button" class="project-section-toggle">
+            <span>Недоліки</span>
+            <span class="project-section-caret">▸</span>
+          </button>
+          <div class="project-section-body">
+            <div class="project-field-label" style="margin-top:10px;">Опис проблемних місць</div>
+            <textarea class="btn project-textarea" data-field="defects_note" placeholder="Опис недоліків...">${esc(p.defects_note)}</textarea>
 
-        <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Доп. роботи</div>
-        <input class="btn" data-field="extra_works" value="${esc(p.extra_works)}" placeholder="Вкажіть додаткові роботи" style="width:100%; margin-bottom:8px;">
+            <div class="project-field-label">Головне фото недоліків</div>
+            ${photoHtml}
+            <input type="file" data-field="defects_photo" accept="image/*" class="project-input-full" style="margin-bottom:10px;">
+          </div>
+        </div>
 
-        <hr style="border:none; border-top:1px solid #ffffff20; margin:12px 0 8px;">
+        <div class="project-section" data-section>
+          <button type="button" class="project-section-toggle">
+            <span>Фото та файли</span>
+            <span class="project-section-caret">▸</span>
+          </button>
+          <div class="project-section-body">
+            <div class="project-field-label">Фото з телефону</div>
+            <input type="file" data-field="photos" accept="image/*" capture="environment" multiple class="project-input-full">
+            <div class="project-field-label">Файли</div>
+            <input type="file" data-field="attachments" multiple class="project-input-full">
+            ${(imageThumbs || fileLinks) ? `
+              <div class="project-field-label">Додані матеріали</div>
+              ${imageThumbs ? `<div class="project-thumb-grid">${imageThumbs}</div>` : ''}
+              ${fileLinks ? `<div>${fileLinks}</div>` : ''}
+            ` : ''}
+          </div>
+        </div>
 
-        <div style="font-size:18px; font-weight:700; opacity:.9; margin-bottom:8px; text-align:center;">Недоліки</div>
+        <hr class="project-divider project-divider--spaced">
 
-        <div style="margin-top:10px; margin-bottom:4px; font-size:12px; opacity:.8;">Опис проблемних місць</div>
-
-        <textarea class="btn" data-field="defects_note" placeholder="Опис недоліків..." style="width:100%; height:70px; margin-bottom:8px;">${esc(p.defects_note)}</textarea>
-
-
-        <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Головне фото недоліків</div>
-        ${photoHtml}
-        <input type="file" data-field="defects_photo" accept="image/*" style="width:100%; margin-bottom:10px;">
-        <hr style="border:none; border-top:1px solid #ffffff20; margin:12px 0 8px;">
-
-
-        <div style="font-size:18px; font-weight:700; opacity:.9; margin-bottom:8px; text-align:center;">Фото та файли</div>
-        <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Фото з телефону</div>
-        <input type="file" data-field="photos" accept="image/*" capture="environment" multiple style="width:100%; margin-bottom:8px;">
-        <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Файли</div>
-        <input type="file" data-field="attachments" multiple style="width:100%; margin-bottom:8px;">
-        ${(imageThumbs || fileLinks) ? `
-          <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Додані матеріали</div>
-          ${imageThumbs ? `<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px;">${imageThumbs}</div>` : ''}
-          ${fileLinks ? `<div style="margin-bottom:8px;">${fileLinks}</div>` : ''}
-        ` : ''}
-
-        <hr style="border:none; border-top:1px solid #ffffff20; margin:22px 0;">
-
-        <button class="btn save-project-btn" data-id="${p.id}" style="width:100%; margin-bottom:8px;" ${isClosed ? 'disabled' : ''}>
+        <button class="btn save-project-btn project-save-btn" data-id="${p.id}" ${isClosed ? 'disabled' : ''}>
           💾 Зберегти
         </button>
 
 
-        <button class="btn close-project-btn" data-id="${p.id}" style="width:100%; background:${hasDefects ? '#4a2a2a' : '#7a1c1c'};" ${(isClosed || hasDefects) ? 'disabled' : ''}>
+        <button class="btn close-project-btn project-close-btn ${hasDefects ? 'is-locked' : ''}" data-id="${p.id}" ${(isClosed || hasDefects) ? 'disabled' : ''}>
           ${isClosed ? '✅ Проект закритий' : (hasDefects ? '⚠️ Є недоліки, закриття заборонено' : '🔒 Закрити проект')}
         </button>
       </div>
@@ -394,13 +434,14 @@ async function loadConstructionProjects() {
 
     card.querySelector('.project-header')?.addEventListener('click', function(){
       const body = card.querySelector('.project-body');
-      const open = body.style.display === 'none';
-      if (!open) {
+      const isHidden = window.getComputedStyle(body).display === 'none';
+      if (!isHidden) {
         const id = getProjectIdFromBody(body);
         saveProjectDraft(id, body, { force: true, notify: false });
+        setAllProjectSections(body, false);
       }
-      body.style.display = open ? 'block' : 'none';
-      if (open) rememberOpenProject(p.id);
+      body.style.display = isHidden ? 'block' : 'none';
+      if (isHidden) rememberOpenProject(p.id);
     });
 
     container.appendChild(card);
@@ -418,14 +459,13 @@ async function loadConstructionProjects() {
 
   if (completedProjects.length > 0) {
     const completedWrap = document.createElement('div');
-    completedWrap.className = 'card';
-    completedWrap.style.marginBottom = '12px';
+    completedWrap.className = 'card project-card';
     completedWrap.innerHTML = `
-      <div class="completed-projects-toggle" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
+      <div class="completed-projects-toggle">
         <div style="font-weight:800;">✅ Завершені проекти</div>
         <div style="opacity:.7;">${completedProjects.length}</div>
       </div>
-      <div class="completed-projects-body" style="display:none; margin-top:12px; border-top:1px solid #ffffff20; padding-top:12px;"></div>
+      <div class="completed-projects-body"></div>
     `;
 
     const completedBody = completedWrap.querySelector('.completed-projects-body');
@@ -435,8 +475,8 @@ async function loadConstructionProjects() {
 
     completedWrap.querySelector('.completed-projects-toggle')?.addEventListener('click', function () {
       const body = completedWrap.querySelector('.completed-projects-body');
-      const open = body.style.display === 'none';
-      body.style.display = open ? 'block' : 'none';
+      const isHidden = window.getComputedStyle(body).display === 'none';
+      body.style.display = isHidden ? 'block' : 'none';
     });
 
     container.appendChild(completedWrap);
@@ -453,6 +493,51 @@ document.addEventListener('DOMContentLoaded', () => {
 
 document.addEventListener('click', async function(e){
   const target = e.target instanceof Element ? e.target : null;
+  const expandBtn = target ? target.closest('.project-expand-toggle') : null;
+  if (expandBtn) {
+    const body = expandBtn.closest('.project-body');
+    const sections = Array.from(body?.querySelectorAll('.project-section') || []);
+    const shouldOpen = sections.some(section => !section.classList.contains('is-open'));
+    setAllProjectSections(body, shouldOpen);
+    return;
+  }
+
+  const sectionBtn = target ? target.closest('.project-section-toggle') : null;
+  if (sectionBtn) {
+    const section = sectionBtn.closest('.project-section');
+    if (!section) return;
+    section.classList.toggle('is-open');
+
+    const body = section.closest('.project-body');
+    const sections = Array.from(body?.querySelectorAll('.project-section') || []);
+    const allOpen = sections.length > 0 && sections.every(item => item.classList.contains('is-open'));
+    const expandToggle = body?.querySelector('.project-expand-toggle');
+    if (expandToggle) {
+      expandToggle.textContent = allOpen ? 'Згорнути проект' : 'Розкрити проект';
+    }
+    return;
+  }
+
+  const tariffBtn = target ? target.closest('.green-tariff-btn') : null;
+  if (tariffBtn) {
+    const body = tariffBtn.closest('.project-body');
+    const hiddenInput = body?.querySelector('[data-field="has_green_tariff"]');
+    const stateEl = body?.querySelector('[data-green-tariff-state]');
+    const card = tariffBtn.closest('.project-card');
+    if (!body || !hiddenInput || !card) return;
+
+    const nextValue = String(tariffBtn.dataset.value || '0');
+    hiddenInput.value = nextValue;
+    body.querySelectorAll('.green-tariff-btn').forEach(btn => {
+      btn.classList.toggle('active', btn === tariffBtn);
+    });
+    if (stateEl) stateEl.textContent = nextValue === '1' ? 'Є' : 'Немає';
+    card.classList.toggle('project-card--green', nextValue === '1');
+
+    scheduleProjectAutosave(body, 200);
+    return;
+  }
+
   const saveBtn = target ? target.closest('.save-project-btn') : null;
   if (saveBtn) {
     const id = saveBtn.dataset.id;
