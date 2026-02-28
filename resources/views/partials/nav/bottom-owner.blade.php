@@ -97,7 +97,7 @@
       <summary class="tg-acc__title">🔐 Профіль</summary>
       <div class="tg-acc__body">
         <a class="tg-menu__item" href="/users/manage">👤 Користувачі</a>
-        <a class="tg-menu__item" href="/profile">🔐 Адмінка / пароль</a>
+        <a class="tg-menu__item" href="/profile">👤 Профіль</a>
       </div>
     </details>
 

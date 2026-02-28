@@ -47,7 +47,7 @@
         </button>
 
 
-        <a class="tg-menu__item" href="/profile">🔐 Адмінка / пароль</a>
+        <a class="tg-menu__item" href="/profile">👤 Профіль</a>
 
 
   </div>

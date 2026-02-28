@@ -15,7 +15,9 @@
     9 => '/img/avatars/ntv.jpg',              // NTV
   ];
 
-  $avatarSrc = $avatars[$u->id] ?? '/img/avatars/default.jpg';
+  $avatarSrc = $u->avatar_path
+    ? \Illuminate\Support\Facades\Storage::disk('public')->url($u->avatar_path)
+    : ($avatars[$u->id] ?? '/img/avatars/default.jpg');
 @endphp
 
 <div class="avatar-placeholder">

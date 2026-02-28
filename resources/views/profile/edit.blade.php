@@ -83,6 +83,43 @@ input{
   </div>
 
   <div class="card" style="margin-bottom:20px;">
+      <section>
+          <header style="margin-bottom:16px;">
+              <h2>Фото профілю</h2>
+              <p>Оновіть свій аватар. Це фото буде показуватись у шапці застосунку.</p>
+          </header>
+
+          <div style="display:flex; align-items:center; gap:14px; margin-bottom:16px;">
+              @php
+                  $avatarFallbacks = [
+                      1 => '/img/avatars/hlushchenko.jpg',
+                      2 => '/img/avatars/kolisnyk.jpg',
+                      3 => '/img/avatars/accountant.jpg',
+                      4 => '/img/avatars/foreman.jpg',
+                      5 => '/img/avatars/sunfix.jpg',
+                      6 => '/img/avatars/savencov.jpg',
+                      7 => '/img/avatars/malinin.jpg',
+                      8 => '/img/avatars/sunfix-manager.jpg',
+                      9 => '/img/avatars/ntv.jpg',
+                  ];
+
+                  $currentAvatar = $user->avatar_path
+                      ? \Illuminate\Support\Facades\Storage::disk('public')->url($user->avatar_path)
+                      : ($avatarFallbacks[$user->id] ?? '/img/avatars/default.jpg');
+              @endphp
+              <img src="{{ $currentAvatar }}" alt="Avatar" class="avatar-image" style="width:72px; height:72px;">
+              <div style="opacity:.75; font-size:14px;">PNG/JPG, до 5MB</div>
+          </div>
+
+          <form method="POST" action="{{ route('profile.avatar') }}" enctype="multipart/form-data">
+              @csrf
+              <input type="file" name="avatar" accept="image/*" class="btn" style="width:100%; margin-bottom:12px;" required>
+              <button type="submit" class="btn primary" style="width:100%;">Оновити фото</button>
+          </form>
+      </section>
+  </div>
+
+  <div class="card" style="margin-bottom:20px;">
       @include('profile.partials.update-profile-information-form')
   </div>
 

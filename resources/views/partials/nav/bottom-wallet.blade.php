@@ -35,7 +35,7 @@
         <button type="button" class="tg-fab" id="tgFabBtn" aria-expanded="false">☰</button>
 
         <div class="tg-fab-menu hidden" id="tgFabMenu">
-          <a class="tg-fab-item" href="/profile">🔐 Адмінка / пароль</a>
+          <a class="tg-fab-item" href="/profile">👤 Профіль</a>
           <a class="tg-fab-item" href="/">💼 Гаманець</a>
 
           <form method="POST" action="{{ route('logout') }}">

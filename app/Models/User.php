@@ -24,6 +24,7 @@ class User extends Authenticatable
         'actor',
         'role',
         'position',
+        'avatar_path',
     ];
 
     /**

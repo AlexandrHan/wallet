@@ -52,7 +52,7 @@
 
         <a class="tg-menu__item" style="margin-bottom:15px;" href="/projects">🏗️ Проекти</a>
 
-        <a class="tg-menu__item" href="/profile">🔐 Адмінка / пароль</a>
+        <a class="tg-menu__item" href="/profile">👤 Профіль</a>
 
 
   </div>
