@@ -11,6 +11,107 @@ use App\Models\CashTransfer;
 
 class SalesProjectController extends Controller
 {
+    private function constructionFieldMeta(): array
+    {
+        return [
+            'telegram_group_link' => ['section' => 'Дані клієнта', 'label' => 'Посилання на Telegram'],
+            'geo_location_link' => ['section' => 'Дані клієнта', 'label' => 'Посилання на геолокацію'],
+            'has_green_tariff' => ['section' => 'Дані клієнта', 'label' => 'Зелений тариф'],
+            'electric_work_start_date' => ['section' => 'Планування', 'label' => 'Дата початку монтажу інверторної частини'],
+            'panel_work_start_date' => ['section' => 'Планування', 'label' => 'Дата початку монтажу ФЕМ'],
+            'inverter' => ['section' => 'Обладнання', 'label' => 'Інвертор'],
+            'bms' => ['section' => 'Обладнання', 'label' => 'BMS'],
+            'battery_name' => ['section' => 'Обладнання', 'label' => 'АКБ'],
+            'battery_qty' => ['section' => 'Обладнання', 'label' => 'Кількість АКБ'],
+            'panel_name' => ['section' => 'Обладнання', 'label' => 'ФЕМ'],
+            'panel_qty' => ['section' => 'Обладнання', 'label' => 'Кількість ФЕМ'],
+            'electrician' => ['section' => 'Персонал', 'label' => 'Електрик'],
+            'installation_team' => ['section' => 'Персонал', 'label' => 'Монтажна бригада'],
+            'extra_works' => ['section' => 'Персонал', 'label' => 'Доп. роботи'],
+            'defects_note' => ['section' => 'Недоліки', 'label' => 'Опис проблемних місць'],
+            'defects_photo_path' => ['section' => 'Недоліки', 'label' => 'Головне фото недоліків'],
+        ];
+    }
+
+    private function historyActorLabel(): string
+    {
+        $user = auth()->user();
+
+        if (!$user) {
+            return 'Невідомий користувач';
+        }
+
+        if (!empty($user->name)) {
+            return (string)$user->name;
+        }
+
+        if (!empty($user->actor)) {
+            return (string)$user->actor;
+        }
+
+        if (!empty($user->email)) {
+            return (string)$user->email;
+        }
+
+        return 'Користувач #' . $user->id;
+    }
+
+    private function normalizeHistoryValue(string $field, $value): string
+    {
+        if ($field === 'has_green_tariff') {
+            return (bool)$value ? 'Є' : 'Немає';
+        }
+
+        if (in_array($field, ['electric_work_start_date', 'panel_work_start_date'], true)) {
+            if (!$value) {
+                return '—';
+            }
+
+            try {
+                return \Carbon\Carbon::parse($value)->format('d.m.Y');
+            } catch (\Throwable $e) {
+                return (string)$value;
+            }
+        }
+
+        if ($field === 'defects_photo_path') {
+            return $value ? 'Фото додано/оновлено' : '—';
+        }
+
+        $stringValue = trim((string)($value ?? ''));
+        return $stringValue !== '' ? $stringValue : '—';
+    }
+
+    private function logProjectHistory(SalesProject $project, array $entries): void
+    {
+        if (!Schema::hasTable('project_change_logs') || empty($entries)) {
+            return;
+        }
+
+        $user = auth()->user();
+        $now = now();
+        $actorName = $this->historyActorLabel();
+
+        $rows = [];
+        foreach ($entries as $entry) {
+            $rows[] = [
+                'project_id' => $project->id,
+                'section_name' => (string)($entry['section_name'] ?? 'Інше'),
+                'field_name' => (string)($entry['field_name'] ?? 'Зміна'),
+                'action_type' => (string)($entry['action_type'] ?? 'update'),
+                'old_value' => (string)($entry['old_value'] ?? '—'),
+                'new_value' => (string)($entry['new_value'] ?? '—'),
+                'actor_name' => $actorName,
+                'actor_role' => (string)($user->role ?? ''),
+                'created_by' => $user?->id,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+
+        DB::table('project_change_logs')->insert($rows);
+    }
+
     private function toProjectAmount(float $amount, string $advanceCurrency, string $projectCurrency, ?float $exchangeRate): float
     {
         if ($advanceCurrency === $projectCurrency) {
@@ -192,6 +293,8 @@ class SalesProjectController extends Controller
                 'telegram_group_link' => $project->telegram_group_link,
                 'geo_location_link' => $project->geo_location_link,
                 'has_green_tariff' => (bool)$project->has_green_tariff,
+                'electric_work_start_date' => $project->electric_work_start_date,
+                'panel_work_start_date' => $project->panel_work_start_date,
                 'inverter' => $project->inverter,
                 'bms' => $project->bms,
                 'battery_name' => $project->battery_name,
@@ -457,6 +560,8 @@ class SalesProjectController extends Controller
             'telegram_group_link' => 'nullable|string|max:1000',
             'geo_location_link' => 'nullable|string|max:1000',
             'has_green_tariff' => 'nullable|boolean',
+            'electric_work_start_date' => 'nullable|date',
+            'panel_work_start_date' => 'nullable|date',
             'inverter' => 'nullable|string|max:255',
             'bms' => 'nullable|string|max:255',
             'battery_name' => 'nullable|string|max:255',
@@ -474,23 +579,86 @@ class SalesProjectController extends Controller
             'attachments.*' => 'file|max:20480',
         ]);
 
-        if ($request->hasFile('defects_photo')) {
+        $meta = $this->constructionFieldMeta();
+        $before = [];
+        foreach (array_keys($meta) as $field) {
+            $before[$field] = $project->{$field};
+        }
+
+        $data['has_green_tariff'] = (bool)($data['has_green_tariff'] ?? false);
+        $hasDefectsPhotoUpload = $request->hasFile('defects_photo');
+        $photoUploads = (array)$request->file('photos', []);
+        $attachmentUploads = (array)$request->file('attachments', []);
+        $hasPhotoUploads = count(array_filter($photoUploads)) > 0;
+        $hasAttachmentUploads = count(array_filter($attachmentUploads)) > 0;
+
+        $historyEntries = [];
+        foreach ($meta as $field => $config) {
+            if ($field === 'defects_photo_path') {
+                continue;
+            }
+
+            if (!array_key_exists($field, $data)) {
+                continue;
+            }
+
+            $oldNormalized = $this->normalizeHistoryValue($field, $before[$field] ?? null);
+            $newNormalized = $this->normalizeHistoryValue($field, $data[$field]);
+
+            if ($oldNormalized === $newNormalized) {
+                continue;
+            }
+
+            $historyEntries[] = [
+                'section_name' => $config['section'],
+                'field_name' => $config['label'],
+                'action_type' => 'update',
+                'old_value' => $oldNormalized,
+                'new_value' => $newNormalized,
+            ];
+        }
+
+        if (!$hasDefectsPhotoUpload && !$hasPhotoUploads && !$hasAttachmentUploads && empty($historyEntries)) {
+            return response()->json([
+                'ok' => true,
+                'project' => [
+                    'id' => $project->id,
+                    'defects_photo_url' => $project->defects_photo_path
+                        ? Storage::disk('public')->url($project->defects_photo_path)
+                        : null,
+                    'closed_at' => $project->closed_at
+                        ? \Carbon\Carbon::parse($project->closed_at)->format('d.m.Y H:i')
+                        : null,
+                    'status' => $project->status,
+                ],
+            ]);
+        }
+
+        if ($hasDefectsPhotoUpload) {
             if ($project->defects_photo_path) {
                 Storage::disk('public')->delete($project->defects_photo_path);
             }
 
             $data['defects_photo_path'] = $request->file('defects_photo')->store('project-defects', 'public');
+            $historyEntries[] = [
+                'section_name' => $meta['defects_photo_path']['section'],
+                'field_name' => $meta['defects_photo_path']['label'],
+                'action_type' => 'update',
+                'old_value' => $this->normalizeHistoryValue('defects_photo_path', $before['defects_photo_path'] ?? null),
+                'new_value' => $this->normalizeHistoryValue('defects_photo_path', $data['defects_photo_path']),
+            ];
         }
 
         unset($data['defects_photo']);
         unset($data['photos']);
         unset($data['attachments']);
-        $data['has_green_tariff'] = (bool)($data['has_green_tariff'] ?? false);
         $project->update($data);
 
         if (Schema::hasTable('project_attachments')) {
-            foreach ((array)$request->file('photos', []) as $file) {
+            $photoCount = 0;
+            foreach ($photoUploads as $file) {
                 if (!$file) continue;
+                $photoCount++;
                 $path = $file->store('project-attachments', 'public');
                 DB::table('project_attachments')->insert([
                     'project_id' => $project->id,
@@ -504,8 +672,10 @@ class SalesProjectController extends Controller
                 ]);
             }
 
-            foreach ((array)$request->file('attachments', []) as $file) {
+            $attachmentCount = 0;
+            foreach ($attachmentUploads as $file) {
                 if (!$file) continue;
+                $attachmentCount++;
                 $path = $file->store('project-attachments', 'public');
                 DB::table('project_attachments')->insert([
                     'project_id' => $project->id,
@@ -518,7 +688,29 @@ class SalesProjectController extends Controller
                     'updated_at' => now(),
                 ]);
             }
+
+            if ($photoCount > 0) {
+                $historyEntries[] = [
+                    'section_name' => 'Фото та файли',
+                    'field_name' => 'Фото з телефону',
+                    'action_type' => 'upload',
+                    'old_value' => '—',
+                    'new_value' => 'Додано фото: ' . $photoCount,
+                ];
+            }
+
+            if ($attachmentCount > 0) {
+                $historyEntries[] = [
+                    'section_name' => 'Фото та файли',
+                    'field_name' => 'Файли',
+                    'action_type' => 'upload',
+                    'old_value' => '—',
+                    'new_value' => 'Додано файлів: ' . $attachmentCount,
+                ];
+            }
         }
+
+        $this->logProjectHistory($project, $historyEntries);
 
         return response()->json([
             'ok' => true,
@@ -557,9 +749,50 @@ class SalesProjectController extends Controller
         $project->closed_by = auth()->id();
         $project->save();
 
+        $this->logProjectHistory($project, [[
+            'section_name' => 'Статус',
+            'field_name' => 'Закриття проекту',
+            'action_type' => 'close',
+            'old_value' => 'Активний',
+            'new_value' => 'Завершений',
+        ]]);
+
         return response()->json([
             'ok' => true,
             'closed_at' => $project->closed_at->format('d.m.Y H:i'),
+        ]);
+    }
+
+    public function projectHistory($id)
+    {
+        $project = SalesProject::find($id);
+        if (!$project) {
+            return response()->json(['error' => 'Проект не знайдено'], 404);
+        }
+
+        if (!Schema::hasTable('project_change_logs')) {
+            return response()->json(['history' => []]);
+        }
+
+        $rows = DB::table('project_change_logs')
+            ->where('project_id', $project->id)
+            ->orderByDesc('id')
+            ->get();
+
+        return response()->json([
+            'history' => $rows->map(function ($row) {
+                return [
+                    'id' => (int)$row->id,
+                    'section_name' => (string)$row->section_name,
+                    'field_name' => (string)$row->field_name,
+                    'action_type' => (string)$row->action_type,
+                    'old_value' => (string)$row->old_value,
+                    'new_value' => (string)$row->new_value,
+                    'actor_name' => (string)$row->actor_name,
+                    'actor_role' => (string)($row->actor_role ?? ''),
+                    'created_at' => \Carbon\Carbon::parse($row->created_at)->format('d.m.Y H:i'),
+                ];
+            })->values(),
         ]);
     }
 

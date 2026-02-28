@@ -3,10 +3,12 @@
 
   $activeWallet = ($current === '/');
   $activeReclamations  = str_starts_with($current, '/reclamations');
+  $activeProjects = str_starts_with($current, '/projects');
 
   $tabs = [
     ['href'=>'/',        'icon'=>'💼', 'label'=>'Мій гаманець', 'active'=>$activeWallet],
     ['href'=>'/reclamations', 'icon'=>'🛠️', 'label'=>'Сервіс',  'active'=>$activeReclamations],
+    ['href'=>'/projects', 'icon'=>'🏗️', 'label'=>'Проекти', 'active'=>$activeProjects],
 
   ];
 @endphp
@@ -44,6 +46,8 @@
 
         <a class="tg-menu__item" style="margin-bottom:15px;" href="/reclamations">🛠️ Сервіс</a>
 
+        <a class="tg-menu__item" style="margin-bottom:15px;" href="/projects">🏗️ Проекти</a>
+
         <a class="tg-menu__item" href="/profile">🔐 Адмінка / пароль</a>
 
 
@@ -56,4 +60,3 @@
     </form>
   </div>
 </div>
-

@@ -17,6 +17,8 @@ class SalesProject extends Model
         'telegram_group_link',
         'geo_location_link',
         'has_green_tariff',
+        'electric_work_start_date',
+        'panel_work_start_date',
         'inverter',
         'bms',
         'battery_name',

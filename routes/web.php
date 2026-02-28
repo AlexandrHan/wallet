@@ -103,6 +103,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         Route::post('/sales-projects/{id}/advance', [\App\Http\Controllers\SalesProjectController::class, 'addAdvance']);
         Route::post('/sales-projects/{id}/construction', [\App\Http\Controllers\SalesProjectController::class, 'updateConstruction']);
         Route::post('/sales-projects/{id}/close', [\App\Http\Controllers\SalesProjectController::class, 'closeProject']);
+        Route::get('/sales-projects/{id}/history', [\App\Http\Controllers\SalesProjectController::class, 'projectHistory']);
         Route::get('/construction-staff-options', [\App\Http\Controllers\SalesProjectController::class, 'constructionStaffOptions']);
         Route::post('/construction-staff-options', [\App\Http\Controllers\SalesProjectController::class, 'addConstructionStaffOption']);
         Route::delete('/construction-staff-options/{id}', [\App\Http\Controllers\SalesProjectController::class, 'deleteConstructionStaffOption']);

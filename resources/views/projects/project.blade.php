@@ -126,7 +126,10 @@ async function saveProjectDraft(projectId, body, opts = {}) {
   const hasFile = Array.from(body.querySelectorAll('input[type="file"][data-field]'))
     .some(input => input.files && input.files.length > 0);
 
-  if (!force && !hasFile && prev === snapshot) return;
+  if (!hasFile && prev === snapshot) {
+    if (notify) alert('Змін немає');
+    return;
+  }
   if (!force && projectSaving.has(id)) return;
 
   if (keepalive) {
@@ -159,6 +162,14 @@ async function saveProjectDraft(projectId, body, opts = {}) {
     if (!r.ok || !res.ok) throw new Error(res.error || 'Помилка збереження');
 
     projectLastSavedSnapshot.set(id, snapshot);
+    body.querySelectorAll('input[type="file"][data-field]').forEach(input => {
+      input.value = '';
+    });
+
+    const historyPanel = body.querySelector('.project-history-panel');
+    if (historyPanel && historyPanel.classList.contains('is-open')) {
+      await loadProjectHistory(id, body, true);
+    }
 
     if (notify) alert('Збережено');
     if (reloadAfter) {
@@ -203,6 +214,90 @@ function setAllProjectSections(body, open) {
   const toggleBtn = body.querySelector('.project-expand-toggle');
   if (toggleBtn) {
     toggleBtn.textContent = open ? 'Згорнути проект' : 'Розкрити проект';
+  }
+}
+
+function renderProjectHistory(history) {
+  if (!Array.isArray(history) || history.length === 0) {
+    return '<div class="project-history-empty">Історія змін поки що порожня</div>';
+  }
+
+  return history.map(item => `
+    <div class="project-history-item">
+      <div class="project-history-top">
+        <div class="project-history-actor">${esc(item.actor_name || 'Невідомий')}</div>
+        <div class="project-history-date">${esc(item.created_at || '')}</div>
+      </div>
+      <div class="project-history-meta">
+        <span>${esc(item.section_name || 'Інше')}</span>
+        <span>•</span>
+        <span>${esc(item.field_name || 'Зміна')}</span>
+      </div>
+      <div class="project-history-values">
+        <div class="project-history-old">Було: ${esc(item.old_value || '—')}</div>
+        <div class="project-history-new">Стало: ${esc(item.new_value || '—')}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function loadProjectHistory(projectId, body, force = false) {
+  const historyBody = body?.querySelector('.project-history-body');
+  if (!projectId || !historyBody) return;
+
+  if (!force && historyBody.dataset.loaded === '1') return;
+
+  historyBody.innerHTML = '<div class="project-history-loading">Завантаження...</div>';
+
+  try {
+    const r = await fetch(`/api/sales-projects/${projectId}/history`);
+    const res = await r.json();
+    if (!r.ok) throw new Error(res.error || 'Не вдалося завантажити історію');
+
+    historyBody.innerHTML = renderProjectHistory(res.history || []);
+    historyBody.dataset.loaded = '1';
+  } catch (err) {
+    historyBody.innerHTML = `<div class="project-history-empty">${esc(err.message || 'Не вдалося завантажити історію')}</div>`;
+  }
+}
+
+function syncProjectCardPreview(body) {
+  if (!body) return;
+  const card = body.closest('.project-card');
+  if (!card) return;
+
+  const electrician = String(body.querySelector('[data-field="electrician"]')?.value || '').trim();
+  const team = String(body.querySelector('[data-field="installation_team"]')?.value || '').trim();
+  const clientName = String(body.querySelector('[data-field="client_name"]')?.value || '').trim();
+
+  const electricianEl = card.querySelector('[data-project-preview="electrician"]');
+  const teamEl = card.querySelector('[data-project-preview="team"]');
+  const nameEl = card.querySelector('[data-project-preview="client"]');
+
+  if (electricianEl) electricianEl.textContent = electrician || 'Електрик не вказаний';
+  if (teamEl) teamEl.textContent = team || 'Бригада не вказана';
+  if (nameEl && clientName) nameEl.textContent = clientName;
+}
+
+function syncProjectCardState(body) {
+  if (!body) return;
+  const card = body.closest('.project-card');
+  const defects = String(body.querySelector('[data-field="defects_note"]')?.value || '').trim();
+  const hasDefects = defects !== '';
+  const closeBtn = body.querySelector('.close-project-btn');
+
+  if (card) {
+    card.classList.toggle('project-card--defects', hasDefects);
+  }
+
+  if (closeBtn && !closeBtn.disabled) {
+    closeBtn.classList.toggle('is-locked', hasDefects);
+    closeBtn.disabled = hasDefects;
+    closeBtn.textContent = hasDefects ? '⚠️ Є недоліки, закриття заборонено' : '🔒 Закрити проект';
+  } else if (closeBtn && !closeBtn.textContent.includes('✅ Проект закритий')) {
+    closeBtn.classList.toggle('is-locked', hasDefects);
+    closeBtn.disabled = hasDefects;
+    closeBtn.textContent = hasDefects ? '⚠️ Є недоліки, закриття заборонено' : '🔒 Закрити проект';
   }
 }
 
@@ -272,14 +367,14 @@ async function loadConstructionProjects() {
     card.innerHTML = `
       <div class="project-header">
         <div class="project-header-row">
-          <div class="project-header-name">${esc(p.client_name)}</div>
+          <div class="project-header-name" data-project-preview="client">${esc(p.client_name)}</div>
           <div class="project-header-meta">
             ${esc(p.created_at)} ${isClosed ? '• ✅ Закритий' : ''}
           </div>
         </div>
         <div class="project-header-row project-header-sub">
-          <div>${esc(p.electrician || 'Електрик не вказаний')}</div>
-          <div class="project-header-meta" style="font-size:12px; opacity:.78;">
+          <div data-project-preview="electrician">${esc(p.electrician || 'Електрик не вказаний')}</div>
+          <div class="project-header-meta" data-project-preview="team" style="font-size:12px; opacity:.78;">
             ${esc(p.installation_team || 'Бригада не вказана')}
           </div>
         </div>
@@ -287,6 +382,17 @@ async function loadConstructionProjects() {
 
       <div class="project-body">
         <button type="button" class="btn project-expand-toggle">Розкрити проект</button>
+
+        <div class="project-dates-row">
+          <div class="project-date-col">
+            <div class="project-field-label" style="text-align:center;">Дата початку монтажу інверторної частини</div>
+            <input type="date" class="btn project-input-full" data-field="electric_work_start_date" value="${esc(p.electric_work_start_date)}">
+          </div>
+          <div class="project-date-col">
+            <div class="project-field-label" style="text-align:center;">Дата початку монтажу ФЕМ</div>
+            <input type="date" class="btn project-input-full" data-field="panel_work_start_date" value="${esc(p.panel_work_start_date)}">
+          </div>
+        </div>
 
         <div class="project-section" data-section>
           <button type="button" class="project-section-toggle">
@@ -337,7 +443,7 @@ async function loadConstructionProjects() {
 
             <div style="margin-bottom:12px;">
               <div class="project-two-col-head">
-                <div class="project-two-col-head-main">АКБ</div>
+                <div class="project-two-col-head-main" style="wi">АКБ</div>
                 <div class="project-two-col-head-side">К-сть</div>
               </div>
               <div class="project-two-col-row">
@@ -429,6 +535,14 @@ async function loadConstructionProjects() {
         <button class="btn close-project-btn project-close-btn ${hasDefects ? 'is-locked' : ''}" data-id="${p.id}" ${(isClosed || hasDefects) ? 'disabled' : ''}>
           ${isClosed ? '✅ Проект закритий' : (hasDefects ? '⚠️ Є недоліки, закриття заборонено' : '🔒 Закрити проект')}
         </button>
+
+        <button type="button" class="btn project-history-toggle-btn" data-project-id="${p.id}">
+          🕘 Історія змін
+        </button>
+
+        <div class="project-history-panel">
+          <div class="project-history-body" data-loaded="0"></div>
+        </div>
       </div>
     `;
 
@@ -546,9 +660,32 @@ document.addEventListener('click', async function(e){
 
     saveBtn.disabled = true;
     try {
-      await saveProjectDraft(id, body, { notify: true, force: true, reloadAfter: true });
+      await saveProjectDraft(id, body, { notify: true, force: true, reloadAfter: false });
+      syncProjectCardPreview(body);
+      syncProjectCardState(body);
+      const historyPanel = body.querySelector('.project-history-panel');
+      if (historyPanel && historyPanel.classList.contains('is-open')) {
+        await loadProjectHistory(id, body, true);
+      }
     } finally {
       saveBtn.disabled = false;
+    }
+    return;
+  }
+
+  const historyBtn = target ? target.closest('.project-history-toggle-btn') : null;
+  if (historyBtn) {
+    const body = historyBtn.closest('.project-body');
+    const historyPanel = body?.querySelector('.project-history-panel');
+    const projectId = historyBtn.dataset.projectId;
+    if (!body || !historyPanel || !projectId) return;
+
+    const shouldOpen = !historyPanel.classList.contains('is-open');
+    historyPanel.classList.toggle('is-open', shouldOpen);
+    historyBtn.textContent = shouldOpen ? '🕘 Сховати історію змін' : '🕘 Історія змін';
+
+    if (shouldOpen) {
+      await loadProjectHistory(projectId, body);
     }
     return;
   }
@@ -686,6 +823,13 @@ document.addEventListener('change', async function (e) {
     return;
   }
 
+  if (field.dataset.field === 'electrician' || field.dataset.field === 'installation_team' || field.dataset.field === 'client_name') {
+    syncProjectCardPreview(body);
+  }
+  if (field.dataset.field === 'defects_note') {
+    syncProjectCardState(body);
+  }
+
   scheduleProjectAutosave(body, 400);
 });
 
@@ -697,6 +841,10 @@ document.addEventListener('input', function (e) {
 
   const body = field.closest('.project-body');
   if (!body) return;
+
+  if (field.dataset.field === 'defects_note') {
+    syncProjectCardState(body);
+  }
 
   scheduleProjectAutosave(body, 900);
 });

@@ -4,6 +4,7 @@
   $activeWallet       = $route === 'home' || $route === 'wallet.index';
   $activeReclamations = str_starts_with($route ?? '', 'reclamations.');
   $activeStock        = str_starts_with($route ?? '', 'stock.');
+  $activeProjects     = str_starts_with($route ?? '', 'projects.');
 
   $tabs = [
     [
@@ -23,6 +24,12 @@
       'icon'   => '📦',
       'label'  => 'Склад',
       'active' => $activeStock
+    ],
+    [
+      'href'   => url('/projects'),
+      'icon'   => '🏗️',
+      'label'  => 'Проекти',
+      'active' => $activeProjects
     ],
   ];
 @endphp
@@ -79,4 +86,3 @@
     </form>
   </div>
 </div>
-
