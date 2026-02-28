@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
 use App\Http\Controllers\EntryReceiptController;
 use App\Services\ErpNextService;
 use Illuminate\Support\Facades\Storage;
@@ -300,34 +301,96 @@ Route::delete('/accounts/{account}', function (BankAccount $account) {
 
 ///////////////////////////////////. Курс валют.  /////////////////////////////////////
 
-Route::get('/exchange-rates', function () {
-
-    // сьогоднішня дата в форматі ДД.ММ.РРРР
-    $date = now()->format('d.m.Y');
-
-    $url = "https://api.privatbank.ua/p24api/exchange_rates?json&date={$date}";
-
-    $response = Http::get($url);
-
-    if (!$response->ok()) {
-        return response()->json(['error' => 'Failed to fetch rates'], 500);
+$fxRatesResponse = function () {
+    if (!Schema::hasTable('fx_rates')) {
+        return response()->json(['error' => 'FX table is not ready'], 503);
     }
 
-    $data = $response->json();
+    $rows = DB::table('fx_rates')
+        ->orderBy('currency')
+        ->get(['currency', 'buy', 'sell', 'source', 'updated_at']);
 
-    // фільтруємо суто USD та EUR
-    $rates = collect($data['exchangeRate'] ?? [])
-        ->filter(fn($r) => in_array($r['currency'] ?? '', ['USD', 'EUR']))
-        ->map(fn($r) => [
-            'currency' => $r['currency'],
-            'purchase' => $r['purchaseRate'] ?? null,
-            'sale'     => $r['saleRate'] ?? null,
-        ])
-        ->values();
+    $latestUpdatedAt = $rows->max('updated_at');
 
     return response()->json([
-        'date'  => $date,
-        'rates' => $rates,
+        'date' => $latestUpdatedAt
+            ? \Carbon\Carbon::parse($latestUpdatedAt)->format('d.m.Y H:i')
+            : now()->format('d.m.Y H:i'),
+        'rates' => $rows->map(fn ($row) => [
+            'currency' => (string)$row->currency,
+            'purchase' => (float)$row->buy,
+            'sale' => (float)$row->sell,
+            'source' => (string)($row->source ?? 'manual'),
+            'updated_at' => $row->updated_at
+                ? \Carbon\Carbon::parse($row->updated_at)->format('d.m.Y H:i')
+                : null,
+        ])->values(),
+    ]);
+};
+
+Route::get('/exchange-rates', $fxRatesResponse);
+Route::get('/fx/rates', $fxRatesResponse);
+
+Route::post('/fx/update', function (Request $request) {
+    if (!Schema::hasTable('fx_rates')) {
+        return response()->json(['error' => 'FX table is not ready'], 503);
+    }
+
+    $expectedToken = (string) config('services.fx_agent.token');
+    $providedToken = (string) (
+        $request->bearerToken()
+        ?: $request->header('X-FX-TOKEN')
+        ?: $request->input('token')
+    );
+
+    if ($expectedToken === '' || !hash_equals($expectedToken, $providedToken)) {
+        return response()->json(['error' => 'Unauthorized'], 401);
+    }
+
+    $data = $request->validate([
+        'currency' => 'required|string|size:3',
+        'buy' => 'required|numeric|min:0.0001',
+        'sell' => 'required|numeric|min:0.0001',
+        'source' => 'nullable|string|max:50',
+    ]);
+
+    $currency = strtoupper((string)$data['currency']);
+    if (!in_array($currency, ['USD', 'EUR'], true)) {
+        return response()->json(['error' => 'Unsupported currency'], 422);
+    }
+
+    if ((float)$data['buy'] > (float)$data['sell']) {
+        return response()->json(['error' => 'Buy rate cannot be higher than sell rate'], 422);
+    }
+
+    $payload = [
+        'buy' => round((float)$data['buy'], 4),
+        'sell' => round((float)$data['sell'], 4),
+        'source' => (string)($data['source'] ?? 'agent'),
+        'updated_at' => now(),
+    ];
+
+    $exists = DB::table('fx_rates')->where('currency', $currency)->exists();
+    if ($exists) {
+        DB::table('fx_rates')->where('currency', $currency)->update($payload);
+    } else {
+        DB::table('fx_rates')->insert($payload + [
+            'currency' => $currency,
+            'created_at' => now(),
+        ]);
+    }
+
+    $row = DB::table('fx_rates')->where('currency', $currency)->first();
+
+    return response()->json([
+        'ok' => true,
+        'rate' => [
+            'currency' => (string)$row->currency,
+            'buy' => (float)$row->buy,
+            'sell' => (float)$row->sell,
+            'source' => (string)$row->source,
+            'updated_at' => \Carbon\Carbon::parse($row->updated_at)->format('d.m.Y H:i'),
+        ],
     ]);
 });
 
@@ -505,5 +568,3 @@ Route::middleware('auth')->post('/supplier-cash/{id}/received', function ($id) {
 });
 
 Route::delete('/deliveries/items/{id}', [DeliveryController::class, 'deleteItem']);
-
-

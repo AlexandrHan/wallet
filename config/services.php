@@ -36,6 +36,10 @@ return [
         'token' => env('PRIVATBANK_TOKEN'),
     ],
 
+    'fx_agent' => [
+        'token' => env('FX_AGENT_TOKEN'),
+    ],
+
 
 
 

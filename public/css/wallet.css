@@ -1694,6 +1694,7 @@ body.modal-open{
   width: 48px;
   height: 48px;
   border-radius: 999px;
+  margin-top: 8px;
   object-fit: cover;
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.336);
 }

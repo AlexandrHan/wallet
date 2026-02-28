@@ -7,7 +7,7 @@
 @section('content')
 <main class="projects-main">
 
-  <div class="card projects-title-card">
+  <div class="projects-title-card">
     <div class="projects-title">
       🏗 Проекти СЕС
     </div>

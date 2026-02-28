@@ -1,5 +1,6 @@
 
 const CSRF = document.querySelector('meta[name="csrf-token"]').content;
+const FX_CACHE_TTL_MS = 60 * 1000;
   // ===== BANK TRANSACTIONS (temporary, test data) =====
 
 
@@ -41,7 +42,14 @@ if (AUTH_USER.role !== 'accountant' && !AUTH_ACTOR) {
 
     delArmedId: null,
     delTimer: null,
+    pendingOpenStaffWalletId: null,
   };
+
+const BOOT_QUERY = new URLSearchParams(window.location.search);
+const pendingOpenStaffWalletId = Number(BOOT_QUERY.get('open_staff_wallet') || 0);
+if (pendingOpenStaffWalletId > 0) {
+  state.pendingOpenStaffWalletId = pendingOpenStaffWalletId;
+}
 
 
 let isRenderingWallets = false;
@@ -409,6 +417,22 @@ async function loadWallets() {
     state.wallets = res.ok ? await res.json() : [];
 
     renderWallets();
+
+    if (state.pendingOpenStaffWalletId) {
+      const walletId = Number(state.pendingOpenStaffWalletId);
+      const exists = state.wallets.some(w => Number(w.id) === walletId);
+
+      if (exists) {
+        state.pendingOpenStaffWalletId = null;
+        await loadEntries(walletId);
+
+        const params = new URLSearchParams(window.location.search);
+        params.delete('open_staff_wallet');
+        const nextQuery = params.toString();
+        const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash || ''}`;
+        window.history.replaceState({}, '', nextUrl);
+      }
+    }
 
     setTimeout(async () => {
       try {
@@ -1387,11 +1411,12 @@ function fmtMoney2(n){
 }
 
 async function loadFx(force=false){
-  // якщо вже тягнули сьогодні і не форсимо — можна повернути кеш
-  if (!force && state.fx?.date && state.fxFetchedDay === dayKeyLocal()) return state.fx;
+  if (!force && state.fx && state.fxFetchedAt && (Date.now() - state.fxFetchedAt) < FX_CACHE_TTL_MS) {
+    return state.fx;
+  }
 
   try{
-    const res = await fetch('/api/exchange-rates', { headers: { 'Accept':'application/json' } });
+    const res = await fetch('/api/fx/rates', { headers: { 'Accept':'application/json' } });
     const data = await res.json();
     if (!res.ok || data.error) return null;
 
@@ -1401,8 +1426,7 @@ async function loadFx(force=false){
     });
 
     state.fx = { date: data.date, map };
-    state.fxFetchedDay = dayKeyLocal();   // ✅ запам’ятали день
-    state.fxFetchedAt  = Date.now();      // (опційно)
+    state.fxFetchedAt  = Date.now();
     return state.fx;
   } catch {
     return null;
@@ -2696,24 +2720,28 @@ function deleteAccount(card){
 //////////////////////////////////////////////////////////////////////////////////////
 const showRatesBtn = document.getElementById('showRatesBtn');
 
-showRatesBtn?.addEventListener('click', async (e) => {
-  e.preventDefault(); // бо кнопка всередині form
+async function openRatesModalFlow(e){
+  e?.preventDefault?.();
 
   try {
-    const res = await fetch('/api/exchange-rates', { headers: { 'Accept': 'application/json' } });
+    const res = await fetch('/api/fx/rates', { headers: { 'Accept': 'application/json' } });
     const data = await res.json();
 
     if (!res.ok || data.error) {
       showRatesError('Не вдалося отримати курс валют');
-      return;
+      return false;
     }
 
     renderRatesModal(data);
-
+    return true;
   } catch {
     showRatesError('Помилка при отриманні курсу валют');
+    return false;
   }
-});
+}
+
+window.openRatesModalFlow = openRatesModalFlow;
+showRatesBtn?.addEventListener('click', openRatesModalFlow);
 
 
 function renderRatesModal(data){
@@ -3125,30 +3153,4 @@ function deleteFeedback() {
   playSound(SND.alarm, 1.0);
   vibrate([60, 40, 60, 40, 120]); // “сирена”
 }
-
-
-// FULLSCREEN MENU ACTIONS (works for multiple buttons)
-document.addEventListener('click', (e) => {
-  const rates = e.target.closest('.js-show-rates');
-  if (rates) {
-    e.preventDefault();
-    // повторюємо твій існуючий тригер (якщо лишився в хедері)
-    document.getElementById('showRatesBtn')?.click();
-    location.hash = ''; // закрити меню
-    return;
-  }
-
-  const staff = e.target.closest('.js-staff-cash');
-  if (staff) {
-    e.preventDefault();
-    window.openStaffCash?.();
-    location.hash = ''; // закрити меню
-    return;
-  }
-});
-
-
-
-
-
 

@@ -51,6 +51,7 @@
     <main class="wrap reclamations-main">
         @yield('content')
     </main>
+    @include('partials.global.quick-modals')
     </body>
 
 </html>

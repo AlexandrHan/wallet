@@ -312,58 +312,7 @@
 
 </main>
 @include('partials.nav.bottom')
-<div id="staffCashModal" class="modal hidden">
-
-  <div class="modal-backdrop" onclick="closeStaffCash()"></div>
-
-  <div class="modal-panel">
-
-    <div class="modal-handle"></div>
-
-    <div class="modal-header">
-      <div class="modal-title modal-cash">Кеш співробітників</div>
-      <button type="button" id="staffCashClose" class="modal-close">✕</button>
-    </div>
-
-    <div class="modal-body" id="staffCashList">
-      <!-- Сюди підтягуються рахунки -->
-    </div>
-
-  </div>
-</div>
-
-
-<!-- Exchange Rates Modal -->
-<div id="ratesModal" class="modal hidden">
-  <div class="modal-backdrop"></div>
-  <div class="modal-panel">
-    <div class="modal-handle"></div>
-    <div class="modal-header">
-      <div class="modal-title">Актуальний курс валют</div>
-
-    </div>
-    <div id="ratesContent" class="modal-body"></div>
-    <div id="exchangeBox" class="exchange hidden">
-  <div class="exchange-header">
-    <div class="segmented exchange-mode">
-      <button id="modeBuy" class="active">Купуємо</button>
-      <button id="modeSell">Продаємо</button>
-    </div>
-  </div>
-
-  <div class="exchange-row">
-    <input id="exFrom" type="number" />
-    <div id="exFromLabel" class="exchange-currency">UAH</div>
-  </div>
-
-  <div class="exchange-row">
-    <input id="exTo" type="number" />
-    <div id="exToLabel" class="exchange-currency">USD</div>
-  </div>
-</div>
-
-  </div>
-</div>
+@include('partials.global.quick-modals')
 
 <!-- Receipt Viewer Modal -->
 <div id="receiptModal" class="modal hidden">

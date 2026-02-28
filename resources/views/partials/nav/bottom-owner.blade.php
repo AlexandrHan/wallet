@@ -50,7 +50,7 @@
   </div>
 
   <div class="tg-menu__content">
-    @if(auth()->user()->role === 'owner' && $activeWallet)
+    @if(auth()->user()->role === 'owner')
       <button type="button" class="tg-menu__item js-staff-cash">👥 КЕШ співробітників</button>
       <div style="height:10px"></div>
     @endif
@@ -134,4 +134,24 @@
   });
   document.addEventListener('keydown', (e) => { if(e.key === 'Escape') close(); });
 })();
+</script>
+
+<script>
+document.addEventListener('click', (e) => {
+  const target = e.target instanceof Element ? e.target : null;
+  if (!target) return;
+
+  const ratesBtn = target.closest('.js-show-rates');
+  const staffBtn = target.closest('.js-staff-cash');
+  if (!ratesBtn && !staffBtn) return;
+
+  e.preventDefault();
+  if (ratesBtn && typeof window.openRatesModalFlow === 'function') {
+    window.openRatesModalFlow();
+  }
+  if (staffBtn && typeof window.openStaffCash === 'function') {
+    window.openStaffCash();
+  }
+  window.location.hash = '';
+});
 </script>
