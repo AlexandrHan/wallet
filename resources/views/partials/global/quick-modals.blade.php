@@ -17,9 +17,14 @@
   <div class="modal-backdrop"></div>
   <div class="modal-panel">
     <div class="modal-handle"></div>
-    <div class="modal-header">
-      <div class="modal-title">Актуальний курс валют</div>
-    </div>
+
+      <div class="modal-header" style="flex-direction: column; align-items: center; gap: 12px;">
+        <div class="modal-title">Актуальний курс валют</div>
+        <img src="/img/seyf.png" 
+            title="Курси валют оновлюються кожні 30 хвилин. Дані надає НБУ." 
+            style="width: 50px; height: 50px; opacity: 0.7; border-radius: 50%; display: block; margin: 15px auto;">
+      </div>
+
     <div id="ratesContent" class="modal-body"></div>
     <div id="exchangeBox" class="exchange hidden">
       <div class="exchange-header">

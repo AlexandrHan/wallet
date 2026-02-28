@@ -40,6 +40,10 @@
   </div>
 
   <div class="tg-menu__content">
+        <button type="button" class="tg-menu__item" style="margin-bottom:15px;" onclick="window.openRatesModalFlow?.(); location.hash='';">
+          💱 Обмінник
+        </button>
+
         <a class="tg-menu__item" style="margin-bottom:15px;" href="/stock/supplier-cash">💸 Борги</a>
 
         <a class="tg-menu__item" style="margin-bottom:15px;" href="/stock">📦 Склад SunFix</a>

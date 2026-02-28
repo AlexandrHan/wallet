@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Http\Request;
 
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\UserManagementController;
 use App\Http\Controllers\WalletController;
 use App\Http\Controllers\ReclamationController;
 use App\Http\Controllers\FemDebtController;
@@ -55,6 +56,18 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+    Route::get('/users/manage', [UserManagementController::class, 'index'])
+        ->middleware('only.owner')
+        ->name('users.manage');
+    Route::post('/users/manage', [UserManagementController::class, 'store'])
+        ->middleware('only.owner')
+        ->name('users.store');
+    Route::patch('/users/manage/{user}', [UserManagementController::class, 'update'])
+        ->middleware('only.owner')
+        ->name('users.update');
+    Route::delete('/users/manage/{user}', [UserManagementController::class, 'destroy'])
+        ->middleware('only.owner')
+        ->name('users.destroy');
 
 
     /*

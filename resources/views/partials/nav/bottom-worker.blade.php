@@ -42,6 +42,10 @@
 
         <a class="tg-menu__item" style="margin-bottom:15px;" href="/">🏦 Мій гаманець</a>
 
+        <button type="button" class="tg-menu__item" style="margin-bottom:15px;" onclick="window.openRatesModalFlow?.(); location.hash='';">
+          💱 Обмінник
+        </button>
+
 
         <a class="tg-menu__item" href="/profile">🔐 Адмінка / пароль</a>
 
@@ -55,4 +59,3 @@
     </form>
   </div>
 </div>
-
