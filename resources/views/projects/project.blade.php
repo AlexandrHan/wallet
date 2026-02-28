@@ -5,7 +5,7 @@
 
   <div class="card" style="margin-bottom:15px;">
     <div style="font-weight:800; font-size:18px; text-align:center;">
-      🏗 Будівельні проекти
+      🏗 Проекти СЕС
     </div>
   </div>
 
@@ -64,6 +64,10 @@ function getProjectPayload(body) {
     const field = el.dataset.field;
     if (!field || el.type === 'file') return;
     if (isAddOptionToken(el.value)) return;
+    if (el.type === 'checkbox') {
+      payload[field] = el.checked ? '1' : '0';
+      return;
+    }
     payload[field] = el.value ?? '';
   });
   return payload;
@@ -93,6 +97,10 @@ function getProjectFormData(body, includeFile = true) {
     }
 
     if (isAddOptionToken(el.value)) return;
+    if (el.type === 'checkbox') {
+      fd.append(field, el.checked ? '1' : '0');
+      return;
+    }
     fd.append(field, el.value ?? '');
   });
   return fd;
@@ -220,6 +228,7 @@ async function loadConstructionProjects() {
   function buildProjectCard(p) {
     const isClosed = p.status === 'completed';
     const hasDefects = String(p.defects_note || '').trim() !== '';
+    const hasGreenTariff = !!p.has_green_tariff;
     const photoHtml = p.defects_photo_url
       ? `<a href="${p.defects_photo_url}" target="_blank" style="font-size:12px; opacity:.8;">📎 Поточне фото недоліків</a>`
       : '';
@@ -245,6 +254,11 @@ async function loadConstructionProjects() {
     card.className = 'card';
     card.style.marginBottom = '12px';
     card.style.cursor = 'pointer';
+    if (hasGreenTariff) {
+      card.style.background = 'linear-gradient(180deg, rgba(38,120,68,.28), rgba(18,56,33,.18)), rgba(255,255,255,.03)';
+      card.style.border = '1px solid rgba(102, 242, 168, .45)';
+      card.style.boxShadow = '0 10px 24px rgba(24,110,60,.10)';
+    }
     if (hasDefects) {
       card.style.border = '2px solid #e63946';
       card.style.boxShadow = '0 0 0 1px rgba(230,57,70,.18), 0 10px 24px rgba(230,57,70,.08)';
@@ -258,6 +272,7 @@ async function loadConstructionProjects() {
       </div>
 
       <div class="project-body" style="display:none; margin-top:12px; border-top:1px solid #ffffff20; padding-top:12px;">
+       <div style="font-size:18px; font-weight:700; opacity:.9; margin-bottom:8px; text-align:center;">Дані клієнта</div>
         <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Посилання на Telegram групу</div>
         <input class="btn" data-field="telegram_group_link" value="${esc(p.telegram_group_link)}" placeholder="Вставте посилання на Telegram" style="width:100%; margin-bottom:8px;">
 
@@ -266,8 +281,24 @@ async function loadConstructionProjects() {
           <span>Відкрити Telegram</span>
         </button>
 
+        <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Посилання на геолокацію</div>
+        <input class="btn" data-field="geo_location_link" value="${esc(p.geo_location_link)}" placeholder="Вставте посилання на геолокацію" style="width:100%; margin-bottom:8px;">
+
+        <button class="btn open-maps-btn" style="width:100%; margin-bottom:10px; background:#1a73e8; border-color:#1a73e8; color:#fff; display:inline-flex; align-items:center; justify-content:center; gap:10px; padding:10px 20px;">
+          <span style="font-size:18px; line-height:1;">📍</span>
+          <span>Відкрити Google Maps</span>
+        </button>
+
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; padding:10px 12px; border:1px solid #ffffff20; border-radius:12px;">
+          <div>
+            <div style="font-size:12px; opacity:.8;">Зелений тариф</div>
+            <div style="font-size:11px; opacity:.6;">${hasGreenTariff ? 'Є' : 'Немає'}</div>
+          </div>
+          <input type="checkbox" data-field="has_green_tariff" ${hasGreenTariff ? 'checked' : ''} style="width:18px; height:18px;">
+        </div>
+
         <hr style="border:none; border-top:1px solid #ffffff20; margin:12px 0 8px;">
-        <div style="font-size:13px; font-weight:700; opacity:.9; margin-bottom:8px; text-align:center;">Обладнання</div>
+        <div style="font-size:18px; font-weight:700; opacity:.9; margin-bottom:8px; text-align:center;">Обладнання</div>
 
         <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Інвертор</div>
         <input class="btn" data-field="inverter" value="${esc(p.inverter)}" placeholder="Інвертор" style="width:100%; margin-bottom:8px;">
@@ -299,7 +330,7 @@ async function loadConstructionProjects() {
         </div>
 
         <hr style="border:none; border-top:1px solid #ffffff20; margin:12px 0 8px;">
-        <div style="font-size:13px; font-weight:700; opacity:.9; margin-bottom:8px; text-align:center;">Персонал</div>
+        <div style="font-size:18px; font-weight:700; opacity:.9; margin-bottom:8px; text-align:center;">Персонал</div>
 
         <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Електрик</div>
         <select class="btn" data-field="electrician" style="width:100%; margin-bottom:8px;">
@@ -317,14 +348,27 @@ async function loadConstructionProjects() {
           ${IS_OWNER ? '<option value="__add_new_installation_team__">➕ Додати монтажника...</option>' : ''}
           ${IS_OWNER ? '<option value="__delete_current_installation_team__" hidden>🗑 Видалити вибраного...</option>' : ''}
         </select>
+        
 
         <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Доп. роботи</div>
         <input class="btn" data-field="extra_works" value="${esc(p.extra_works)}" placeholder="Вкажіть додаткові роботи" style="width:100%; margin-bottom:8px;">
 
-        <div style="margin-top:10px; margin-bottom:4px; font-size:12px; opacity:.8;">Недоліки</div>
-        <textarea class="btn" data-field="defects_note" placeholder="Опис недоліків..." style="width:100%; height:70px; margin-bottom:8px;">${esc(p.defects_note)}</textarea>
         <hr style="border:none; border-top:1px solid #ffffff20; margin:12px 0 8px;">
-        <div style="font-size:13px; font-weight:700; opacity:.9; margin-bottom:8px; text-align:center;">Фото та файли</div>
+
+        <div style="font-size:18px; font-weight:700; opacity:.9; margin-bottom:8px; text-align:center;">Недоліки</div>
+
+        <div style="margin-top:10px; margin-bottom:4px; font-size:12px; opacity:.8;">Опис проблемних місць</div>
+
+        <textarea class="btn" data-field="defects_note" placeholder="Опис недоліків..." style="width:100%; height:70px; margin-bottom:8px;">${esc(p.defects_note)}</textarea>
+
+
+        <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Головне фото недоліків</div>
+        ${photoHtml}
+        <input type="file" data-field="defects_photo" accept="image/*" style="width:100%; margin-bottom:10px;">
+        <hr style="border:none; border-top:1px solid #ffffff20; margin:12px 0 8px;">
+
+
+        <div style="font-size:18px; font-weight:700; opacity:.9; margin-bottom:8px; text-align:center;">Фото та файли</div>
         <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Фото з телефону</div>
         <input type="file" data-field="photos" accept="image/*" capture="environment" multiple style="width:100%; margin-bottom:8px;">
         <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Файли</div>
@@ -334,15 +378,13 @@ async function loadConstructionProjects() {
           ${imageThumbs ? `<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px;">${imageThumbs}</div>` : ''}
           ${fileLinks ? `<div style="margin-bottom:8px;">${fileLinks}</div>` : ''}
         ` : ''}
-        <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Головне фото недоліків</div>
-        ${photoHtml}
-        <input type="file" data-field="defects_photo" accept="image/*" style="width:100%; margin-bottom:10px;">
+
+        <hr style="border:none; border-top:1px solid #ffffff20; margin:22px 0;">
 
         <button class="btn save-project-btn" data-id="${p.id}" style="width:100%; margin-bottom:8px;" ${isClosed ? 'disabled' : ''}>
           💾 Зберегти
         </button>
 
-        <hr style="border:none; border-top:1px solid #ffffff20; margin:12px 0 10px;">
 
         <button class="btn close-project-btn" data-id="${p.id}" style="width:100%; background:${hasDefects ? '#4a2a2a' : '#7a1c1c'};" ${(isClosed || hasDefects) ? 'disabled' : ''}>
           ${isClosed ? '✅ Проект закритий' : (hasDefects ? '⚠️ Є недоліки, закриття заборонено' : '🔒 Закрити проект')}
@@ -429,14 +471,15 @@ document.addEventListener('click', async function(e){
   const closeBtn = target ? target.closest('.close-project-btn') : null;
   if (!closeBtn) {
     const telegramBtn = target ? target.closest('.open-telegram-btn') : null;
-    if (!telegramBtn) return;
+    const mapsBtn = target ? target.closest('.open-maps-btn') : null;
+    if (!telegramBtn && !mapsBtn) return;
 
-    const body = telegramBtn.closest('.project-body');
-    const linkEl = body?.querySelector('[data-field="telegram_group_link"]');
-    const raw = String(linkEl?.value || '').trim();
+    const body = (telegramBtn || mapsBtn).closest('.project-body');
+    const fieldName = telegramBtn ? 'telegram_group_link' : 'geo_location_link';
+    const raw = String(body?.querySelector(`[data-field="${fieldName}"]`)?.value || '').trim();
 
     if (!raw) {
-      alert('Додайте посилання на Telegram групу');
+      alert(telegramBtn ? 'Додайте посилання на Telegram групу' : 'Додайте посилання на геолокацію');
       return;
     }
 

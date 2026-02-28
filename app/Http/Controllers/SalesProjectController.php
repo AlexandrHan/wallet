@@ -190,6 +190,8 @@ class SalesProjectController extends Controller
                 'currency' => $project->currency,
                 'status' => $project->status,
                 'telegram_group_link' => $project->telegram_group_link,
+                'geo_location_link' => $project->geo_location_link,
+                'has_green_tariff' => (bool)$project->has_green_tariff,
                 'inverter' => $project->inverter,
                 'bms' => $project->bms,
                 'battery_name' => $project->battery_name,
@@ -453,6 +455,8 @@ class SalesProjectController extends Controller
 
         $data = $request->validate([
             'telegram_group_link' => 'nullable|string|max:1000',
+            'geo_location_link' => 'nullable|string|max:1000',
+            'has_green_tariff' => 'nullable|boolean',
             'inverter' => 'nullable|string|max:255',
             'bms' => 'nullable|string|max:255',
             'battery_name' => 'nullable|string|max:255',
@@ -481,6 +485,7 @@ class SalesProjectController extends Controller
         unset($data['defects_photo']);
         unset($data['photos']);
         unset($data['attachments']);
+        $data['has_green_tariff'] = (bool)($data['has_green_tariff'] ?? false);
         $project->update($data);
 
         if (Schema::hasTable('project_attachments')) {

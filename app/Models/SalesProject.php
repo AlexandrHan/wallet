@@ -15,6 +15,8 @@ class SalesProject extends Model
         'created_by',
         'status',
         'telegram_group_link',
+        'geo_location_link',
+        'has_green_tariff',
         'inverter',
         'bms',
         'battery_name',
