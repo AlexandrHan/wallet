@@ -47,6 +47,8 @@
           💱 Обмінник
         </button>
 
+        <a class="tg-menu__item" style="margin-bottom:15px;" href="/salary/my">💰 Зарплатня</a>
+
 
         <a class="tg-menu__item" href="/profile">👤 Профіль</a>
 

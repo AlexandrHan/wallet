@@ -51,46 +51,32 @@
 
 <header>
   <div style="margin-top:-1rem;" class="wrap row">
-
     <div class="top-area">
-
       <a href="/" class="logo">
         <img src="/img/logo.png" alt="SolarGlass">
       </a>
 
-        <div class="userName">        
-          <span style="font-weight:800;">
-            {{ collect(explode(' ', trim(auth()->user()->name)))->first() }}
-          </span>
-        </div>
-
-
-
-
-          @include('partials.nav.top-avatar-placeholder')
-
-
-            
-
-
-
+      <div class="userName">
+        <span style="font-weight:800;">
+          {{ collect(explode(' ', trim(auth()->user()->name)))->first() }}
+        </span>
       </div>
 
+      @include('partials.nav.top-avatar-placeholder')
     </div>
 
-      <div class="header-right">
-        <span class="tag" id="actorTag" style="display:none"></span>
-      </div>
+    <div class="header-right">
+      <span class="tag" id="actorTag" style="display:none"></span>
+    </div>
 
-      @if(auth()->user()->role !== 'accountant')
-      <div class="header-center">
-        <div class="segmented">
-          <button type="button" id="view-h" data-owner="hlushchenko">Глущенко</button>
-          <button type="button" id="view-k" data-owner="kolisnyk">Колісник</button>
-        </div>
+    @if(auth()->user()->role !== 'accountant')
+    <div class="header-center">
+      <div class="segmented">
+        <button type="button" id="view-h" data-owner="hlushchenko">Глущенко</button>
+        <button type="button" id="view-k" data-owner="kolisnyk">Колісник</button>
       </div>
-      @endif
-
+    </div>
+    @endif
   </div>
 </header>
 

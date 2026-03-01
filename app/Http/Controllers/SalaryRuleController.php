@@ -167,7 +167,196 @@ class SalaryRuleController extends Controller
 
     private function supportsSalaryPenalties(): bool
     {
-        return Schema::hasTable('salary_penalties');
+        return Schema::hasTable('salary_penalties')
+            && Schema::hasColumn('salary_penalties', 'entry_type');
+    }
+
+    private function userDisplayName(?User $user): string
+    {
+        if (!$user) {
+            return 'Співробітник';
+        }
+
+        $name = trim((string) ($user->name ?? ''));
+        if ($name !== '') {
+            return $name;
+        }
+
+        $actor = trim((string) ($user->actor ?? ''));
+        if ($actor !== '') {
+            return $actor;
+        }
+
+        $email = trim((string) ($user->email ?? ''));
+        if ($email !== '') {
+            return $email;
+        }
+
+        return 'Користувач #' . $user->id;
+    }
+
+    private function buildFixedEmployeePayload(string $staffGroup, string $staffName, int $year): array
+    {
+        $rule = Schema::hasTable('salary_rules')
+            ? SalaryRule::query()
+                ->where('staff_group', $staffGroup)
+                ->where('staff_name', $staffName)
+                ->first()
+            : null;
+
+        $monthlyAmount = round((float) ($rule?->fixed_amount ?? 0), 2);
+        $currency = (string) ($rule?->currency ?? 'UAH');
+        $mode = (string) ($rule?->mode ?? 'fixed');
+
+        $adjustmentsByMonth = collect();
+        if ($this->supportsSalaryPenalties()) {
+            $adjustmentsByMonth = SalaryPenalty::query()
+                ->where('staff_group', $staffGroup)
+                ->where('staff_name', $staffName)
+                ->where('year', $year)
+                ->orderBy('month')
+                ->orderBy('entry_type')
+                ->orderBy('sort_order')
+                ->get()
+                ->groupBy('month');
+        }
+
+        $months = collect(range(1, 12))->map(function (int $month) use ($adjustmentsByMonth, $monthlyAmount) {
+            $rows = collect($adjustmentsByMonth->get($month, []));
+
+            $bonuses = $rows
+                ->where('entry_type', 'bonus')
+                ->map(function ($row) {
+                    return [
+                        'id' => (int) $row->id,
+                        'amount' => round((float) $row->amount, 2),
+                        'description' => (string) ($row->description ?? ''),
+                    ];
+                })
+                ->values();
+
+            $penalties = $rows
+                ->where('entry_type', 'penalty')
+                ->map(function ($row) {
+                    return [
+                        'id' => (int) $row->id,
+                        'amount' => round((float) $row->amount, 2),
+                        'description' => (string) ($row->description ?? ''),
+                    ];
+                })
+                ->values();
+
+            $bonusTotal = round((float) $bonuses->sum('amount'), 2);
+            $penaltyTotal = round((float) $penalties->sum('amount'), 2);
+
+            return [
+                'month' => $month,
+                'monthly_amount' => $monthlyAmount,
+                'bonus_total' => $bonusTotal,
+                'penalty_total' => $penaltyTotal,
+                'net_amount' => round($monthlyAmount + $bonusTotal - $penaltyTotal, 2),
+                'bonuses' => $bonuses,
+                'penalties' => $penalties,
+            ];
+        })->values();
+
+        return [
+            'view_type' => 'fixed',
+            'staff_group' => $staffGroup,
+            'staff_name' => $staffName,
+            'year' => $year,
+            'mode' => $mode,
+            'currency' => $currency,
+            'monthly_amount' => $monthlyAmount,
+            'months' => $months,
+        ];
+    }
+
+    private function buildManagerYearPayload(User $manager, int $year): array
+    {
+        $acceptedTransfers = DB::table('cash_transfers')
+            ->select(
+                'project_id',
+                DB::raw('SUM(usd_amount) as paid_amount'),
+                DB::raw('MAX(created_at) as paid_at')
+            )
+            ->where('status', 'accepted')
+            ->whereNotNull('project_id')
+            ->groupBy('project_id')
+            ->get()
+            ->keyBy('project_id');
+
+        $projects = SalesProject::query()
+            ->where('created_by', $manager->id)
+            ->orderByDesc('id')
+            ->get();
+
+        $monthsMap = [];
+        foreach (range(1, 12) as $month) {
+            $monthsMap[$month] = [
+                'totals_by_currency' => [],
+                'projects' => [],
+            ];
+        }
+
+        foreach ($projects as $project) {
+            $transferMeta = $acceptedTransfers->get($project->id);
+            if (!$transferMeta) {
+                continue;
+            }
+
+            $paidAmount = round((float) ($transferMeta->paid_amount ?? 0), 2);
+            if ($paidAmount + 0.0001 < (float) $project->total_amount) {
+                continue;
+            }
+
+            $paidAt = $transferMeta->paid_at ? \Carbon\Carbon::parse($transferMeta->paid_at) : null;
+            if (!$paidAt || (int) $paidAt->year !== $year) {
+                continue;
+            }
+
+            $month = (int) $paidAt->month;
+            $currency = (string) $project->currency;
+            $commission = round((float) $project->total_amount * 0.01, 2);
+
+            if (!isset($monthsMap[$month]['totals_by_currency'][$currency])) {
+                $monthsMap[$month]['totals_by_currency'][$currency] = 0.0;
+            }
+
+            $monthsMap[$month]['totals_by_currency'][$currency] += $commission;
+            $monthsMap[$month]['projects'][] = [
+                'id' => (int) $project->id,
+                'client_name' => (string) $project->client_name,
+                'project_amount' => (float) $project->total_amount,
+                'currency' => $currency,
+                'commission' => $commission,
+                'paid_at' => $paidAt->format('d.m.Y'),
+            ];
+        }
+
+        $months = collect(range(1, 12))->map(function (int $month) use ($monthsMap) {
+            $entry = $monthsMap[$month];
+            ksort($entry['totals_by_currency']);
+
+            return [
+                'month' => $month,
+                'totals_by_currency' => collect($entry['totals_by_currency'])
+                    ->map(fn ($amount, $currency) => [
+                        'currency' => $currency,
+                        'amount' => round((float) $amount, 2),
+                    ])
+                    ->values(),
+                'projects' => collect($entry['projects'])->values(),
+            ];
+        })->values();
+
+        return [
+            'view_type' => 'manager',
+            'staff_group' => 'manager',
+            'staff_name' => $this->userDisplayName($manager),
+            'year' => $year,
+            'months' => $months,
+        ];
     }
 
     public function settings()
@@ -424,59 +613,82 @@ class SalaryRuleController extends Controller
         $staffName = trim((string) $data['staff_name']);
         $year = (int) $data['year'];
 
-        $rule = Schema::hasTable('salary_rules')
-            ? SalaryRule::query()
-                ->where('staff_group', $staffGroup)
-                ->where('staff_name', $staffName)
-                ->first()
-            : null;
+        return response()->json($this->buildFixedEmployeePayload($staffGroup, $staffName, $year));
+    }
 
-        $monthlyAmount = round((float) ($rule?->fixed_amount ?? 0), 2);
-        $currency = (string) ($rule?->currency ?? 'UAH');
-        $mode = (string) ($rule?->mode ?? 'fixed');
-
-        $penaltiesByMonth = collect();
-        if ($this->supportsSalaryPenalties()) {
-            $penaltiesByMonth = SalaryPenalty::query()
-                ->where('staff_group', $staffGroup)
-                ->where('staff_name', $staffName)
-                ->where('year', $year)
-                ->orderBy('month')
-                ->orderBy('sort_order')
-                ->get()
-                ->groupBy('month');
+    public function myForemanFixedSalaryData(Request $request)
+    {
+        $user = $request->user();
+        if (!$user || $user->role !== 'worker' || $user->position !== 'foreman') {
+            return response()->json(['error' => 'Forbidden'], 403);
         }
 
-        $months = collect(range(1, 12))->map(function (int $month) use ($penaltiesByMonth, $monthlyAmount) {
-            $penalties = collect($penaltiesByMonth->get($month, []))
-                ->map(function ($row) {
-                    return [
-                        'id' => (int) $row->id,
-                        'amount' => round((float) $row->amount, 2),
-                        'description' => (string) ($row->description ?? ''),
-                    ];
-                })
-                ->values();
+        $data = $request->validate([
+            'year' => 'required|integer|min:2026|max:2100',
+        ]);
 
-            $penaltyTotal = round((float) $penalties->sum('amount'), 2);
+        $staffName = trim((string) ($user->name ?? ''));
+        if ($staffName === '') {
+            $staffName = trim((string) ($user->actor ?? ''));
+        }
+        if ($staffName === '') {
+            $staffName = trim((string) ($user->email ?? ''));
+        }
 
-            return [
-                'month' => $month,
-                'monthly_amount' => $monthlyAmount,
-                'penalty_total' => $penaltyTotal,
-                'net_amount' => round($monthlyAmount - $penaltyTotal, 2),
-                'penalties' => $penalties,
-            ];
-        })->values();
+        return response()->json($this->buildFixedEmployeePayload('foreman', $staffName, (int) $data['year']));
+    }
+
+    public function mySalaryData(Request $request)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        if (in_array($user->role, ['sunfix', 'sunfix_manager', 'owner'], true)) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
+        $data = $request->validate([
+            'year' => 'required|integer|min:2026|max:2100',
+        ]);
+
+        $year = (int) $data['year'];
+        $staffName = $this->userDisplayName($user);
+
+        if ($user->role === 'ntv') {
+            return response()->json($this->buildManagerYearPayload($user, $year));
+        }
+
+        if ($user->role === 'accountant') {
+            return response()->json($this->buildFixedEmployeePayload('accountant', $staffName, $year));
+        }
+
+        if ($user->role === 'worker' && $user->position === 'foreman') {
+            return response()->json($this->buildFixedEmployeePayload('foreman', $staffName, $year));
+        }
+
+        if ($user->role === 'worker' && $user->position === 'electrician') {
+            $rule = Schema::hasTable('salary_rules')
+                ? SalaryRule::query()
+                    ->where('staff_group', 'electrician')
+                    ->where('staff_name', $staffName)
+                    ->first()
+                : null;
+
+            if ($rule && (string) $rule->mode === 'fixed') {
+                return response()->json($this->buildFixedEmployeePayload('electrician', $staffName, $year));
+            }
+
+            return response()->json([
+                'view_type' => 'unsupported',
+                'message' => 'Для вашого профілю використовується виробіток. Персональний read-only екран для цього режиму ще не налаштований.',
+            ]);
+        }
 
         return response()->json([
-            'staff_group' => $staffGroup,
-            'staff_name' => $staffName,
-            'year' => $year,
-            'mode' => $mode,
-            'currency' => $currency,
-            'monthly_amount' => $monthlyAmount,
-            'months' => $months,
+            'view_type' => 'unsupported',
+            'message' => 'Для вашої ролі персональна зарплатня ще не налаштована.',
         ]);
     }
 
@@ -491,6 +703,9 @@ class SalaryRuleController extends Controller
             'staff_name' => 'required|string|max:255',
             'year' => 'required|integer|min:2026|max:2100',
             'month' => 'required|integer|min:1|max:12',
+            'bonuses' => 'array',
+            'bonuses.*.amount' => 'nullable|numeric|min:0',
+            'bonuses.*.description' => 'nullable|string|max:255',
             'penalties' => 'array',
             'penalties.*.amount' => 'nullable|numeric|min:0',
             'penalties.*.description' => 'nullable|string|max:255',
@@ -501,12 +716,13 @@ class SalaryRuleController extends Controller
         $year = (int) $data['year'];
         $month = (int) $data['month'];
 
-        $rows = collect($data['penalties'] ?? [])
+        $bonusRows = collect($data['bonuses'] ?? [])
             ->map(function ($item, $index) {
                 $amount = round((float) ($item['amount'] ?? 0), 2);
                 $description = trim((string) ($item['description'] ?? ''));
 
                 return [
+                    'entry_type' => 'bonus',
                     'amount' => $amount,
                     'description' => $description,
                     'sort_order' => $index,
@@ -516,6 +732,25 @@ class SalaryRuleController extends Controller
                 return $item['amount'] > 0 || $item['description'] !== '';
             })
             ->values();
+
+        $penaltyRows = collect($data['penalties'] ?? [])
+            ->map(function ($item, $index) {
+                $amount = round((float) ($item['amount'] ?? 0), 2);
+                $description = trim((string) ($item['description'] ?? ''));
+
+                return [
+                    'entry_type' => 'penalty',
+                    'amount' => $amount,
+                    'description' => $description,
+                    'sort_order' => $index,
+                ];
+            })
+            ->filter(function ($item) {
+                return $item['amount'] > 0 || $item['description'] !== '';
+            })
+            ->values();
+
+        $rows = $bonusRows->concat($penaltyRows)->values();
 
         DB::transaction(function () use ($staffGroup, $staffName, $year, $month, $rows) {
             SalaryPenalty::query()
@@ -534,6 +769,7 @@ class SalaryRuleController extends Controller
                 return [
                     'staff_group' => $staffGroup,
                     'staff_name' => $staffName,
+                    'entry_type' => $row['entry_type'],
                     'year' => $year,
                     'month' => $month,
                     'amount' => $row['amount'],
@@ -546,11 +782,13 @@ class SalaryRuleController extends Controller
             })->all());
         });
 
+        $bonusTotal = round((float) $bonusRows->sum('amount'), 2);
         $penaltyTotal = round((float) $rows->sum('amount'), 2);
 
         return response()->json([
             'ok' => true,
-            'penalty_total' => $penaltyTotal,
+            'bonus_total' => $bonusTotal,
+            'penalty_total' => round((float) $penaltyRows->sum('amount'), 2),
         ]);
     }
 }

@@ -35,9 +35,6 @@
     <div style="font-weight:800; font-size:18px; text-align:center;">
       {{ $pageTitle }}
     </div>
-    <div style="font-size:13px; opacity:.7; text-align:center; margin-top:6px;">
-      Натисни, щоб повернутись на крок назад
-    </div>
   </a>
 
   <div id="fixedSalaryRoot"></div>
@@ -82,36 +79,62 @@ document.addEventListener('DOMContentLoaded', function () {
     }).format(Number(value || 0))} ${symbols[currency] || currency}`;
   };
 
-  function penaltyRowHtml(penalty = {}) {
+  function adjustmentRowHtml(entry = {}, type = 'penalty') {
+    const amountPlaceholder = type === 'bonus' ? 'Сума' : 'Сума';
+    const descPlaceholder = type === 'bonus' ? 'Опис премії' : 'Опис штрафу';
+
     return `
-      <div class="salary-penalty-row" style="display:flex; gap:8px; margin-top:8px;">
+      <div class="salary-penalty-row" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; align-items:flex-start;">
         <input
           type="number"
           step="0.01"
           class="btn"
-          data-penalty-amount
-          value="${esc(penalty.amount ?? '')}"
-          placeholder="Сума штрафу"
-          style="flex:0 0 32%; margin-bottom:0;"
+          data-amount-input
+          value="${esc(entry.amount ?? '')}"
+          placeholder="${amountPlaceholder}"
+          style="flex:1 1 calc(30% - 4px); min-width:0; box-sizing:border-box; margin-bottom:0; padding:8px 10px; font-size:12px;"
         >
-        <input
-          type="text"
+        <textarea
           class="btn"
-          data-penalty-description
-          value="${esc(penalty.description ?? '')}"
-          placeholder="Опис штрафу"
-          style="flex:1; margin-bottom:0;"
-        >
+          data-description-input
+          placeholder="${descPlaceholder}"
+          style="
+            flex:1 1 calc(70% - 4px);
+            min-width:0;
+            box-sizing:border-box;
+            margin-bottom:0;
+            font-size:12px;
+            min-height:40px;
+            line-height:1.35;
+            padding:8px 10px;
+            resize:none;
+            overflow:hidden;
+          "
+          rows="1"
+        >${esc(entry.description ?? '')}</textarea>
       </div>
     `;
+  }
+
+  function autosizeTextarea(textarea) {
+    if (!(textarea instanceof HTMLTextAreaElement)) return;
+    textarea.style.height = 'auto';
+    textarea.style.height = `${textarea.scrollHeight}px`;
   }
 
   function bindMonthCard(card, currency) {
     const body = card.querySelector('[data-month-body]');
 
-    const syncPenaltyState = (penaltyTotal) => {
-      if (Number(penaltyTotal || 0) > 0) {
-        card.style.border = '1px solid rgba(255, 80, 80, .55)';
+    const syncCardState = (bonusTotal, penaltyTotal) => {
+      const hasBonus = Number(bonusTotal || 0) > 0;
+      const hasPenalty = Number(penaltyTotal || 0) > 0;
+
+      if (hasBonus && hasPenalty) {
+        card.style.border = '2px solid rgba(76, 125, 255, .65)';
+      } else if (hasPenalty) {
+        card.style.border = '2px solid rgba(255, 80, 80, .55)';
+      } else if (hasBonus) {
+        card.style.border = '2px solid rgba(242, 194, 0, .65)';
       } else {
         card.style.border = '';
       }
@@ -119,16 +142,20 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const recalc = () => {
       const monthlyAmount = Number(card.dataset.monthlyAmount || 0);
-      const penaltyTotal = Array.from(card.querySelectorAll('[data-penalty-amount]'))
+      const bonusTotal = Array.from(card.querySelectorAll('[data-bonus-rows] [data-amount-input]'))
+        .reduce((sum, input) => sum + Number(String(input.value || '').replace(',', '.') || 0), 0);
+      const penaltyTotal = Array.from(card.querySelectorAll('[data-penalty-rows] [data-amount-input]'))
         .reduce((sum, input) => sum + Number(String(input.value || '').replace(',', '.') || 0), 0);
 
-      const netAmount = monthlyAmount - penaltyTotal;
+      const netAmount = monthlyAmount + bonusTotal - penaltyTotal;
+      const bonusTotalEl = card.querySelector('[data-bonus-total]');
       const penaltyTotalEl = card.querySelector('[data-penalty-total]');
       const netAmountEl = card.querySelector('[data-net-amount]');
 
+      if (bonusTotalEl) bonusTotalEl.textContent = formatMoney(bonusTotal, currency);
       if (penaltyTotalEl) penaltyTotalEl.textContent = formatMoney(penaltyTotal, currency);
       if (netAmountEl) netAmountEl.textContent = formatMoney(netAmount, currency);
-      syncPenaltyState(penaltyTotal);
+      syncCardState(bonusTotal, penaltyTotal);
     };
 
     card.querySelector('[data-month-toggle]')?.addEventListener('click', function (e) {
@@ -139,22 +166,60 @@ document.addEventListener('DOMContentLoaded', function () {
       body.style.display = isClosed ? 'block' : 'none';
     });
 
-    card.querySelectorAll('[data-penalty-amount]').forEach(input => {
+    card.querySelectorAll('[data-amount-input]').forEach(input => {
       input.addEventListener('input', recalc);
+    });
+
+    card.querySelectorAll('[data-description-input]').forEach(textarea => {
+      autosizeTextarea(textarea);
+      textarea.addEventListener('input', function () {
+        autosizeTextarea(textarea);
+      });
+    });
+
+    card.querySelector('[data-add-bonus]')?.addEventListener('click', function () {
+      const rows = card.querySelector('[data-bonus-rows]');
+      if (!rows) return;
+      rows.insertAdjacentHTML('beforeend', adjustmentRowHtml({}, 'bonus'));
+      const newRow = rows.lastElementChild;
+      newRow?.querySelector('[data-amount-input]')?.addEventListener('input', recalc);
+      const newTextarea = newRow?.querySelector('[data-description-input]');
+      if (newTextarea) {
+        autosizeTextarea(newTextarea);
+        newTextarea.addEventListener('input', function () {
+          autosizeTextarea(newTextarea);
+        });
+      }
     });
 
     card.querySelector('[data-add-penalty]')?.addEventListener('click', function () {
       const rows = card.querySelector('[data-penalty-rows]');
       if (!rows) return;
-      rows.insertAdjacentHTML('beforeend', penaltyRowHtml());
+      rows.insertAdjacentHTML('beforeend', adjustmentRowHtml({}, 'penalty'));
       const newRow = rows.lastElementChild;
-      newRow?.querySelector('[data-penalty-amount]')?.addEventListener('input', recalc);
+      newRow?.querySelector('[data-amount-input]')?.addEventListener('input', recalc);
+      const newTextarea = newRow?.querySelector('[data-description-input]');
+      if (newTextarea) {
+        autosizeTextarea(newTextarea);
+        newTextarea.addEventListener('input', function () {
+          autosizeTextarea(newTextarea);
+        });
+      }
     });
 
     card.querySelector('[data-save-penalties]')?.addEventListener('click', async function () {
-      const rows = Array.from(card.querySelectorAll('.salary-penalty-row')).map(row => {
-        const amount = row.querySelector('[data-penalty-amount]')?.value ?? '';
-        const description = row.querySelector('[data-penalty-description]')?.value ?? '';
+      const bonuses = Array.from(card.querySelectorAll('[data-bonus-rows] .salary-penalty-row')).map(row => {
+        const amount = row.querySelector('[data-amount-input]')?.value ?? '';
+        const description = row.querySelector('[data-description-input]')?.value ?? '';
+        return {
+          amount: String(amount).trim().replace(',', '.'),
+          description: String(description).trim(),
+        };
+      });
+
+      const penalties = Array.from(card.querySelectorAll('[data-penalty-rows] .salary-penalty-row')).map(row => {
+        const amount = row.querySelector('[data-amount-input]')?.value ?? '';
+        const description = row.querySelector('[data-description-input]')?.value ?? '';
         return {
           amount: String(amount).trim().replace(',', '.'),
           description: String(description).trim(),
@@ -176,7 +241,8 @@ document.addEventListener('DOMContentLoaded', function () {
             staff_name: staffName,
             year,
             month: Number(card.dataset.month || 0),
-            penalties: rows,
+            bonuses,
+            penalties,
           })
         });
 
@@ -235,7 +301,15 @@ document.addEventListener('DOMContentLoaded', function () {
           class="card salary-month-card"
           data-month="${item.month}"
           data-monthly-amount="${item.monthly_amount}"
-          style="margin-bottom:12px; ${Number(item.penalty_total || 0) > 0 ? 'border:1px solid rgba(255, 80, 80, .55);' : ''}"
+          style="margin-bottom:12px; ${
+            Number(item.bonus_total || 0) > 0 && Number(item.penalty_total || 0) > 0
+              ? 'border:2px solid rgba(76, 125, 255, .65);'
+              : Number(item.penalty_total || 0) > 0
+                ? 'border:2px solid rgba(255, 80, 80, .55);'
+                : Number(item.bonus_total || 0) > 0
+                  ? 'border:2px solid rgba(242, 194, 0, .65);'
+                  : ''
+          }"
         >
           <div data-month-toggle style="display:flex; justify-content:space-between; gap:10px; align-items:center; cursor:pointer;">
             <div>
@@ -249,9 +323,24 @@ document.addEventListener('DOMContentLoaded', function () {
           </div>
 
           <div data-month-body style="display:none;">
-            <div style="margin-top:12px; font-size:12px; opacity:.72;">Штрафи</div>
+            <hr style="margin:12px 0; border:none; border-top:1px solid rgba(255,255,255,.08);">
+            <div style="margin-top:12px; font-size:12px; opacity:.72; color:yellow;">Премії</div>
+            <div data-bonus-rows>
+              ${(Array.isArray(item.bonuses) && item.bonuses.length ? item.bonuses : [{}]).map(entry => adjustmentRowHtml(entry, 'bonus')).join('')}
+            </div>
+
+            <div style="margin-top:10px; display:flex; justify-content:space-between; gap:10px; align-items:center;">
+              <div style="font-size:14px;">
+                Премій на суму: <span data-bonus-total style="font-weight:800;">${formatMoney(item.bonus_total || 0, currency)}</span>
+              </div>
+              <button type="button" class="btn" data-add-bonus style="margin-bottom:0;">+ Додати поле</button>
+            </div>
+
+            <hr style="margin:12px 0; border:none; border-top:1px solid rgba(255,255,255,.08);">
+
+            <div style="margin-top:12px; font-size:12px; opacity:.72; color:red;">Штрафи</div>
             <div data-penalty-rows>
-              ${(Array.isArray(item.penalties) && item.penalties.length ? item.penalties : [{}]).map(penaltyRowHtml).join('')}
+              ${(Array.isArray(item.penalties) && item.penalties.length ? item.penalties : [{}]).map(entry => adjustmentRowHtml(entry, 'penalty')).join('')}
             </div>
 
             <div style="margin-top:10px; display:flex; justify-content:space-between; gap:10px; align-items:center;">
@@ -262,7 +351,7 @@ document.addEventListener('DOMContentLoaded', function () {
             </div>
 
             <button type="button" class="btn primary" data-save-penalties style="width:100%; margin-top:10px; margin-bottom:0;">
-              Зберегти штрафи
+              Зберегти
             </button>
           </div>
         </div>

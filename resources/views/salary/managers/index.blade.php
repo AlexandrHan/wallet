@@ -11,16 +11,8 @@
     <div style="font-weight:800; font-size:18px; text-align:center;">
       📈 Зарплата відділу продажів
     </div>
-    <div style="font-size:13px; opacity:.7; text-align:center; margin-top:6px;">
-      Натисни, щоб повернутись до Зарплатні
-    </div>
-  </a>
 
-  <div class="card" style="margin-bottom:15px;">
-    <div style="font-size:14px; opacity:.85; text-align:center;">
-      Начальник торгового відділу, Менеджери, Діловод
-    </div>
-  </div>
+  </a>
 
   <div class="card" style="margin-bottom:15px;">
     <div style="font-weight:800; font-size:15px; margin-bottom:10px;">

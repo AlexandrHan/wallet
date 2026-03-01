@@ -9,6 +9,7 @@ class SalaryPenalty extends Model
     protected $fillable = [
         'staff_group',
         'staff_name',
+        'entry_type',
         'year',
         'month',
         'amount',

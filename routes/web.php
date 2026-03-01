@@ -79,6 +79,16 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
     Route::view('/salary/fixed/show', 'salary.fixed.show')
         ->middleware('only.owner')
         ->name('salary.fixed.show');
+    Route::get('/salary/foreman', function () {
+        $user = auth()->user();
+        if (!$user || $user->role !== 'worker' || $user->position !== 'foreman') {
+            abort(403);
+        }
+
+        return view('salary.foreman.show');
+    })->name('salary.foreman.show');
+    Route::view('/salary/my', 'salary.my')
+        ->name('salary.my');
 
 
     /*
@@ -137,6 +147,8 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         Route::post('/salary-rules', [SalaryRuleController::class, 'upsert'])->middleware('only.owner');
         Route::get('/salary/fixed-employee', [SalaryRuleController::class, 'fixedEmployeeData'])->middleware('only.owner');
         Route::post('/salary/fixed-employee/penalties', [SalaryRuleController::class, 'saveFixedEmployeePenalties'])->middleware('only.owner');
+        Route::get('/salary/foreman/my', [SalaryRuleController::class, 'myForemanFixedSalaryData']);
+        Route::get('/salary/my', [SalaryRuleController::class, 'mySalaryData']);
         Route::get('/salary/managers-data', [SalaryRuleController::class, 'managerPayoutData'])->middleware('only.owner');
         
         Route::post('/send-project-money', [\App\Http\Controllers\CashTransferController::class, 'sendProjectMoney']);
