@@ -101,10 +101,17 @@ html{ scrollbar-gutter: stable; }
 .tg-fab{
   width: 53px;
   height: 53px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 0;
   border-radius: 999px;
   color: rgba(233,238,246,.95);
   font-size: 22px;
   font-weight: 900;
+  text-decoration: none;
   cursor: pointer;
      /* border був двічі: залишаю фінальний (нижній) як у тебе */
   border:1px solid var(--stroke);
@@ -122,6 +129,18 @@ html{ scrollbar-gutter: stable; }
   box-shadow:
     inset 0 1px 1px rgba(255,255,255,.12),
     0 4px 14px rgba(0,0,0,.25);
+}
+
+.tg-fab-ico{
+  font-size: 18px;
+  line-height: 1;
+}
+
+.tg-fab-label{
+  font-size: 8px;
+  line-height: 1.1;
+  font-weight: 800;
+  color: rgba(233,238,246,.95);
 }
 
 .tg-fab-menu{
@@ -287,6 +306,22 @@ html{ scrollbar-gutter: stable; }
   gap: 10px;
 }
 
+.tg-acc--nested{
+  margin: 0;
+  border-radius: 16px;
+  background: rgba(255,255,255,.02);
+}
+
+.tg-acc--nested .tg-acc__title{
+  padding: 12px 12px;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.tg-acc--nested .tg-acc__body{
+  padding: 0 10px 10px;
+}
+
 /* щоб кнопки всередині виглядали як лінки */
 .tg-acc__body button.tg-menu__item{
   appearance: none;
@@ -317,6 +352,68 @@ html{ scrollbar-gutter: stable; }
 
 /* якщо десь було padding — прибери, бо воно ламає геометрію */
 .tg-fab{ padding: 0 !important; }
+
+@media (min-width: 900px){
+  .tg-menu{
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  .tg-menu:target{
+    display: flex;
+  }
+
+  .tg-menu__top,
+  .tg-menu__content,
+  .tg-menu__bottom{
+    width: min(560px, calc(100vw - 48px));
+    margin: 0 auto;
+    background:
+      linear-gradient(to bottom, rgba(255,255,255,.08), rgba(255,255,255,.02)),
+      rgba(12, 14, 18, .92);
+    border-left: 1px solid rgba(255,255,255,.12);
+    border-right: 1px solid rgba(255,255,255,.12);
+    box-shadow:
+      0 30px 80px rgba(0,0,0,.45),
+      inset 0 1px 0 rgba(255,255,255,.08);
+  }
+
+  .tg-menu__top{
+    border-top: 1px solid rgba(255,255,255,.12);
+    border-bottom: 1px solid rgba(255,255,255,.08);
+    border-radius: 22px 22px 0 0;
+    padding: 16px 18px 14px;
+  }
+
+  .tg-menu__content{
+    max-height: min(60vh, 680px);
+    padding: 16px 18px;
+    overflow: auto;
+  }
+
+  .tg-menu__bottom{
+    border-top: 1px solid rgba(255,255,255,.08);
+    border-bottom: 1px solid rgba(255,255,255,.12);
+    border-radius: 0 0 22px 22px;
+    padding: 14px 18px 18px;
+  }
+
+  .tg-menu__item{
+    min-height: 50px;
+  }
+
+  .tg-acc{
+    margin: 0 0 12px;
+    background: rgba(255,255,255,.04);
+  }
+
+  .tg-acc:last-child{
+    margin-bottom: 0;
+  }
+}
 
 /* щоб wrapper не стискав */
 .tg-fab-wrap{

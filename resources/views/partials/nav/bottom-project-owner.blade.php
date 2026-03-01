@@ -1,49 +1,34 @@
 @php
-  $path = trim(request()->path(), '/'); // '' для /
-  $is = function(string $p): bool {
-    $p = trim($p, '/');
-    return request()->is($p) || request()->is($p.'/*');
-  };
-
-  // ✅ активні стани
-  $activeWallet = ($path === '');
-  $activeSales  = $is('finance');               // /finance/*
-  $activeDebts  = $is('stock/supplier-cash');   // /stock/supplier-cash/*
-  $activeStock  = $is('stock') && !$activeDebts; // /stock/* крім боргів
-
-  // ✅ вкладки (ОДИН список на весь застосунок)
-  $tabs = [
-    ['href'=>'/',                    'icon'=>'💼', 'label'=>'Гаманець', 'active'=>$activeWallet],
-    ['href'=>'/finance',             'icon'=>'📈', 'label'=>'Продажі',  'active'=>$activeSales],
-    ['href'=>'/stock/supplier-cash', 'icon'=>'💸', 'label'=>'Борги',    'active'=>$activeDebts],
-    ['href'=>'/stock',               'icon'=>'📦', 'label'=>'Склад',    'active'=>$activeStock],
-  ];
+  $activeProjects = request()->is('projects');
+  $activeSalary = request()->is('salary') || request()->is('salary/*');
 @endphp
 
+<nav class="tg-bottom-nav tg-bottom-nav--project-owner">
+  <a class="tg-fab tg-project-owner-fab" href="/" aria-label="Гаманець">
+    <span class="tg-project-owner-fab__icon">💼</span>
+    <span class="tg-project-owner-fab__label">Гаманець</span>
+  </a>
 
-
-
-
-
-<nav class="tg-bottom-nav">
-  <div class="tg-bottom-left">
-    @foreach($tabs as $t)
-      <a class="tg-tab {{ $t['active'] ? 'is-active' : '' }}" href="{{ $t['href'] }}">
-        {!! $t['icon'] !!}<span>{{ $t['label'] }}</span>
-      </a>
-    @endforeach
+  <div class="tg-bottom-left tg-bottom-left--project-owner">
+    <a class="tg-tab {{ $activeProjects ? 'is-active' : '' }}" href="/projects">
+      🏗️<span>Проекти</span>
+    </a>
+    <a class="tg-tab {{ $activeSalary ? 'is-active' : '' }}" href="/salary">
+      💰<span>З/П</span>
+    </a>
+    <button type="button" class="tg-tab tg-tab--static">
+      📊<span>Графіки</span>
+    </button>
   </div>
 
   <div class="tg-fab-wrap">
-    {{-- Відкриття БЕЗ JS: працює навіть коли JS-кліки глючать --}}
-    <a class="tg-fab" href="#tgOwnerMenu" aria-label="Меню">
-      <span class="tg-fab-ico">☰</span>
-      <span class="tg-fab-label">Меню</span>
+    <a class="tg-fab tg-project-owner-fab" href="#tgOwnerMenu" aria-label="Меню">
+      <span class="tg-project-owner-fab__icon">☰</span>
+      <span class="tg-project-owner-fab__label">Меню</span>
     </a>
   </div>
 </nav>
 
-{{-- FULLSCREEN MENU --}}
 <div id="tgOwnerMenu" class="tg-menu">
   <div class="tg-menu__top">
     <div class="tg-menu__title">Меню</div>
@@ -51,14 +36,11 @@
   </div>
 
   <div class="tg-menu__content">
-    <details class="tg-acc" >
+    <details class="tg-acc">
       <summary class="tg-acc__title">💳 Гаманець</summary>
       <div class="tg-acc__body">
         <a class="tg-menu__item" href="/">🏦 Мій гаманець</a>
-        @if(auth()->user()->role === 'owner')
-          <button type="button" class="tg-menu__item js-staff-cash">👥 КЕШ співробітників</button>
-        @endif
-
+        <button type="button" class="tg-menu__item js-staff-cash">👥 КЕШ співробітників</button>
         <button type="button" class="tg-menu__item js-show-rates">💱 Обмінник</button>
       </div>
     </details>
@@ -87,7 +69,7 @@
       </div>
     </details>
 
-    <details class="tg-acc">
+    <details class="tg-acc" open>
       <summary class="tg-acc__title">🏗 Будівництво</summary>
       <div class="tg-acc__body">
         <a class="tg-menu__item" href="/projects">🏗 Проекти (активні)</a>
@@ -95,7 +77,7 @@
       </div>
     </details>
 
-    <details class="tg-acc">
+    <details class="tg-acc" open>
       <summary class="tg-acc__title">💰 Зарплатня</summary>
       <div class="tg-acc__body">
         <a class="tg-menu__item" href="/salary">💰 Нарахування зарплатні</a>
@@ -110,7 +92,6 @@
         <a class="tg-menu__item" href="/profile">👤 Профіль</a>
       </div>
     </details>
-
   </div>
 
   <div class="tg-menu__bottom">
@@ -120,29 +101,6 @@
     </form>
   </div>
 </div>
-
-<script>
-(function(){
-  const btn  = document.getElementById('tgFabBtn');
-  const menu = document.getElementById('tgFabMenu');
-  if(!btn || !menu) return;
-
-  const close = () => { menu.classList.add('hidden'); btn.setAttribute('aria-expanded','false'); };
-  const toggle = (e) => {
-    e && e.stopPropagation();
-    menu.classList.toggle('hidden');
-    btn.setAttribute('aria-expanded', menu.classList.contains('hidden') ? 'false' : 'true');
-  };
-
-  btn.addEventListener('click', toggle);
-  document.addEventListener('click', (e) => {
-    if(menu.classList.contains('hidden')) return;
-    if(menu.contains(e.target) || btn.contains(e.target)) return;
-    close();
-  });
-  document.addEventListener('keydown', (e) => { if(e.key === 'Escape') close(); });
-})();
-</script>
 
 <script>
 document.addEventListener('click', (e) => {

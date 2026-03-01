@@ -32,7 +32,10 @@
       </div>
 
       <div class="tg-fab-wrap">
-        <button type="button" class="tg-fab" id="tgFabBtn" aria-expanded="false">☰</button>
+        <button type="button" class="tg-fab" id="tgFabBtn" aria-expanded="false">
+          <span class="tg-fab-ico">☰</span>
+          <span class="tg-fab-label">Меню</span>
+        </button>
 
         <div class="tg-fab-menu hidden" id="tgFabMenu">
           <a class="tg-fab-item" href="/profile">👤 Профіль</a>
@@ -40,7 +43,7 @@
 
           <form method="POST" action="{{ route('logout') }}">
             @csrf
-            <button type="submit" class="tg-fab-item danger">🚪 Вийти</button>
+            <button type="submit" class="tg-fab-item danger">🚪 Вийти з облікового запису</button>
           </form>
         </div>
       </div>

@@ -26,6 +26,7 @@
     {{-- Відкриття БЕЗ JS: працює навіть коли JS-кліки глючать --}}
       <a class="tg-fab" href="#tgOwnerMenu" aria-label="Меню">
         <span class="tg-fab-ico">☰</span>
+        <span class="tg-fab-label">Меню</span>
       </a>
     </div>
   
@@ -60,7 +61,7 @@
   <div class="tg-menu__bottom">
     <form method="POST" action="{{ route('logout') }}">
       @csrf
-      <button type="submit" class="tg-menu__item danger">🚪 Вийти</button>
+      <button type="submit" class="tg-menu__item danger">🚪 Вийти з облікового запису</button>
     </form>
   </div>
 </div>

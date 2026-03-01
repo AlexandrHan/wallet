@@ -11,6 +11,7 @@ use App\Http\Controllers\WalletController;
 use App\Http\Controllers\ReclamationController;
 use App\Http\Controllers\FemDebtController;
 use App\Http\Controllers\CashTransferController;
+use App\Http\Controllers\SalaryRuleController;
 
 
 use App\Models\BankTransactionRaw;
@@ -69,6 +70,9 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
     Route::delete('/users/manage/{user}', [UserManagementController::class, 'destroy'])
         ->middleware('only.owner')
         ->name('users.destroy');
+    Route::get('/salary/settings', [SalaryRuleController::class, 'settings'])
+        ->middleware('only.owner')
+        ->name('salary.settings');
 
 
     /*
@@ -121,6 +125,9 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         Route::get('/construction-staff-options', [\App\Http\Controllers\SalesProjectController::class, 'constructionStaffOptions']);
         Route::post('/construction-staff-options', [\App\Http\Controllers\SalesProjectController::class, 'addConstructionStaffOption']);
         Route::delete('/construction-staff-options/{id}', [\App\Http\Controllers\SalesProjectController::class, 'deleteConstructionStaffOption']);
+        Route::get('/salary-rules', [SalaryRuleController::class, 'index']);
+        Route::get('/salary-rules/settings-data', [SalaryRuleController::class, 'settingsData'])->middleware('only.owner');
+        Route::post('/salary-rules', [SalaryRuleController::class, 'upsert'])->middleware('only.owner');
         
         Route::post('/send-project-money', [\App\Http\Controllers\CashTransferController::class, 'sendProjectMoney']);
 
@@ -1236,6 +1243,26 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
     Route::middleware(['auth'])->get('/projects', function () {
         return view('projects.project');
     });
+
+    Route::get('/salary', function () {
+        return view('salary.index');
+    })->middleware(['auth', 'only.owner']);
+
+    Route::get('/salary/electricians', function () {
+        return view('salary.electricians.index');
+    })->middleware(['auth', 'only.owner']);
+
+    Route::get('/salary/electricians/show', function () {
+        return view('salary.electricians.savenkov');
+    })->middleware(['auth', 'only.owner']);
+
+    Route::get('/salary/installers', function () {
+        return view('salary.installers.index');
+    })->middleware(['auth', 'only.owner']);
+
+    Route::get('/salary/installers/show', function () {
+        return view('salary.installers.show');
+    })->middleware(['auth', 'only.owner']);
 
 
 });

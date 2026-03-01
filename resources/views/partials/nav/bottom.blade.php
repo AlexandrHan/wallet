@@ -3,7 +3,10 @@
     $user = auth()->user();
   @endphp
 
-  @if($user->role === 'owner')
+  @if($user->role === 'owner' && (request()->is('projects') || request()->is('projects/*') || request()->is('salary') || request()->is('salary/*')))
+    @include('partials.nav.bottom-project-owner')
+
+  @elseif($user->role === 'owner')
     @include('partials.nav.bottom-owner')
 
   @elseif($user->role === 'accountant')
@@ -29,3 +32,16 @@
     @include('partials.nav.bottom-ntv')
   @endif
 @endauth
+
+<script>
+document.addEventListener('click', function (e) {
+  const target = e.target instanceof Element ? e.target : null;
+  if (!target) return;
+
+  const menu = target.closest('.tg-menu');
+  if (!menu) return;
+  if (target !== menu) return;
+
+  window.location.hash = '';
+});
+</script>
