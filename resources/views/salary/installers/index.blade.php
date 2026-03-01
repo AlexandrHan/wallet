@@ -8,9 +8,9 @@
 @section('content')
 <main class="">
   <div class="card" style="margin-bottom:15px;">
-    <div style="font-weight:800; font-size:18px; text-align:center;">
+    <a href="/salary" style="display:block; font-weight:800; font-size:18px; text-align:center; text-decoration:none; color:inherit;">
       🛠 З/П монтажникам
-    </div>
+    </a>
   </div>
 
   <div id="salaryInstallersList"></div>
