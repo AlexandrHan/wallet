@@ -208,8 +208,8 @@
 
         const ownerActors = ['hlushchenko', 'kolisnyk'];
         const roleLabels = {
-          accountant: 'Бухгалтер',
-          foreman: 'Прораб',
+          accountant: 'Solovey',
+          foreman: 'Onipko',
           ntv: 'НТВ',
           serviceman_1: 'Савенков',
           serviceman_2: 'Малінін',

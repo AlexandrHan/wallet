@@ -1,6 +1,4 @@
-<!-- Аватарка в шапке -->
-<div class="avatar-placeholder">
-       @php
+@php
   $u = auth()->user();
 
   $avatars = [
@@ -21,8 +19,14 @@
 @endphp
 
 <div class="avatar-placeholder">
-  <img src="{{ $avatarSrc }}" alt="Avatar" class="avatar-image">
-</div>
+  <div class="tg-top-avatar-mobile">
+    <img src="{{ $avatarSrc }}" alt="Avatar" class="avatar-image">
+  </div>
+
+  <a class="tg-fab tg-top-menu-trigger" href="#tgOwnerMenu" aria-label="Меню">
+    <span class="tg-fab-ico">☰</span>
+    <span class="tg-fab-label">Меню</span>
+  </a>
 </div>
 
 

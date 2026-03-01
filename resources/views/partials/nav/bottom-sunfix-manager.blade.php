@@ -51,7 +51,7 @@
 
         <a class="tg-menu__item" style="margin-bottom:15px;" href="/deliveries">🚚 Поставки</a>
 
-        <a class="tg-menu__item" style="margin-bottom:15px;" href="/stock">📦 Сервіс</a>
+        <a class="tg-menu__item" style="margin-bottom:15px;" href="/reclamations">🛠️ Сервіс</a>
 
         <a class="tg-menu__item" href="/profile">👤 Профіль</a>
 

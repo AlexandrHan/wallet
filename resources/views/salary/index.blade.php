@@ -51,10 +51,10 @@
 
   <a href="/salary" id="salaryAccountantCard" class="card" style="margin-bottom:12px; display:block; text-decoration:none; color:inherit;">
     <div style="font-weight:800; font-size:16px; margin-bottom:6px;">
-      🧾 Зарплата Бухгалтеру
+      🧾 Зарплата Solovey
     </div>
     <div style="font-size:14px; opacity:.75;">
-      Помісячна зарплата бухгалтера.
+      Помісячна зарплата Solovey.
     </div>
     <div id="salarySummaryAccountant" style="margin-top:10px; font-weight:800; font-size:15px;">
       Завантаження...
@@ -63,10 +63,10 @@
 
   <a href="/salary" id="salaryForemanCard" class="card" style="display:block; text-decoration:none; color:inherit;">
     <div style="font-weight:800; font-size:16px; margin-bottom:6px;">
-      🏗 Зарплата прорабу
+      🏗 Зарплата Onipko
     </div>
     <div style="font-size:14px; opacity:.75;">
-      Помісячна зарплата прораба.
+      Помісячна зарплата Onipko.
     </div>
     <div id="salarySummaryForeman" style="margin-top:10px; font-weight:800; font-size:15px;">
       Завантаження...

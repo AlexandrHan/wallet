@@ -8,6 +8,22 @@
   box-shadow: 0 10px 30px rgba(0,0,0,.25);
 }
 
+.avatar-placeholder{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tg-top-avatar-mobile{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tg-top-menu-trigger{
+  display: none;
+}
+
 
 /* щоб на десктопі не було "стрибака" через появу скролбару */
 html{ scrollbar-gutter: stable; }
@@ -182,7 +198,15 @@ html{ scrollbar-gutter: stable; }
 
 @media (min-width: 900px){
   .tg-bottom-nav{
-    transform: translateX(-50%) translateY(0);
+    display: none;
+  }
+
+  .tg-top-avatar-mobile{
+    display: none;
+  }
+
+  .tg-top-menu-trigger{
+    display: inline-flex;
   }
 }
 

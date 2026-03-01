@@ -83,6 +83,10 @@
 
         <a class="tg-menu__item" style="margin-bottom:15px;" href="/stock">📦 Склад SunFix</a>
 
+        <a class="tg-menu__item" style="margin-bottom:15px;" href="/deliveries">🚚 Поставки</a>
+
+        <a class="tg-menu__item" style="margin-bottom:15px;" href="/stock/supplier-cash">💸 Борги постачальнику</a>
+
         <a class="tg-menu__item" style="margin-bottom:15px;" href="/salary/my">💰 Зарплатня</a>
 
         <a class="tg-menu__item" href="/profile">👤 Профіль</a>

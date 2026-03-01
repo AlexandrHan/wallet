@@ -2029,8 +2029,8 @@ state.holdingStatsFilter = 'all';
 const OWNER_LABELS = {
   kolisnyk: 'Колісник',
   hlushchenko: 'Глущенко',
-  accountant: 'Бухгалтер',
-  foreman: 'Прораб',
+  accountant: 'Solovey',
+  foreman: 'Onipko',
   serviceman_1: 'Savenkov',
   serviceman_2: 'Malinin',
   shared: 'Спільне',
@@ -2959,8 +2959,8 @@ window.openStaffCash = function () {
   });
 
   const ROLE_LABELS = {
-    accountant: 'Бухгалтер',
-    foreman: 'Прораб',
+    accountant: 'Solovey',
+    foreman: 'Onipko',
     ntv: 'НТВ',
     serviceman_1: 'Савенков',
     serviceman_2: 'Малінін',
@@ -3153,4 +3153,3 @@ function deleteFeedback() {
   playSound(SND.alarm, 1.0);
   vibrate([60, 40, 60, 40, 120]); // “сирена”
 }
-

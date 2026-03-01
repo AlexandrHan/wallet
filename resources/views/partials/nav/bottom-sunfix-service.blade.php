@@ -49,6 +49,8 @@
 
         <a class="tg-menu__item" style="margin-bottom:15px;" href="/stock">📦 Сервіс</a>
 
+        <a class="tg-menu__item" style="margin-bottom:15px;" href="{{ route('reclamations.new') }}">📦 Створити</a>
+
         <a class="tg-menu__item" href="/profile">👤 Профіль</a>
 
 
