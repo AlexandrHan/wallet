@@ -32,8 +32,8 @@ document.addEventListener('DOMContentLoaded', async function () {
     electrician: 'Електрики',
     installation_team: 'Монтажні бригади',
     manager: 'Менеджери',
-    accountant: 'Solovey',
-    foreman: 'Onipko',
+    accountant: 'Соловей',
+    foreman: 'Оніпко',
   };
 
   function normalizeNumber(value) {

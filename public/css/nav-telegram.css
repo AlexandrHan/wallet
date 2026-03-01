@@ -20,7 +20,7 @@
   justify-content: center;
 }
 
-.tg-top-menu-trigger{
+.tg-fab.tg-top-menu-trigger{
   display: none;
 }
 
@@ -205,7 +205,7 @@ html{ scrollbar-gutter: stable; }
     display: none;
   }
 
-  .tg-top-menu-trigger{
+  .tg-fab.tg-top-menu-trigger{
     display: inline-flex;
   }
 }

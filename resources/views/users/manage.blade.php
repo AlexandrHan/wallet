@@ -42,7 +42,7 @@
         <select class="btn js-user-role" style="width:100%;" name="role" required>
           @foreach([
             'owner' => 'Owner',
-            'accountant' => 'Solovey',
+            'accountant' => 'Соловей',
             'ntv' => 'НТВ',
             'sunfix_manager' => 'SunFix Manager',
             'sunfix' => 'SunFix',
@@ -62,7 +62,7 @@
         <div style="font-size:12px; opacity:.7; margin-bottom:4px;">Позиція (для worker)</div>
         <select class="btn js-user-position" style="width:100%;" name="position">
           <option value="">Без позиції</option>
-          <option value="foreman" @selected(old('position') === 'foreman')>Onipko</option>
+          <option value="foreman" @selected(old('position') === 'foreman')>Оніпко</option>
           <option value="electrician" @selected(old('position') === 'electrician')>Електрик</option>
           <option value="serviceman_1" @selected(old('position') === 'serviceman_1')>Сервіс 1</option>
           <option value="serviceman_2" @selected(old('position') === 'serviceman_2')>Сервіс 2</option>
@@ -111,7 +111,7 @@
             <select class="btn js-user-role" style="width:100%;" name="role" required>
               @foreach([
                 'owner' => 'Owner',
-                'accountant' => 'Solovey',
+                'accountant' => 'Соловей',
                 'ntv' => 'НТВ',
                 'sunfix_manager' => 'SunFix Manager',
                 'sunfix' => 'SunFix',
@@ -131,7 +131,7 @@
             <div style="font-size:12px; opacity:.7; margin-bottom:4px;">Позиція (для worker)</div>
             <select class="btn js-user-position" style="width:100%;" name="position">
               <option value="">Без позиції</option>
-              <option value="foreman" @selected($user->position === 'foreman')>Onipko</option>
+              <option value="foreman" @selected($user->position === 'foreman')>Оніпко</option>
               <option value="electrician" @selected($user->position === 'electrician')>Електрик</option>
               <option value="serviceman_1" @selected($user->position === 'serviceman_1')>Сервіс 1</option>
               <option value="serviceman_2" @selected($user->position === 'serviceman_2')>Сервіс 2</option>

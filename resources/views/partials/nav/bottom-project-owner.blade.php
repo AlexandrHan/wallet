@@ -49,7 +49,6 @@
       <summary class="tg-acc__title">📈 Продажі</summary>
       <div class="tg-acc__body">
         <a class="tg-menu__item" href="/finance">🧾 Сторінка продажів</a>
-        <a class="tg-menu__item" href="/sales">📋 Проєкти</a>
       </div>
     </details>
 
