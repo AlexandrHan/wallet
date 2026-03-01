@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\SalaryPenalty;
 use App\Models\SalaryRule;
+use App\Models\SalesProject;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -127,7 +129,7 @@ class SalaryRuleController extends Controller
     private function subjectOptions(): array
     {
         $managerNames = User::query()
-            ->whereIn('role', ['ntv', 'sunfix_manager'])
+            ->where('role', 'ntv')
             ->orderBy('name')
             ->pluck('name')
             ->map(fn ($name) => trim((string) $name))
@@ -161,6 +163,11 @@ class SalaryRuleController extends Controller
             'accountant' => $accountantNames,
             'foreman' => $foremanNames,
         ];
+    }
+
+    private function supportsSalaryPenalties(): bool
+    {
+        return Schema::hasTable('salary_penalties');
     }
 
     public function settings()
@@ -297,5 +304,253 @@ class SalaryRuleController extends Controller
         );
 
         return response()->json(['ok' => true]);
+    }
+
+    public function managerPayoutData(Request $request)
+    {
+        $data = $request->validate([
+            'year' => 'required|integer|min:2026|max:2100',
+            'month' => 'required|integer|min:1|max:12',
+        ]);
+
+        $year = (int) $data['year'];
+        $month = (int) $data['month'];
+
+        $managers = User::query()
+            ->where('role', 'ntv')
+            ->orderBy('name')
+            ->get(['id', 'name', 'email']);
+
+        $managerIds = $managers->pluck('id')->all();
+
+        $acceptedTransfers = DB::table('cash_transfers')
+            ->select(
+                'project_id',
+                DB::raw('SUM(usd_amount) as paid_amount'),
+                DB::raw('MAX(created_at) as paid_at')
+            )
+            ->where('status', 'accepted')
+            ->whereNotNull('project_id')
+            ->groupBy('project_id')
+            ->get()
+            ->keyBy('project_id');
+
+        $projects = SalesProject::query()
+            ->whereIn('created_by', $managerIds ?: [0])
+            ->orderByDesc('id')
+            ->get();
+
+        $projectsByManager = [];
+
+        foreach ($projects as $project) {
+            $transferMeta = $acceptedTransfers->get($project->id);
+            if (!$transferMeta) {
+                continue;
+            }
+
+            $paidAmount = round((float) ($transferMeta->paid_amount ?? 0), 2);
+            if ($paidAmount + 0.0001 < (float) $project->total_amount) {
+                continue;
+            }
+
+            $paidAt = $transferMeta->paid_at ? \Carbon\Carbon::parse($transferMeta->paid_at) : null;
+            if (!$paidAt || (int) $paidAt->year !== $year || (int) $paidAt->month !== $month) {
+                continue;
+            }
+
+            $managerId = (int) $project->created_by;
+            $currency = (string) $project->currency;
+            $commission = round((float) $project->total_amount * 0.01, 2);
+
+            if (!isset($projectsByManager[$managerId])) {
+                $projectsByManager[$managerId] = [
+                    'totals_by_currency' => [],
+                    'projects' => [],
+                ];
+            }
+
+            if (!isset($projectsByManager[$managerId]['totals_by_currency'][$currency])) {
+                $projectsByManager[$managerId]['totals_by_currency'][$currency] = 0.0;
+            }
+
+            $projectsByManager[$managerId]['totals_by_currency'][$currency] += $commission;
+            $projectsByManager[$managerId]['projects'][] = [
+                'id' => $project->id,
+                'client_name' => $project->client_name,
+                'project_amount' => (float) $project->total_amount,
+                'currency' => $currency,
+                'commission' => $commission,
+                'paid_at' => $paidAt->format('d.m.Y'),
+            ];
+        }
+
+        $result = $managers->map(function ($manager) use ($projectsByManager) {
+            $entry = $projectsByManager[$manager->id] ?? [
+                'totals_by_currency' => [],
+                'projects' => [],
+            ];
+
+            ksort($entry['totals_by_currency']);
+
+            return [
+                'id' => (int) $manager->id,
+                'name' => $manager->name ?: ($manager->email ?: ('Менеджер #' . $manager->id)),
+                'totals_by_currency' => collect($entry['totals_by_currency'])
+                    ->map(fn ($amount, $currency) => [
+                        'currency' => $currency,
+                        'amount' => round((float) $amount, 2),
+                    ])
+                    ->values(),
+                'projects' => collect($entry['projects'])->values(),
+            ];
+        })->values();
+
+        return response()->json([
+            'year' => $year,
+            'month' => $month,
+            'managers' => $result,
+        ]);
+    }
+
+    public function fixedEmployeeData(Request $request)
+    {
+        $data = $request->validate([
+            'staff_group' => 'required|in:electrician,installation_team,manager,accountant,foreman',
+            'staff_name' => 'required|string|max:255',
+            'year' => 'required|integer|min:2026|max:2100',
+        ]);
+
+        $staffGroup = (string) $data['staff_group'];
+        $staffName = trim((string) $data['staff_name']);
+        $year = (int) $data['year'];
+
+        $rule = Schema::hasTable('salary_rules')
+            ? SalaryRule::query()
+                ->where('staff_group', $staffGroup)
+                ->where('staff_name', $staffName)
+                ->first()
+            : null;
+
+        $monthlyAmount = round((float) ($rule?->fixed_amount ?? 0), 2);
+        $currency = (string) ($rule?->currency ?? 'UAH');
+        $mode = (string) ($rule?->mode ?? 'fixed');
+
+        $penaltiesByMonth = collect();
+        if ($this->supportsSalaryPenalties()) {
+            $penaltiesByMonth = SalaryPenalty::query()
+                ->where('staff_group', $staffGroup)
+                ->where('staff_name', $staffName)
+                ->where('year', $year)
+                ->orderBy('month')
+                ->orderBy('sort_order')
+                ->get()
+                ->groupBy('month');
+        }
+
+        $months = collect(range(1, 12))->map(function (int $month) use ($penaltiesByMonth, $monthlyAmount) {
+            $penalties = collect($penaltiesByMonth->get($month, []))
+                ->map(function ($row) {
+                    return [
+                        'id' => (int) $row->id,
+                        'amount' => round((float) $row->amount, 2),
+                        'description' => (string) ($row->description ?? ''),
+                    ];
+                })
+                ->values();
+
+            $penaltyTotal = round((float) $penalties->sum('amount'), 2);
+
+            return [
+                'month' => $month,
+                'monthly_amount' => $monthlyAmount,
+                'penalty_total' => $penaltyTotal,
+                'net_amount' => round($monthlyAmount - $penaltyTotal, 2),
+                'penalties' => $penalties,
+            ];
+        })->values();
+
+        return response()->json([
+            'staff_group' => $staffGroup,
+            'staff_name' => $staffName,
+            'year' => $year,
+            'mode' => $mode,
+            'currency' => $currency,
+            'monthly_amount' => $monthlyAmount,
+            'months' => $months,
+        ]);
+    }
+
+    public function saveFixedEmployeePenalties(Request $request)
+    {
+        if (!$this->supportsSalaryPenalties()) {
+            return response()->json(['error' => 'Таблиця штрафів ще не створена. Запустіть міграції.'], 422);
+        }
+
+        $data = $request->validate([
+            'staff_group' => 'required|in:electrician,installation_team,manager,accountant,foreman',
+            'staff_name' => 'required|string|max:255',
+            'year' => 'required|integer|min:2026|max:2100',
+            'month' => 'required|integer|min:1|max:12',
+            'penalties' => 'array',
+            'penalties.*.amount' => 'nullable|numeric|min:0',
+            'penalties.*.description' => 'nullable|string|max:255',
+        ]);
+
+        $staffGroup = (string) $data['staff_group'];
+        $staffName = trim((string) $data['staff_name']);
+        $year = (int) $data['year'];
+        $month = (int) $data['month'];
+
+        $rows = collect($data['penalties'] ?? [])
+            ->map(function ($item, $index) {
+                $amount = round((float) ($item['amount'] ?? 0), 2);
+                $description = trim((string) ($item['description'] ?? ''));
+
+                return [
+                    'amount' => $amount,
+                    'description' => $description,
+                    'sort_order' => $index,
+                ];
+            })
+            ->filter(function ($item) {
+                return $item['amount'] > 0 || $item['description'] !== '';
+            })
+            ->values();
+
+        DB::transaction(function () use ($staffGroup, $staffName, $year, $month, $rows) {
+            SalaryPenalty::query()
+                ->where('staff_group', $staffGroup)
+                ->where('staff_name', $staffName)
+                ->where('year', $year)
+                ->where('month', $month)
+                ->delete();
+
+            if ($rows->isEmpty()) {
+                return;
+            }
+
+            $now = now();
+            SalaryPenalty::insert($rows->map(function ($row) use ($staffGroup, $staffName, $year, $month, $now) {
+                return [
+                    'staff_group' => $staffGroup,
+                    'staff_name' => $staffName,
+                    'year' => $year,
+                    'month' => $month,
+                    'amount' => $row['amount'],
+                    'description' => $row['description'] !== '' ? $row['description'] : null,
+                    'sort_order' => $row['sort_order'],
+                    'created_by' => auth()->id(),
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+            })->all());
+        });
+
+        $penaltyTotal = round((float) $rows->sum('amount'), 2);
+
+        return response()->json([
+            'ok' => true,
+            'penalty_total' => $penaltyTotal,
+        ]);
     }
 }

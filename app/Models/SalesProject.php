@@ -13,6 +13,7 @@ class SalesProject extends Model
         'remaining_amount',
         'currency',
         'created_by',
+        'lead_manager_user_id',
         'status',
         'telegram_group_link',
         'geo_location_link',

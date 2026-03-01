@@ -85,7 +85,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         </select>
 
         <div data-fixed-block style="display:${mode === 'fixed' ? 'block' : 'none'};">
-          <div class="project-field-label">Сума ставки</div>
+          <div class="project-field-label">Помісячна зарплата</div>
           <input class="btn" type="number" step="0.01" data-field="fixed_amount" value="${esc(fixedAmount)}" style="width:100%; margin-bottom:10px;">
         </div>
 

@@ -1,3 +1,31 @@
+@php
+  $leadManagers = \App\Models\User::query()
+    ->where('role', 'ntv')
+    ->orderBy('name')
+    ->get(['id', 'name', 'email', 'actor'])
+    ->map(function ($user) {
+      $label = trim((string) ($user->name ?? ''));
+
+      if ($label === '') {
+        $label = trim((string) ($user->actor ?? ''));
+      }
+
+      if ($label === '') {
+        $label = trim((string) ($user->email ?? ''));
+      }
+
+      if ($label === '') {
+        $label = 'НТВ #' . $user->id;
+      }
+
+      return [
+        'id' => (int) $user->id,
+        'label' => $label,
+      ];
+    })
+    ->values();
+@endphp
+
 @extends('layouts.app')
 
 @push('styles')
@@ -72,6 +100,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   const AUTH_USER = @json(auth()->user());
   const IS_OWNER = AUTH_USER && AUTH_USER.role === 'owner';
+  const LEAD_MANAGER_OPTIONS = @json($leadManagers);
 
   const formatMoney = (value, currency) => {
     const symbols = { UAH: '₴', USD: '$', EUR: '€' };
@@ -209,6 +238,10 @@ document.addEventListener('DOMContentLoaded', function () {
             </div>
           </div>
 
+          <div style="margin-top:4px; font-size:12px; opacity:.72;">
+            Менеджер: ${p.manager_name || '—'}
+          </div>
+
           <div style="margin-top:5px; font-weight:600; color:${debt > 0 ? '#f20000' : '#3bc97f'};">
             Борг: ${formatMoney(debt, p.currency)}
           </div>
@@ -216,6 +249,21 @@ document.addEventListener('DOMContentLoaded', function () {
           <div class="project-details" style="display:none; margin-top:15px; border-top:1px solid #ffffff; padding-top:10px;">
 
             <div style="opacity:.7;">Створено: ${p.created_at}</div>
+            <div style="margin-top:10px;">
+              <div style="font-size:12px; opacity:.7; margin-bottom:6px;">Ведучий менеджер</div>
+              <select
+                class="btn lead-manager-select"
+                data-project-id="${p.id}"
+                style="width:100%; margin-bottom:0;"
+              >
+                <option value="">Не вказано</option>
+                ${LEAD_MANAGER_OPTIONS.map(option => `
+                  <option value="${option.id}" ${Number(p.lead_manager_user_id || 0) === Number(option.id) ? 'selected' : ''}>
+                    ${option.label}
+                  </option>
+                `).join('')}
+              </select>
+            </div>
 
             <div style="margin-top:8px;">
               Оплачено: ${formatMoney(p.paid_amount, p.currency)}
@@ -442,6 +490,41 @@ document.addEventListener('click', function (e) {
 document.getElementById('closeAdvanceBtn').onclick = () => {
   advanceModal.style.display = 'none';
 };
+
+document.addEventListener('change', function (e) {
+  const target = e.target instanceof Element ? e.target : null;
+  const select = target ? target.closest('.lead-manager-select') : null;
+  if (!select) return;
+
+  const projectId = select.dataset.projectId;
+  const leadManagerUserId = select.value ? Number(select.value) : null;
+
+  fetch(`/api/sales-projects/${projectId}/lead-manager`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+    },
+    body: JSON.stringify({
+      lead_manager_user_id: leadManagerUserId
+    })
+  })
+  .then(async (r) => {
+    const payload = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      throw new Error(payload.error || 'Не вдалося зберегти ведучого менеджера');
+    }
+    return payload;
+  })
+  .then(() => {
+    localStorage.setItem('finance_open_project_id', String(projectId));
+    window.refreshSalesProjects?.();
+  })
+  .catch((err) => {
+    alert(err.message || 'Помилка');
+    window.refreshSalesProjects?.();
+  });
+});
 
 
 // ===== Прямий аванс в гаманець власника аванс =====

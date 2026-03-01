@@ -235,6 +235,27 @@ class SalesProjectController extends Controller
 
     public function index()
     {
+        $userNames = DB::table('users')
+            ->select('id', 'name', 'email', 'actor')
+            ->get()
+            ->mapWithKeys(function ($user) {
+                $label = trim((string) ($user->name ?? ''));
+
+                if ($label === '') {
+                    $label = trim((string) ($user->actor ?? ''));
+                }
+
+                if ($label === '') {
+                    $label = trim((string) ($user->email ?? ''));
+                }
+
+                if ($label === '') {
+                    $label = 'Користувач #' . $user->id;
+                }
+
+                return [(int) $user->id => $label];
+            });
+
         $projects = SalesProject::orderByDesc('id')->get()->map(function ($project) {
 
             $transfers = CashTransfer::where('project_id', $project->id)
@@ -284,6 +305,8 @@ class SalesProjectController extends Controller
             return [
                 'id' => $project->id,
                 'client_name' => $project->client_name,
+                'created_by' => (int) $project->created_by,
+                'lead_manager_user_id' => $project->lead_manager_user_id ? (int) $project->lead_manager_user_id : null,
                 'total_amount' => (float)$project->total_amount,
                 'paid_amount' => $paid,
                 'pending_amount' => $pending,
@@ -350,9 +373,59 @@ class SalesProjectController extends Controller
                     ];
                 })->values(),
             ];
+        })->map(function ($project) use ($userNames) {
+            $managerId = (int) ($project['lead_manager_user_id'] ?? 0);
+            if ($managerId <= 0) {
+                $managerId = (int) ($project['created_by'] ?? 0);
+            }
+
+            $project['manager_name'] = $userNames->get($managerId, '—');
+            return $project;
         });
 
         return response()->json($projects);
+    }
+
+    public function updateLeadManager(Request $request, $id)
+    {
+        $project = SalesProject::find($id);
+
+        if (!$project) {
+            return response()->json(['error' => 'Проект не знайдено'], 404);
+        }
+
+        $user = auth()->user();
+        if (!$user || !in_array($user->role, ['owner', 'ntv'], true)) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
+        if (!Schema::hasColumn('sales_projects', 'lead_manager_user_id')) {
+            return response()->json(['error' => 'Поле ведучого менеджера ще не створено. Запустіть міграції.'], 422);
+        }
+
+        $data = $request->validate([
+            'lead_manager_user_id' => 'nullable|integer',
+        ]);
+
+        $leadManagerUserId = $data['lead_manager_user_id'] ?? null;
+
+        if ($leadManagerUserId !== null) {
+            $leadManager = DB::table('users')
+                ->where('id', (int) $leadManagerUserId)
+                ->where('role', 'ntv')
+                ->first();
+
+            if (!$leadManager) {
+                return response()->json(['error' => 'Оберіть коректного менеджера НТВ'], 422);
+            }
+
+            $leadManagerUserId = (int) $leadManagerUserId;
+        }
+
+        $project->lead_manager_user_id = $leadManagerUserId;
+        $project->save();
+
+        return response()->json(['ok' => true]);
     }
 
     public function addAdvance(Request $request, $id)

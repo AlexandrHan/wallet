@@ -73,6 +73,12 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
     Route::get('/salary/settings', [SalaryRuleController::class, 'settings'])
         ->middleware('only.owner')
         ->name('salary.settings');
+    Route::view('/salary/managers', 'salary.managers.index')
+        ->middleware('only.owner')
+        ->name('salary.managers');
+    Route::view('/salary/fixed/show', 'salary.fixed.show')
+        ->middleware('only.owner')
+        ->name('salary.fixed.show');
 
 
     /*
@@ -119,6 +125,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         Route::get('/sales-projects', [\App\Http\Controllers\SalesProjectController::class, 'index']);
 
         Route::post('/sales-projects/{id}/advance', [\App\Http\Controllers\SalesProjectController::class, 'addAdvance']);
+        Route::post('/sales-projects/{id}/lead-manager', [\App\Http\Controllers\SalesProjectController::class, 'updateLeadManager']);
         Route::post('/sales-projects/{id}/construction', [\App\Http\Controllers\SalesProjectController::class, 'updateConstruction']);
         Route::post('/sales-projects/{id}/close', [\App\Http\Controllers\SalesProjectController::class, 'closeProject']);
         Route::get('/sales-projects/{id}/history', [\App\Http\Controllers\SalesProjectController::class, 'projectHistory']);
@@ -128,6 +135,9 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         Route::get('/salary-rules', [SalaryRuleController::class, 'index']);
         Route::get('/salary-rules/settings-data', [SalaryRuleController::class, 'settingsData'])->middleware('only.owner');
         Route::post('/salary-rules', [SalaryRuleController::class, 'upsert'])->middleware('only.owner');
+        Route::get('/salary/fixed-employee', [SalaryRuleController::class, 'fixedEmployeeData'])->middleware('only.owner');
+        Route::post('/salary/fixed-employee/penalties', [SalaryRuleController::class, 'saveFixedEmployeePenalties'])->middleware('only.owner');
+        Route::get('/salary/managers-data', [SalaryRuleController::class, 'managerPayoutData'])->middleware('only.owner');
         
         Route::post('/send-project-money', [\App\Http\Controllers\CashTransferController::class, 'sendProjectMoney']);
 

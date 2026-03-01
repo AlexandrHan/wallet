@@ -62,19 +62,19 @@ document.addEventListener('DOMContentLoaded', async function () {
     };
   }
 
-  function renderFixedCard(title, amount, currency) {
+  function renderFixedCard(title, amount, currency, href) {
     return `
-      <div class="card" style="margin-bottom:12px;">
+      <a href="${esc(href)}" class="card" style="margin-bottom:12px; display:block; text-decoration:none; color:inherit;">
         <div style="display:flex; justify-content:space-between; gap:10px; align-items:center;">
           <div>
             <div style="font-weight:800; font-size:16px;">🛠 ${esc(title)}</div>
-            <div style="font-size:13px; opacity:.72; margin-top:4px;">Фіксована ставка</div>
+            <div style="font-size:13px; opacity:.72; margin-top:4px;">Помісячна зарплата</div>
           </div>
           <div style="font-weight:900; font-size:18px; white-space:nowrap;">
             ${formatMoney(amount, currency)}
           </div>
         </div>
-      </div>
+      </a>
     `;
   }
 
@@ -141,7 +141,12 @@ document.addEventListener('DOMContentLoaded', async function () {
         }
 
         if (String(rule.mode) === 'fixed') {
-          html.push(renderFixedCard(name, rule.fixed_amount || 0, rule.currency || 'UAH'));
+          html.push(renderFixedCard(
+            name,
+            rule.fixed_amount || 0,
+            rule.currency || 'UAH',
+            `/salary/fixed/show?staff_group=installation_team&staff_name=${encodeURIComponent(name)}`
+          ));
           return;
         }
 
