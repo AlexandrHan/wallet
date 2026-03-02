@@ -76,6 +76,10 @@ input{
 
 <main class="wrap has-tg-nav" style="padding-top:90px; padding-bottom:100px;">
 
+  <a href="/" class="btn" style="display:block; width:100%; text-align:center; margin-bottom:20px;">
+      ← Повернутись на головну
+  </a>
+
   <div class="card" style="margin-bottom:20px;">
       <div style="font-weight:800; text-align:center; font-size:20px;">
           Профіль
@@ -129,6 +133,13 @@ input{
 
   <div class="card" style="margin-bottom:20px;">
       @include('profile.partials.delete-user-form')
+  </div>
+
+  <div class="card" style="margin-bottom:20px;">
+      <form method="POST" action="{{ route('logout') }}">
+          @csrf
+          <button type="submit" class="btn danger" style="width:100%;">🚪 Вийти з облікового запису</button>
+      </form>
   </div>
 
 </main>

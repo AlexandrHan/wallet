@@ -89,6 +89,26 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
     })->name('salary.foreman.show');
     Route::view('/salary/my', 'salary.my')
         ->name('salary.my');
+    Route::get('/projects/my-installation', function () {
+        $user = auth()->user();
+        if (
+            !$user
+            || $user->role !== 'worker'
+            || !in_array($user->actor, ['kryzhanovskyi', 'kukuiaka', 'shevchenko'], true)
+        ) {
+            abort(403);
+        }
+
+        return view('projects.installers');
+    })->name('projects.my-installation');
+    Route::get('/projects/my-electrician', function () {
+        $user = auth()->user();
+        if (!$user || $user->role !== 'worker' || $user->position !== 'electrician') {
+            abort(403);
+        }
+
+        return view('projects.electricians');
+    })->name('projects.my-electrician');
 
 
     /*

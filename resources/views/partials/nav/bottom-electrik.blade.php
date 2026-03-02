@@ -8,7 +8,7 @@
   $tabs = [
     ['href'=>'/',        'icon'=>'💼', 'label'=>'Мій гаманець', 'active'=>$activeWallet],
     ['href'=>'/reclamations', 'icon'=>'🛠️', 'label'=>'Сервіс',  'active'=>$activeReclamations],
-    ['href'=>'/projects', 'icon'=>'🏗️', 'label'=>'Проекти', 'active'=>$activeProjects],
+    ['href'=>'/projects/my-electrician', 'icon'=>'🏗️', 'label'=>'Проекти', 'active'=>$activeProjects],
 
   ];
 @endphp
@@ -51,7 +51,7 @@
 
         <a class="tg-menu__item" style="margin-bottom:15px;" href="/reclamations">🛠️ Сервіс</a>
 
-        <a class="tg-menu__item" style="margin-bottom:15px;" href="/projects">🏗️ Проекти</a>
+        <a class="tg-menu__item" style="margin-bottom:15px;" href="/projects/my-electrician">🏗️ Проекти</a>
 
         <a class="tg-menu__item" style="margin-bottom:15px;" href="/salary/my">💰 Зарплатня</a>
 

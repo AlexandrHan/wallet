@@ -2503,11 +2503,26 @@ async function editEntry(id){
 
 
 
-document.addEventListener('click', () => {
-  if (state.activeEntryId !== null) {
-    state.activeEntryId = null;
-    renderEntries();
+document.addEventListener('click', (e) => {
+  if (state.activeEntryId === null) return;
+
+  const target = e.target instanceof Element ? e.target : null;
+  if (!target) return;
+
+  // Не чіпаємо навігацію, меню, модалки й інші інтерактивні елементи:
+  // інакше перед переходом запускається дорогий renderEntries().
+  if (target.closest(
+    '.tg-bottom-nav, .tg-menu, .tg-top-menu-trigger, .tg-fab, header a, header button, ' +
+    '.btn, .sheet, .modal, a[href], button, input, select, textarea, .receipt-btn, .entry-actions'
+  )) {
+    return;
   }
+
+  const opsView = document.getElementById('opsView');
+  if (!opsView || opsView.style.display === 'none' || !opsView.contains(target)) return;
+
+  state.activeEntryId = null;
+  renderEntries();
 });
 
 

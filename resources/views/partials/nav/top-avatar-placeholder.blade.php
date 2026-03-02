@@ -19,9 +19,9 @@
 @endphp
 
 <div class="avatar-placeholder">
-  <div class="tg-top-avatar-mobile">
+  <a class="tg-top-avatar-mobile" href="{{ route('profile.edit') }}" aria-label="Профіль">
     <img src="{{ $avatarSrc }}" alt="Avatar" class="avatar-image">
-  </div>
+  </a>
 
   <a class="tg-fab tg-top-menu-trigger" href="#tgOwnerMenu" aria-label="Меню">
     <span class="tg-fab-ico">☰</span>

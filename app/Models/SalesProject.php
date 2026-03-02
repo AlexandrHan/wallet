@@ -17,6 +17,7 @@ class SalesProject extends Model
         'status',
         'telegram_group_link',
         'geo_location_link',
+        'phone_number',
         'has_green_tariff',
         'electric_work_start_date',
         'panel_work_start_date',

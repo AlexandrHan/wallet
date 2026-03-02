@@ -13,7 +13,7 @@ class SalesProjectController extends Controller
 {
     private function constructionFieldMeta(): array
     {
-        return [
+        $meta = [
             'telegram_group_link' => ['section' => 'Дані клієнта', 'label' => 'Посилання на Telegram'],
             'geo_location_link' => ['section' => 'Дані клієнта', 'label' => 'Посилання на геолокацію'],
             'has_green_tariff' => ['section' => 'Дані клієнта', 'label' => 'Зелений тариф'],
@@ -31,6 +31,30 @@ class SalesProjectController extends Controller
             'defects_note' => ['section' => 'Недоліки', 'label' => 'Опис проблемних місць'],
             'defects_photo_path' => ['section' => 'Недоліки', 'label' => 'Головне фото недоліків'],
         ];
+
+        if (Schema::hasColumn('sales_projects', 'phone_number')) {
+            $meta = [
+                'telegram_group_link' => ['section' => 'Дані клієнта', 'label' => 'Посилання на Telegram'],
+                'geo_location_link' => ['section' => 'Дані клієнта', 'label' => 'Посилання на геолокацію'],
+                'phone_number' => ['section' => 'Дані клієнта', 'label' => 'Номер телефону'],
+                'has_green_tariff' => ['section' => 'Дані клієнта', 'label' => 'Зелений тариф'],
+                'electric_work_start_date' => ['section' => 'Планування', 'label' => 'Дата початку монтажу інверторної частини'],
+                'panel_work_start_date' => ['section' => 'Планування', 'label' => 'Дата початку монтажу ФЕМ'],
+                'inverter' => ['section' => 'Обладнання', 'label' => 'Інвертор'],
+                'bms' => ['section' => 'Обладнання', 'label' => 'BMS'],
+                'battery_name' => ['section' => 'Обладнання', 'label' => 'АКБ'],
+                'battery_qty' => ['section' => 'Обладнання', 'label' => 'Кількість АКБ'],
+                'panel_name' => ['section' => 'Обладнання', 'label' => 'ФЕМ'],
+                'panel_qty' => ['section' => 'Обладнання', 'label' => 'Кількість ФЕМ'],
+                'electrician' => ['section' => 'Персонал', 'label' => 'Електрик'],
+                'installation_team' => ['section' => 'Персонал', 'label' => 'Монтажна бригада'],
+                'extra_works' => ['section' => 'Персонал', 'label' => 'Доп. роботи'],
+                'defects_note' => ['section' => 'Недоліки', 'label' => 'Опис проблемних місць'],
+                'defects_photo_path' => ['section' => 'Недоліки', 'label' => 'Головне фото недоліків'],
+            ];
+        }
+
+        return $meta;
     }
 
     private function historyActorLabel(): string
@@ -315,6 +339,9 @@ class SalesProjectController extends Controller
                 'status' => $project->status,
                 'telegram_group_link' => $project->telegram_group_link,
                 'geo_location_link' => $project->geo_location_link,
+                'phone_number' => Schema::hasColumn('sales_projects', 'phone_number')
+                    ? $project->phone_number
+                    : null,
                 'has_green_tariff' => (bool)$project->has_green_tariff,
                 'electric_work_start_date' => $project->electric_work_start_date,
                 'panel_work_start_date' => $project->panel_work_start_date,
@@ -629,7 +656,7 @@ class SalesProjectController extends Controller
             return response()->json(['error' => 'Проект не знайдено'], 404);
         }
 
-        $data = $request->validate([
+        $rules = [
             'telegram_group_link' => 'nullable|string|max:1000',
             'geo_location_link' => 'nullable|string|max:1000',
             'has_green_tariff' => 'nullable|boolean',
@@ -650,7 +677,13 @@ class SalesProjectController extends Controller
             'photos.*' => 'image|max:10240',
             'attachments' => 'nullable|array',
             'attachments.*' => 'file|max:20480',
-        ]);
+        ];
+
+        if (Schema::hasColumn('sales_projects', 'phone_number')) {
+            $rules['phone_number'] = 'nullable|string|max:50';
+        }
+
+        $data = $request->validate($rules);
 
         $meta = $this->constructionFieldMeta();
         $before = [];
@@ -659,6 +692,9 @@ class SalesProjectController extends Controller
         }
 
         $data['has_green_tariff'] = (bool)($data['has_green_tariff'] ?? false);
+        if (!Schema::hasColumn('sales_projects', 'phone_number')) {
+            unset($data['phone_number']);
+        }
         $hasDefectsPhotoUpload = $request->hasFile('defects_photo');
         $photoUploads = (array)$request->file('photos', []);
         $attachmentUploads = (array)$request->file('attachments', []);

@@ -416,6 +416,9 @@ async function loadConstructionProjects() {
               <span>Відкрити Google Maps</span>
             </button>
 
+            <div class="project-field-label">Номер телефону</div>
+            <input class="btn project-input-full" data-field="phone_number" value="${esc(p.phone_number)}" placeholder="+380...">
+
             <div class="project-green-box">
               <div>
                 <div class="project-field-label" style="margin-bottom:0;">Зелений тариф</div>

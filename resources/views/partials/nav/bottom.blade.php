@@ -28,6 +28,12 @@
   @elseif($user->role === 'worker' && $user->position === 'electrician')
     @include('partials.nav.bottom-electrik')
 
+  @elseif($user->role === 'worker' && in_array($user->actor, ['kryzhanovskyi', 'kukuiaka', 'shevchenko'], true))
+    @include('partials.nav.bottom-installers')
+
+  @elseif($user->role === 'worker')
+    @include('partials.nav.bottom-worker')
+
   @else
     @include('partials.nav.bottom-ntv')
   @endif
