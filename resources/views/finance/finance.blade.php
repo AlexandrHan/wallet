@@ -939,14 +939,18 @@ document.addEventListener('click', function(e){
   const advanceCurrencyEl = document.getElementById('advanceCurrency');
   const exchangeRateEl    = document.getElementById('exchangeRate');
   const exchangeRateHintEl = document.getElementById('exchangeRateHint');
+  const saveAdvanceBtnEl = document.getElementById('saveAdvanceBtn');
 
   if (!advanceCurrencyEl || !exchangeRateEl) return;
 
   // глобальний стан
   window.ADV_PROJECT_CURRENCY = String(window.ADV_PROJECT_CURRENCY || 'USD').toUpperCase();
   window.ADV_FX_MAP = window.ADV_FX_MAP || null;
+  window.ADV_FX_LAST_OK_MAP = window.ADV_FX_LAST_OK_MAP || null;
   window.ADV_AUTO_RATE = null;
   window.ADV_AUTO_RATE_LABEL = '';
+  window.ADV_FX_SYNCING = false;
+  window.ADV_FX_SYNC_SEQ = 0;
 
   let userChanged = false;  // true тільки після ручної зміни select
   let alertKey = null;      // антиспам
@@ -955,6 +959,12 @@ document.addEventListener('click', function(e){
     if (!exchangeRateHintEl) return;
     exchangeRateHintEl.style.display = text ? 'block' : 'none';
     exchangeRateHintEl.textContent = text || '';
+  }
+
+  function setAdvanceSaveDisabled(isDisabled) {
+    if (!saveAdvanceBtnEl) return;
+    saveAdvanceBtnEl.disabled = !!isDisabled;
+    saveAdvanceBtnEl.textContent = isDisabled ? 'Оновлення курсу...' : 'Зберегти';
   }
 
   function showRateField(placeholderText) {
@@ -982,25 +992,43 @@ document.addEventListener('click', function(e){
   async function loadFinanceFxRates(force = false) {
     if (!force && window.ADV_FX_MAP) return window.ADV_FX_MAP;
 
-    try {
-      const res = await fetch('/api/fx/rates', { headers: { 'Accept': 'application/json' } });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || 'FX unavailable');
+    const attempts = force ? 2 : 2;
 
-      const map = {};
-      (data.rates || []).forEach(rate => {
-        map[String(rate.currency || '').toUpperCase()] = {
-          buy: Number(rate.purchase || 0),
-          sell: Number(rate.sale || 0),
-        };
-      });
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        const res = await fetch('/api/fx/rates', {
+          headers: { 'Accept': 'application/json' },
+          cache: 'no-store',
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || 'FX unavailable');
 
-      window.ADV_FX_MAP = map;
-      return map;
-    } catch (_) {
-      window.ADV_FX_MAP = null;
-      return null;
+        const map = {};
+        (data.rates || []).forEach(rate => {
+          map[String(rate.currency || '').toUpperCase()] = {
+            buy: Number(rate.purchase || 0),
+            sell: Number(rate.sale || 0),
+          };
+        });
+
+        window.ADV_FX_MAP = map;
+        window.ADV_FX_LAST_OK_MAP = map;
+        return map;
+      } catch (_) {
+        window.ADV_FX_MAP = null;
+        if (attempt < attempts - 1) {
+          await new Promise(resolve => window.setTimeout(resolve, 150));
+          continue;
+        }
+      }
     }
+
+    if (window.ADV_FX_LAST_OK_MAP) {
+      window.ADV_FX_MAP = window.ADV_FX_LAST_OK_MAP;
+      return window.ADV_FX_LAST_OK_MAP;
+    }
+
+    return null;
   }
 
   function resolveAutoAdvanceRate(projectCurrency, advanceCurrency, fxMap) {
@@ -1050,68 +1078,84 @@ document.addEventListener('click', function(e){
   }
 
   async function syncAdvanceFxUI() {
+    const syncSeq = ++window.ADV_FX_SYNC_SEQ;
     const pCur = String(window.ADV_PROJECT_CURRENCY || 'USD').toUpperCase();
     const aCur = String(advanceCurrencyEl.value || 'USD').toUpperCase();
+    window.ADV_FX_SYNCING = true;
+    window.ADV_AUTO_RATE = null;
+    window.ADV_AUTO_RATE_LABEL = '';
+    setAdvanceSaveDisabled(true);
 
-    // якщо валюта авансу = валюта проєкту -> курс не потрібен
-    if (aCur === pCur) {
-      hideRateField();
-      window.ADV_AUTO_RATE = 1;
-      window.ADV_AUTO_RATE_LABEL = 'Курс не потрібен: однакова валюта';
-      showRateHint(window.ADV_AUTO_RATE_LABEL);
-      return;
+    const isStale = () => syncSeq !== window.ADV_FX_SYNC_SEQ;
+
+    try {
+      // якщо валюта авансу = валюта проєкту -> курс не потрібен
+      if (aCur === pCur) {
+        if (isStale()) return;
+        hideRateField();
+        window.ADV_AUTO_RATE = 1;
+        window.ADV_AUTO_RATE_LABEL = 'Курс не потрібен: однакова валюта';
+        showRateHint(window.ADV_AUTO_RATE_LABEL);
+        return;
+      }
+
+      const fxMap = await loadFinanceFxRates();
+      if (isStale()) return;
+      const autoRate = resolveAutoAdvanceRate(pCur, aCur, fxMap);
+      if (autoRate) {
+        hideRateField();
+        window.ADV_AUTO_RATE = autoRate.value;
+        window.ADV_AUTO_RATE_LABEL = autoRate.label;
+        showRateHint(autoRate.label);
+        return;
+      }
+
+      showRateHint('Автокурс недоступний. Введіть курс вручну.');
+
+      // різні валюти -> показуємо поле з підказкою по напрямку
+      if (aCur === 'EUR' && pCur === 'USD') {
+        alertIfUser(
+          "⚠️ АВАНС У EUR, ПРОЄКТ У USD.\n" +
+          "Потрібен крос-курс EUR→USD.\n" +
+          "Приклад: 1 EUR → 1.12 USD.",
+          'eur_usd'
+        );
+        showRateField('Крос курс EUR→USD (1 -> 1.12)');
+        return;
+      }
+
+      if (aCur === 'UAH' && pCur === 'USD') {
+        showRateField('Курс USD→UAH (1 -> 43.50)');
+        return;
+      }
+
+      if (aCur === 'USD' && pCur === 'UAH') {
+        showRateField('Курс USD→UAH (1 -> 43.50)');
+        return;
+      }
+
+      if (aCur === 'EUR' && pCur === 'UAH') {
+        showRateField('Курс EUR→UAH (1 -> 45.00)');
+        return;
+      }
+
+      if (aCur === 'USD' && pCur === 'EUR') {
+        showRateField('Крос курс USD→EUR (1 -> 0.89)');
+        return;
+      }
+
+      if (aCur === 'UAH' && pCur === 'EUR') {
+        showRateField('Курс EUR→UAH (1 -> 45.00)');
+        return;
+      }
+
+      showRateField(`Курс ${aCur}→${pCur}`);
+    } finally {
+      if (!isStale()) {
+        window.ADV_FX_SYNCING = false;
+        setAdvanceSaveDisabled(false);
+      }
     }
-
-    const fxMap = await loadFinanceFxRates();
-    const autoRate = resolveAutoAdvanceRate(pCur, aCur, fxMap);
-    if (autoRate) {
-      hideRateField();
-      window.ADV_AUTO_RATE = autoRate.value;
-      window.ADV_AUTO_RATE_LABEL = autoRate.label;
-      showRateHint(autoRate.label);
-      return;
-    }
-
-    showRateHint('Автокурс недоступний. Введіть курс вручну.');
-
-    // різні валюти -> показуємо поле з підказкою по напрямку
-    if (aCur === 'EUR' && pCur === 'USD') {
-      alertIfUser(
-        "⚠️ АВАНС У EUR, ПРОЄКТ У USD.\n" +
-        "Потрібен крос-курс EUR→USD.\n" +
-        "Приклад: 1 EUR → 1.12 USD.",
-        'eur_usd'
-      );
-      showRateField('Крос курс EUR→USD (1 -> 1.12)');
-      return;
-    }
-
-    if (aCur === 'UAH' && pCur === 'USD') {
-      showRateField('Курс USD→UAH (1 -> 43.50)');
-      return;
-    }
-
-    if (aCur === 'USD' && pCur === 'UAH') {
-      showRateField('Курс USD→UAH (1 -> 43.50)');
-      return;
-    }
-
-    if (aCur === 'EUR' && pCur === 'UAH') {
-      showRateField('Курс EUR→UAH (1 -> 45.00)');
-      return;
-    }
-
-    if (aCur === 'USD' && pCur === 'EUR') {
-      showRateField('Крос курс USD→EUR (1 -> 0.89)');
-      return;
-    }
-
-    if (aCur === 'UAH' && pCur === 'EUR') {
-      showRateField('Курс EUR→UAH (1 -> 45.00)');
-      return;
-    }
-
-    showRateField(`Курс ${aCur}→${pCur}`);
   }
 
   // доступ зовні
@@ -1166,6 +1210,11 @@ document.addEventListener('click', function(e){
   window.validateAdvanceFx = function () {
     const pCur = String(window.ADV_PROJECT_CURRENCY || 'USD').toUpperCase();
     const aCur = String(advanceCurrencyEl.value || 'USD').toUpperCase();
+
+    if (window.ADV_FX_SYNCING) {
+      alert('Зачекай, курс ще оновлюється');
+      return false;
+    }
 
     if (aCur === pCur) return true;
     if (window.ADV_AUTO_RATE && Number(window.ADV_AUTO_RATE) > 0) return true;

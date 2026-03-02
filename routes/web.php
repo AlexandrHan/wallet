@@ -2,7 +2,6 @@
 
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Http\Request;
 
 use App\Http\Controllers\ProfileController;
@@ -12,6 +11,8 @@ use App\Http\Controllers\ReclamationController;
 use App\Http\Controllers\FemDebtController;
 use App\Http\Controllers\CashTransferController;
 use App\Http\Controllers\SalaryRuleController;
+use App\Models\AutomationLog;
+use App\Services\AutomationService;
 
 
 use App\Models\BankTransactionRaw;
@@ -1306,8 +1307,56 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         return view('salary.installers.show');
     })->middleware(['auth', 'only.owner']);
 
-
 });
+
+Route::middleware(['auth', 'only.owner'])
+    ->group(function () {
+
+        Route::get('/automation', function () {
+            $logs = AutomationLog::latest()->take(10)->get();
+
+            return view('automation.index', compact('logs'));
+        })->name('automation.index');
+
+        Route::post('/automation/fx', function (AutomationService $automation) {
+            $result = $automation->fxUpdate();
+
+            $status = $result['ok'] ? 'success' : 'error';
+
+            $message = $result['ok']
+                ? 'FX updated'
+                : 'FX failed';
+
+            AutomationLog::create([
+                'user_id' => auth()->id(),
+                'action'  => 'fx_update',
+                'status'  => $status,
+                'message' => $message,
+            ]);
+
+            $logs = AutomationLog::latest()
+                ->take(10)
+                ->get()
+                ->map(function ($log) {
+                    return [
+                        'created_at' => optional($log->created_at)->format('d.m.Y H:i:s'),
+                        'user' => optional($log->user)->name
+                            ?: optional($log->user)->email
+                            ?: ('User #' . $log->user_id),
+                        'action' => $log->action,
+                        'status' => $log->status,
+                        'message' => $log->message,
+                    ];
+                })
+                ->values();
+
+            return response()->json([
+                'result' => $result,
+                'logs' => $logs,
+            ]);
+        })->name('automation.fx');
+
+    });
 
 
 

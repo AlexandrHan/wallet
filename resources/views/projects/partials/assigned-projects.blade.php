@@ -1,5 +1,13 @@
 <main class="projects-main">
 
+  <style>
+    @media (max-width: 768px) {
+      .project-day-heading {
+        text-align: center;
+      }
+    }
+  </style>
+
   <div class="projects-title-card">
     <div class="projects-title">
       {{ $title }}
@@ -18,6 +26,9 @@ document.addEventListener('DOMContentLoaded', async function () {
   const ASSIGNMENT_LABEL = @json($assignmentLabel);
   const ASSIGNMENT_MAP = @json($assignmentMap);
   const EMPTY_TEXT = @json($emptyText);
+  const SCHEDULE_FIELD = @json($scheduleField ?? null);
+  const REFRESH_MS = 15000;
+  const WEEKDAY_LABELS = ['Неділя', 'Понеділок', 'Вівторок', 'Середа', 'Четвер', "П'ятниця", 'Субота'];
 
   if (!container) return;
 
@@ -53,6 +64,30 @@ document.addEventListener('DOMContentLoaded', async function () {
     if (!value) return '';
     const cleaned = value.replace(/[^\d+]/g, '');
     return cleaned ? `tel:${cleaned}` : '';
+  }
+
+  function parseProjectDate(value) {
+    const text = String(value || '').trim();
+    if (!text) return null;
+    const date = new Date(`${text}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return null;
+    date.setHours(0, 0, 0, 0);
+    return date;
+  }
+
+  function getWeekRange() {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(start);
+      date.setDate(start.getDate() + index);
+      const key = date.toISOString().slice(0, 10);
+      const dateLabel = `${String(date.getDate()).padStart(2, '0')}.${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getFullYear()).slice(-2)}`;
+      const weekdayLabel = WEEKDAY_LABELS[date.getDay()];
+      const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+      return { date, key, dateLabel, weekdayLabel, isWeekend };
+    });
   }
 
   function makeCard(project) {
@@ -192,8 +227,16 @@ document.addEventListener('DOMContentLoaded', async function () {
             <div class="project-field-label">Електрик</div>
             <div class="btn project-input-full">${esc(project.electrician || '—')}</div>
 
+            <div class="project-field-label">Електрик примітки</div>
+            <div class="btn project-textarea" style="text-align:left; cursor:default;">${esc(project.electrician_note || '—')}</div>
+
+            <hr class="project-divider" style="margin:8px 0 12px;">
+
             <div class="project-field-label">Монтажна бригада</div>
             <div class="btn project-input-full">${esc(project.installation_team || '—')}</div>
+
+            <div class="project-field-label">Монтажна бригада примітки</div>
+            <div class="btn project-textarea" style="text-align:left; cursor:default;">${esc(project.installation_team_note || '—')}</div>
 
             <div class="project-field-label">Доп. роботи</div>
             <div class="btn project-input-full">${esc(project.extra_works || '—')}</div>
@@ -268,34 +311,97 @@ document.addEventListener('DOMContentLoaded', async function () {
     return card;
   }
 
-  container.innerHTML = '<div class="card">Завантаження...</div>';
+  function renderScheduledProjects(projects) {
+    const days = getWeekRange();
+    const grouped = new Map(days.map(day => [day.key, []]));
 
-  try {
-    const res = await fetch('/api/sales-projects', { headers: { 'Accept': 'application/json' } });
-    const projects = await res.json();
-
-    if (!res.ok || !Array.isArray(projects)) {
-      throw new Error('Не вдалося завантажити проекти');
-    }
-
-    const filtered = projects
-      .filter(project => matchesAssignment(project?.[MATCH_FIELD]))
-      .sort((a, b) => {
-        if (String(a.status) === 'completed' && String(b.status) !== 'completed') return 1;
-        if (String(a.status) !== 'completed' && String(b.status) === 'completed') return -1;
-        return String(a.client_name || '').localeCompare(String(b.client_name || ''), 'uk');
-      });
+    projects.forEach(project => {
+      const date = parseProjectDate(project?.[SCHEDULE_FIELD]);
+      if (!date) return;
+      const key = date.toISOString().slice(0, 10);
+      if (!grouped.has(key)) return;
+      grouped.get(key).push(project);
+    });
 
     container.innerHTML = '';
 
-    if (!filtered.length) {
+    const hasAnyProjects = Array.from(grouped.values()).some(items => items.length > 0);
+    if (!hasAnyProjects) {
       container.innerHTML = `<div class="card">${esc(EMPTY_TEXT)}</div>`;
       return;
     }
 
-    filtered.forEach(project => container.appendChild(makeCard(project)));
-  } catch (err) {
-    container.innerHTML = `<div class="card">${esc(err.message || 'Помилка')}</div>`;
+    days.forEach(day => {
+      const dayProjects = (grouped.get(day.key) || []).sort((a, b) => String(a.client_name || '').localeCompare(String(b.client_name || ''), 'uk'));
+      if (!dayProjects.length) return;
+
+      const daySection = document.createElement('div');
+      daySection.className = 'card';
+      daySection.style.marginBottom = '16px';
+      daySection.innerHTML = `
+        <div class="project-day-heading">
+          <span style="font-weight:800; font-size:15px; color:${day.isWeekend ? '#ff6b6b' : 'inherit'};">${esc(day.dateLabel)}</span>
+          <span style="font-weight:900; font-size:17px; color:${day.isWeekend ? '#ff6b6b' : 'inherit'};"> ${esc(day.weekdayLabel)}</span>
+        </div>
+        <hr style="margin:10px 0 12px; border:none; border-top:1px solid rgba(255,255,255,.14);">
+      `;
+
+      dayProjects.forEach(project => {
+        const projectCard = makeCard(project);
+        projectCard.style.marginBottom = '12px';
+        daySection.appendChild(projectCard);
+      });
+
+      const lastCard = daySection.lastElementChild;
+      if (lastCard && lastCard.classList.contains('project-card')) {
+        lastCard.style.marginBottom = '0';
+      }
+
+      container.appendChild(daySection);
+    });
   }
+
+  function renderProjects(projects) {
+    const filtered = projects
+      .filter(project => matchesAssignment(project?.[MATCH_FIELD]))
+      .filter(project => String(project.status || '') !== 'completed');
+
+    if (SCHEDULE_FIELD) {
+      renderScheduledProjects(filtered);
+      return;
+    }
+
+    const sorted = filtered.sort((a, b) => String(a.client_name || '').localeCompare(String(b.client_name || ''), 'uk'));
+
+    container.innerHTML = '';
+
+    if (!sorted.length) {
+      container.innerHTML = `<div class="card">${esc(EMPTY_TEXT)}</div>`;
+      return;
+    }
+
+    sorted.forEach(project => container.appendChild(makeCard(project)));
+  }
+
+  async function loadProjects() {
+    try {
+      const res = await fetch('/api/sales-projects', { headers: { 'Accept': 'application/json' } });
+      const projects = await res.json();
+
+      if (!res.ok || !Array.isArray(projects)) {
+        throw new Error('Не вдалося завантажити проекти');
+      }
+
+      renderProjects(projects);
+    } catch (err) {
+      container.innerHTML = `<div class="card">${esc(err.message || 'Помилка')}</div>`;
+    }
+  }
+
+  container.innerHTML = '<div class="card">Завантаження...</div>';
+  await loadProjects();
+  setInterval(() => {
+    loadProjects().catch(() => {});
+  }, REFRESH_MS);
 });
 </script>

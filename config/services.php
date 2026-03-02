@@ -75,4 +75,8 @@ return [
         ],
     ],
 
+    'automation' => [
+        'url' => env('AUTOMATION_URL', ''),
+    ],
+
 ];

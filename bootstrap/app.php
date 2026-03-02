@@ -19,6 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'only.reclamations'   => \App\Http\Middleware\OnlyReclamations::class, 
             'wallets.access' => \App\Http\Middleware\WalletsAccess::class,
             'only.sunfix.manager' => \App\Http\Middleware\OnlySunfixManager::class,
+            'automation.debug' => \App\Http\Middleware\AutomationDebug::class,
 
         ]);
         
@@ -27,4 +28,3 @@ return Application::configure(basePath: dirname(__DIR__))
         //
     })
     ->create();
-

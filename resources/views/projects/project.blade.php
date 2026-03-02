@@ -482,6 +482,11 @@ async function loadConstructionProjects() {
               ${IS_OWNER ? '<option value="__delete_current_electrician__" hidden>🗑 Видалити вибраного...</option>' : ''}
             </select>
 
+            <div class="project-field-label">Електрик примітки</div>
+            <textarea class="btn project-textarea" data-field="electrician_note" placeholder="Примітки для електрика...">${esc(p.electrician_note || '')}</textarea>
+
+            <hr class="project-divider" style="margin:8px 0 12px;">
+
             <div class="project-field-label">Монтажна бригада</div>
             <select class="btn project-input-full" data-field="installation_team">
               <option value="">Оберіть бригаду</option>
@@ -489,6 +494,9 @@ async function loadConstructionProjects() {
               ${IS_OWNER ? '<option value="__add_new_installation_team__">➕ Додати монтажника...</option>' : ''}
               ${IS_OWNER ? '<option value="__delete_current_installation_team__" hidden>🗑 Видалити вибраного...</option>' : ''}
             </select>
+
+            <div class="project-field-label">Монтажна бригада примітки</div>
+            <textarea class="btn project-textarea" data-field="installation_team_note" placeholder="Примітки для монтажної бригади...">${esc(p.installation_team_note || '')}</textarea>
 
             <div class="project-field-label">Доп. роботи</div>
             <input class="btn project-input-full" data-field="extra_works" value="${esc(p.extra_works)}" placeholder="Вкажіть додаткові роботи">

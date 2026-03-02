@@ -32,6 +32,14 @@ class SalesProjectController extends Controller
             'defects_photo_path' => ['section' => 'Недоліки', 'label' => 'Головне фото недоліків'],
         ];
 
+        if (Schema::hasColumn('sales_projects', 'electrician_note')) {
+            $meta['electrician_note'] = ['section' => 'Персонал', 'label' => 'Електрик примітки'];
+        }
+
+        if (Schema::hasColumn('sales_projects', 'installation_team_note')) {
+            $meta['installation_team_note'] = ['section' => 'Персонал', 'label' => 'Монтажна бригада примітки'];
+        }
+
         if (Schema::hasColumn('sales_projects', 'phone_number')) {
             $meta = [
                 'telegram_group_link' => ['section' => 'Дані клієнта', 'label' => 'Посилання на Telegram'],
@@ -52,6 +60,14 @@ class SalesProjectController extends Controller
                 'defects_note' => ['section' => 'Недоліки', 'label' => 'Опис проблемних місць'],
                 'defects_photo_path' => ['section' => 'Недоліки', 'label' => 'Головне фото недоліків'],
             ];
+
+            if (Schema::hasColumn('sales_projects', 'electrician_note')) {
+                $meta['electrician_note'] = ['section' => 'Персонал', 'label' => 'Електрик примітки'];
+            }
+
+            if (Schema::hasColumn('sales_projects', 'installation_team_note')) {
+                $meta['installation_team_note'] = ['section' => 'Персонал', 'label' => 'Монтажна бригада примітки'];
+            }
         }
 
         return $meta;
@@ -352,7 +368,13 @@ class SalesProjectController extends Controller
                 'panel_name' => $project->panel_name,
                 'panel_qty' => $project->panel_qty,
                 'electrician' => $project->electrician,
+                'electrician_note' => Schema::hasColumn('sales_projects', 'electrician_note')
+                    ? $project->electrician_note
+                    : null,
                 'installation_team' => $project->installation_team,
+                'installation_team_note' => Schema::hasColumn('sales_projects', 'installation_team_note')
+                    ? $project->installation_team_note
+                    : null,
                 'extra_works' => $project->extra_works,
                 'defects_note' => $project->defects_note,
                 'defects_photo_url' => $project->defects_photo_path
@@ -683,6 +705,14 @@ class SalesProjectController extends Controller
             $rules['phone_number'] = 'nullable|string|max:50';
         }
 
+        if (Schema::hasColumn('sales_projects', 'electrician_note')) {
+            $rules['electrician_note'] = 'nullable|string|max:2000';
+        }
+
+        if (Schema::hasColumn('sales_projects', 'installation_team_note')) {
+            $rules['installation_team_note'] = 'nullable|string|max:2000';
+        }
+
         $data = $request->validate($rules);
 
         $meta = $this->constructionFieldMeta();
@@ -694,6 +724,12 @@ class SalesProjectController extends Controller
         $data['has_green_tariff'] = (bool)($data['has_green_tariff'] ?? false);
         if (!Schema::hasColumn('sales_projects', 'phone_number')) {
             unset($data['phone_number']);
+        }
+        if (!Schema::hasColumn('sales_projects', 'electrician_note')) {
+            unset($data['electrician_note']);
+        }
+        if (!Schema::hasColumn('sales_projects', 'installation_team_note')) {
+            unset($data['installation_team_note']);
         }
         $hasDefectsPhotoUpload = $request->hasFile('defects_photo');
         $photoUploads = (array)$request->file('photos', []);
