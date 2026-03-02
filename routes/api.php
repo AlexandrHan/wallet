@@ -18,6 +18,48 @@ use App\Http\Controllers\DeliveryController;
 
 Route::get('/ping', fn () => response()->json(['ok' => true]));
 
+Route::post('/automation/malinin-sync', function (Request $request) {
+    if ($request->header('X-AUTO-TOKEN') !== config('services.automation.token')) {
+        return response()->json(['ok' => false], 403);
+    }
+
+    $rows = $request->input('rows', []);
+
+    foreach ($rows as $row) {
+        $date = $row['date'] ?? null;
+        $name = trim($row['name'] ?? '');
+        $note = $row['note'] ?? null;
+
+        if (!$name || !$date) {
+            continue;
+        }
+
+        $project = DB::table('sales_projects')
+            ->where('client_name', $name)
+            ->where('electrician', 'Малінін')
+            ->first();
+
+        if (!$project) {
+            continue;
+        }
+
+        $update = [
+            'panel_work_start_date' => $date,
+            'updated_at' => now(),
+        ];
+
+        if (Schema::hasColumn('sales_projects', 'electrician_note')) {
+            $update['electrician_note'] = $note ?: $project->electrician_note;
+        }
+
+        DB::table('sales_projects')
+            ->where('id', $project->id)
+            ->update($update);
+    }
+
+    return response()->json(['ok' => true]);
+});
+
 // ❗ ПОКИ БЕЗ auth, ЩОБ НЕ ЗАВАЖАВ
 
 Route::post('/entries/{entry}/receipt', [EntryReceiptController::class, 'store']);

@@ -77,6 +77,7 @@ return [
 
     'automation' => [
         'url' => env('AUTOMATION_URL', ''),
+        'token' => env('AUTOMATION_TOKEN'),
     ],
 
 ];
