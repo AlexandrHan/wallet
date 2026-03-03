@@ -31,12 +31,37 @@ $runAutomationProjectSync = function (
     $dateField = $options['date_field'];
     $noteField = $options['note_field'] ?? null;
     $taskNoteField = $options['task_note_field'] ?? null;
+    $serviceTableAvailable = Schema::hasTable('service_requests');
 
     $normalizeName = function ($value): string {
         $value = mb_strtolower((string) $value);
         $value = preg_replace('/[^\p{L}\p{N}]+/u', ' ', $value);
         $value = preg_replace('/\s+/u', ' ', (string) $value);
         return trim((string) $value);
+    };
+    $extractTaskMeta = function (string $taskNote): array {
+        $meta = [
+            'D' => '',
+            'E' => '',
+            'F' => '',
+        ];
+
+        if ($taskNote === '') {
+            return $meta;
+        }
+
+        foreach (preg_split('/\r\n|\r|\n/u', $taskNote) ?: [] as $line) {
+            $line = trim((string) $line);
+            if ($line === '') {
+                continue;
+            }
+
+            if (preg_match('/^([DEF]):\s*(.*)$/u', $line, $m)) {
+                $meta[$m[1]] = trim((string) $m[2]);
+            }
+        }
+
+        return $meta;
     };
     $normalizeSheetDate = function ($value): ?string {
         $value = trim((string) $value);
@@ -158,6 +183,8 @@ $runAutomationProjectSync = function (
 
     $checked = 0;
     $updated = 0;
+    $serviceCreated = 0;
+    $serviceUpdated = 0;
     $notFound = [];
     $skipped = [];
     $skipTokens = ['вихідні', 'сервіси'];
@@ -211,6 +238,59 @@ $runAutomationProjectSync = function (
             if ($bestCandidate && $bestScore >= 72.0) {
                 $project = $bestCandidate;
             } else {
+                if ($taskNote !== '' && $serviceTableAvailable) {
+                    $serviceRequests = DB::table('service_requests')
+                        ->select('id', 'client_name', $assignmentField)
+                        ->where($assignmentField, $assignmentValue)
+                        ->get();
+
+                    $serviceMatch = null;
+                    $serviceBestScore = 0.0;
+
+                    foreach ($serviceRequests as $candidateService) {
+                        $score = $scoreNameMatch($candidateName, (string) $candidateService->client_name);
+                        if ($score > $serviceBestScore) {
+                            $serviceBestScore = $score;
+                            $serviceMatch = $candidateService;
+                        }
+                    }
+
+                    $taskMeta = $extractTaskMeta($taskNote);
+                    $servicePayload = [
+                        'client_name' => $candidateName,
+                        'settlement' => $taskMeta['D'] !== '' ? $taskMeta['D'] : 'Автоматизація',
+                        'description' => $taskNote,
+                        'updated_at' => now(),
+                    ];
+
+                    if ($noteField && $note) {
+                        $servicePayload['description'] = trim($taskNote . "\n\nПримітка: " . $note);
+                    }
+
+                    if ($assignmentField === 'electrician') {
+                        $servicePayload['electrician'] = $assignmentValue;
+                    }
+                    if ($assignmentField === 'installation_team') {
+                        $servicePayload['installation_team'] = $assignmentValue;
+                    }
+
+                    if ($serviceMatch && $serviceBestScore >= 72.0) {
+                        DB::table('service_requests')
+                            ->where('id', $serviceMatch->id)
+                            ->update($servicePayload);
+                        $serviceUpdated++;
+                        continue;
+                    }
+
+                    $servicePayload['created_at'] = now();
+                    $servicePayload['status'] = 'open';
+                    $servicePayload['created_by'] = null;
+
+                    DB::table('service_requests')->insert($servicePayload);
+                    $serviceCreated++;
+                    continue;
+                }
+
                 $notFound[] = $candidateName;
                 continue;
             }
@@ -286,6 +366,8 @@ $runAutomationProjectSync = function (
         'received_rows' => count($rows),
         'checked' => $checked,
         'updated' => $updated,
+        'service_created' => $serviceCreated,
+        'service_updated' => $serviceUpdated,
         'skipped' => array_values(array_unique($skipped)),
         'not_found' => array_values(array_unique($notFound)),
     ]);
