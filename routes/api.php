@@ -43,7 +43,7 @@ Route::post('/automation/malinin-sync', function (Request $request) {
         }
 
         $update = [
-            'panel_work_start_date' => $date,
+            'electric_work_start_date' => $date,
             'updated_at' => now(),
         ];
 
