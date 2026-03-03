@@ -78,6 +78,7 @@
           <summary class="tg-acc__title">🏗 Будівництво</summary>
           <div class="tg-acc__body">
             <a class="tg-menu__item" href="/projects"> 🧾 Проекти</a>
+            <a class="tg-menu__item" href="/projects/service-repair"> 🛠 Сервіс та ремонт</a>
           </div>
         </details>
 

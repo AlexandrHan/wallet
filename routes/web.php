@@ -11,6 +11,7 @@ use App\Http\Controllers\ReclamationController;
 use App\Http\Controllers\FemDebtController;
 use App\Http\Controllers\CashTransferController;
 use App\Http\Controllers\SalaryRuleController;
+use App\Http\Controllers\ServiceRequestController;
 use App\Models\AutomationLog;
 use App\Services\AutomationService;
 
@@ -171,6 +172,8 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         Route::get('/salary/foreman/my', [SalaryRuleController::class, 'myForemanFixedSalaryData']);
         Route::get('/salary/my', [SalaryRuleController::class, 'mySalaryData']);
         Route::get('/salary/managers-data', [SalaryRuleController::class, 'managerPayoutData'])->middleware('only.owner');
+        Route::get('/service-requests', [ServiceRequestController::class, 'index']);
+        Route::post('/service-requests', [ServiceRequestController::class, 'store']);
         
         Route::post('/send-project-money', [\App\Http\Controllers\CashTransferController::class, 'sendProjectMoney']);
 
@@ -1286,6 +1289,23 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
     Route::middleware(['auth'])->get('/projects', function () {
         return view('projects.project');
     });
+
+    Route::get('/projects/service-repair', function () {
+        $user = auth()->user();
+
+        if (!$user) {
+            abort(403);
+        }
+
+        $isOwner = $user->role === 'owner';
+        $isForeman = $user->role === 'worker' && $user->position === 'foreman';
+
+        if (!$isOwner && !$isForeman) {
+            abort(403);
+        }
+
+        return view('projects.service-repair');
+    })->middleware(['auth']);
 
     Route::get('/salary', function () {
         return view('salary.index');

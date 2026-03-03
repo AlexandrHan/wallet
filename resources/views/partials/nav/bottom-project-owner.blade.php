@@ -1,5 +1,5 @@
 @php
-  $activeProjects = request()->is('projects');
+  $activeProjects = request()->is('projects') || request()->is('projects/*');
   $activeSalary = request()->is('salary') || request()->is('salary/*');
 @endphp
 
@@ -72,6 +72,7 @@
       <summary class="tg-acc__title">🏗 Будівництво</summary>
       <div class="tg-acc__body">
         <a class="tg-menu__item" href="/projects">🏗 Проекти (активні)</a>
+        <a class="tg-menu__item" href="/projects/service-repair">🛠 Сервіс та ремонт</a>
         <button type="button" class="tg-menu__item tg-menu__item--static" disabled>📊 Графіки</button>
       </div>
     </details>

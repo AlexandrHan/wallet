@@ -35,6 +35,11 @@ let STAFF_OPTIONS = {
 
 const OPEN_PROJECT_KEY = 'construction_open_project_id';
 const rememberOpenProject = (id) => localStorage.setItem(OPEN_PROJECT_KEY, String(id));
+const getRememberedOpenProject = () => {
+  const value = localStorage.getItem(OPEN_PROJECT_KEY);
+  return value ? String(value) : null;
+};
+const clearRememberedOpenProject = () => localStorage.removeItem(OPEN_PROJECT_KEY);
 
 function esc(v) {
   return String(v ?? '')
@@ -302,6 +307,17 @@ function syncProjectCardState(body) {
 }
 
 async function loadConstructionProjects() {
+  const container = document.getElementById('constructionProjectsContainer');
+  if (!container) return;
+
+  const openBody = Array.from(container.querySelectorAll('.project-body'))
+    .find(body => window.getComputedStyle(body).display !== 'none');
+  const currentOpenId = getProjectIdFromBody(openBody);
+  if (currentOpenId) {
+    rememberOpenProject(currentOpenId);
+  }
+  const openProjectId = getRememberedOpenProject();
+
   try {
     const rStaff = await fetch('/api/construction-staff-options');
     if (rStaff.ok) {
@@ -326,11 +342,6 @@ async function loadConstructionProjects() {
 
     return String(a.client_name || '').localeCompare(String(b.client_name || ''), 'uk', { sensitivity: 'base' });
   });
-
-  localStorage.removeItem(OPEN_PROJECT_KEY);
-
-  const container = document.getElementById('constructionProjectsContainer');
-  if (!container) return;
   container.innerHTML = '';
 
   const activeProjects = sortedProjects.filter(p => p.status !== 'completed');
@@ -579,9 +590,11 @@ async function loadConstructionProjects() {
         const id = getProjectIdFromBody(body);
         saveProjectDraft(id, body, { force: true, notify: false });
         setAllProjectSections(body, false);
+        clearRememberedOpenProject();
+      } else {
+        rememberOpenProject(p.id);
       }
       body.style.display = isHidden ? 'block' : 'none';
-      if (isHidden) rememberOpenProject(p.id);
     });
 
     container.appendChild(card);
@@ -592,6 +605,9 @@ async function loadConstructionProjects() {
         select.dataset.previousValue = select.value || '';
       });
       projectLastSavedSnapshot.set(String(p.id), getProjectSnapshot(initialBody));
+      if (openProjectId && String(openProjectId) === String(p.id)) {
+        initialBody.style.display = 'block';
+      }
     }
 
     return card;
