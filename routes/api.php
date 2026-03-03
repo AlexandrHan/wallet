@@ -17,21 +17,31 @@ use App\Http\Controllers\DeliveryController;
 
 Route::get('/ping', fn () => response()->json(['ok' => true]));
 
-Route::post('/automation/malinin-sync', function (Request $request) {
+$runAutomationProjectSync = function (
+    Request $request,
+    array $options
+) {
     if ($request->header('X-AUTO-TOKEN') !== config('services.automation.token')) {
         return response()->json(['ok' => false], 403);
     }
 
     $rows = $request->input('rows', []);
+    $assignmentField = $options['assignment_field'];
+    $assignmentValue = $options['assignment_value'] ?? null;
+    $dateField = $options['date_field'];
+    $noteField = $options['note_field'] ?? null;
+
     $normalizeName = function ($value): string {
         $value = mb_strtolower((string) $value);
         $value = preg_replace('/[^\p{L}\p{N}]+/u', ' ', $value);
         $value = preg_replace('/\s+/u', ' ', (string) $value);
         return trim((string) $value);
     };
+
     $compactName = function ($value) use ($normalizeName): string {
         return str_replace(' ', '', $normalizeName($value));
     };
+
     $scoreNameMatch = function (string $needle, string $haystack) use ($normalizeName, $compactName): float {
         $needleNorm = $normalizeName($needle);
         $haystackNorm = $normalizeName($haystack);
@@ -59,7 +69,9 @@ Route::post('/automation/malinin-sync', function (Request $request) {
 
         foreach (preg_split('/\s+/u', $haystackNorm) ?: [] as $token) {
             $token = trim((string) $token);
-            if ($token === '') continue;
+            if ($token === '') {
+                continue;
+            }
 
             similar_text($needleNorm, $token, $tokenPercent);
             if ($tokenPercent > $best) {
@@ -77,11 +89,26 @@ Route::post('/automation/malinin-sync', function (Request $request) {
 
         return $best;
     };
-    $malininProjects = DB::table('sales_projects')
-        ->select('id', 'client_name', 'electrician', 'electrician_note')
+
+    $projectColumns = ['id', 'client_name', $assignmentField];
+    if ($noteField) {
+        $projectColumns[] = $noteField;
+    }
+
+    $projects = DB::table('sales_projects')
+        ->select($projectColumns)
         ->get()
-        ->filter(function ($project) use ($normalizeName) {
-            return $normalizeName($project->electrician ?? '') === 'малінін';
+        ->filter(function ($project) use ($normalizeName, $assignmentField, $assignmentValue) {
+            $assignment = $normalizeName($project->{$assignmentField} ?? '');
+            if ($assignment === '') {
+                return false;
+            }
+
+            if ($assignmentValue === null) {
+                return true;
+            }
+
+            return $assignment === $normalizeName($assignmentValue);
         })
         ->values();
 
@@ -127,7 +154,7 @@ Route::post('/automation/malinin-sync', function (Request $request) {
             $bestCandidate = null;
             $bestScore = 0.0;
 
-            foreach ($malininProjects as $candidateProject) {
+            foreach ($projects as $candidateProject) {
                 $score = $scoreNameMatch($candidateName, (string) $candidateProject->client_name);
                 if ($score > $bestScore) {
                     $bestScore = $score;
@@ -143,12 +170,12 @@ Route::post('/automation/malinin-sync', function (Request $request) {
             }
 
             $update = [
-                'electric_work_start_date' => $date,
+                $dateField => $date,
                 'updated_at' => now(),
             ];
 
-            if (Schema::hasColumn('sales_projects', 'electrician_note')) {
-                $update['electrician_note'] = $note ?: $project->electrician_note;
+            if ($noteField && Schema::hasColumn('sales_projects', $noteField)) {
+                $update[$noteField] = $note ?: ($project->{$noteField} ?? null);
             }
 
             DB::table('sales_projects')
@@ -167,7 +194,49 @@ Route::post('/automation/malinin-sync', function (Request $request) {
         'skipped' => array_values(array_unique($skipped)),
         'not_found' => array_values(array_unique($notFound)),
     ]);
-});
+};
+
+Route::post('/automation/malinin-sync', fn (Request $request) => $runAutomationProjectSync($request, [
+    'assignment_field' => 'electrician',
+    'assignment_value' => 'Малінін',
+    'date_field' => 'electric_work_start_date',
+    'note_field' => 'electrician_note',
+]));
+
+Route::post('/automation/savenkov-sync', fn (Request $request) => $runAutomationProjectSync($request, [
+    'assignment_field' => 'electrician',
+    'assignment_value' => 'Савенков',
+    'date_field' => 'electric_work_start_date',
+    'note_field' => 'electrician_note',
+]));
+
+Route::post('/automation/installers-sync', fn (Request $request) => $runAutomationProjectSync($request, [
+    'assignment_field' => 'installation_team',
+    'assignment_value' => null,
+    'date_field' => 'panel_work_start_date',
+    'note_field' => 'installation_team_note',
+]));
+
+Route::post('/automation/shevchenko-sync', fn (Request $request) => $runAutomationProjectSync($request, [
+    'assignment_field' => 'installation_team',
+    'assignment_value' => 'Шевченко',
+    'date_field' => 'panel_work_start_date',
+    'note_field' => 'installation_team_note',
+]));
+
+Route::post('/automation/kukuiaka-sync', fn (Request $request) => $runAutomationProjectSync($request, [
+    'assignment_field' => 'installation_team',
+    'assignment_value' => 'Кукуяка',
+    'date_field' => 'panel_work_start_date',
+    'note_field' => 'installation_team_note',
+]));
+
+Route::post('/automation/kryzhanovskyi-sync', fn (Request $request) => $runAutomationProjectSync($request, [
+    'assignment_field' => 'installation_team',
+    'assignment_value' => 'Крижановський',
+    'date_field' => 'panel_work_start_date',
+    'note_field' => 'installation_team_note',
+]));
 
 // ❗ ПОКИ БЕЗ auth, ЩОБ НЕ ЗАВАЖАВ
 
