@@ -37,6 +37,46 @@ $runAutomationProjectSync = function (
         $value = preg_replace('/\s+/u', ' ', (string) $value);
         return trim((string) $value);
     };
+    $normalizeSheetDate = function ($value): ?string {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return null;
+        }
+
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+            return $value;
+        }
+
+        if (preg_match('/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2}|\d{4})$/', $value, $m)) {
+            $day = (int) $m[1];
+            $month = (int) $m[2];
+            $year = (int) $m[3];
+            if ($year < 100) {
+                $year += 2000;
+            }
+
+            if (checkdate($month, $day, $year)) {
+                return sprintf('%04d-%02d-%02d', $year, $month, $day);
+            }
+        }
+
+        if (is_numeric($value)) {
+            $serial = (int) $value;
+            if ($serial > 0) {
+                try {
+                    return \Carbon\Carbon::create(1899, 12, 30)->addDays($serial)->format('Y-m-d');
+                } catch (\Throwable $e) {
+                    return null;
+                }
+            }
+        }
+
+        try {
+            return \Carbon\Carbon::parse($value)->format('Y-m-d');
+        } catch (\Throwable $e) {
+            return null;
+        }
+    };
 
     $compactName = function ($value) use ($normalizeName): string {
         return str_replace(' ', '', $normalizeName($value));
@@ -119,7 +159,7 @@ $runAutomationProjectSync = function (
     $skipTokens = ['вихідні', 'сервіси'];
 
     foreach ($rows as $row) {
-        $date = $row['date'] ?? null;
+        $date = $normalizeSheetDate($row['date'] ?? null);
         $name = trim($row['name'] ?? '');
         $note = $row['note'] ?? null;
 
