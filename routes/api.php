@@ -23,6 +23,70 @@ Route::post('/automation/malinin-sync', function (Request $request) {
     }
 
     $rows = $request->input('rows', []);
+    $normalizeName = function ($value): string {
+        $value = mb_strtolower((string) $value);
+        $value = preg_replace('/[^\p{L}\p{N}]+/u', ' ', $value);
+        $value = preg_replace('/\s+/u', ' ', (string) $value);
+        return trim((string) $value);
+    };
+    $compactName = function ($value) use ($normalizeName): string {
+        return str_replace(' ', '', $normalizeName($value));
+    };
+    $scoreNameMatch = function (string $needle, string $haystack) use ($normalizeName, $compactName): float {
+        $needleNorm = $normalizeName($needle);
+        $haystackNorm = $normalizeName($haystack);
+
+        if ($needleNorm === '' || $haystackNorm === '') {
+            return 0.0;
+        }
+
+        if (str_contains($haystackNorm, $needleNorm) || str_contains($needleNorm, $haystackNorm)) {
+            return 100.0;
+        }
+
+        $needleCompact = $compactName($needleNorm);
+        $haystackCompact = $compactName($haystackNorm);
+
+        if ($needleCompact !== '' && $haystackCompact !== '' && (
+            str_contains($haystackCompact, $needleCompact) ||
+            str_contains($needleCompact, $haystackCompact)
+        )) {
+            return 96.0;
+        }
+
+        similar_text($needleCompact, $haystackCompact, $mainPercent);
+        $best = (float) $mainPercent;
+
+        foreach (preg_split('/\s+/u', $haystackNorm) ?: [] as $token) {
+            $token = trim((string) $token);
+            if ($token === '') continue;
+
+            similar_text($needleNorm, $token, $tokenPercent);
+            if ($tokenPercent > $best) {
+                $best = (float) $tokenPercent;
+            }
+
+            $tokenCompact = $compactName($token);
+            if ($tokenCompact !== '') {
+                similar_text($needleCompact, $tokenCompact, $tokenCompactPercent);
+                if ($tokenCompactPercent > $best) {
+                    $best = (float) $tokenCompactPercent;
+                }
+            }
+        }
+
+        return $best;
+    };
+    $malininProjects = DB::table('sales_projects')
+        ->select('id', 'client_name', 'electrician_note')
+        ->whereRaw('LOWER(TRIM(electrician)) = ?', ['малінін'])
+        ->get();
+
+    $checked = 0;
+    $updated = 0;
+    $notFound = [];
+    $skipped = [];
+    $skipTokens = ['вихідні', 'сервіси'];
 
     foreach ($rows as $row) {
         $date = $row['date'] ?? null;
@@ -33,30 +97,79 @@ Route::post('/automation/malinin-sync', function (Request $request) {
             continue;
         }
 
-        $project = DB::table('sales_projects')
-            ->where('client_name', $name)
-            ->where('electrician', 'Малінін')
-            ->first();
+        $parts = preg_split('/[\/\r\n]+/u', $name) ?: [];
+        $names = collect($parts)
+            ->map(fn ($part) => trim((string) $part))
+            ->filter()
+            ->values();
 
-        if (!$project) {
-            continue;
+        if ($names->isEmpty()) {
+            $names = collect([$name]);
         }
 
-        $update = [
-            'electric_work_start_date' => $date,
-            'updated_at' => now(),
-        ];
+        foreach ($names as $candidateName) {
+            $cleanName = trim(mb_strtolower($candidateName));
+            if ($cleanName === '') {
+                continue;
+            }
 
-        if (Schema::hasColumn('sales_projects', 'electrician_note')) {
-            $update['electrician_note'] = $note ?: $project->electrician_note;
+            $checked++;
+
+            if (in_array($cleanName, $skipTokens, true)) {
+                $skipped[] = $candidateName;
+                continue;
+            }
+
+            $project = DB::table('sales_projects')
+                ->whereRaw('LOWER(TRIM(client_name)) LIKE ?', ["%{$cleanName}%"])
+                ->whereRaw('LOWER(TRIM(electrician)) = ?', ['малінін'])
+                ->first();
+
+            if (!$project) {
+                $bestCandidate = null;
+                $bestScore = 0.0;
+
+                foreach ($malininProjects as $candidateProject) {
+                    $score = $scoreNameMatch($candidateName, (string) $candidateProject->client_name);
+                    if ($score > $bestScore) {
+                        $bestScore = $score;
+                        $bestCandidate = $candidateProject;
+                    }
+                }
+
+                if ($bestCandidate && $bestScore >= 72.0) {
+                    $project = $bestCandidate;
+                } else {
+                    $notFound[] = $candidateName;
+                    continue;
+                }
+            }
+
+            $update = [
+                'electric_work_start_date' => $date,
+                'updated_at' => now(),
+            ];
+
+            if (Schema::hasColumn('sales_projects', 'electrician_note')) {
+                $update['electrician_note'] = $note ?: $project->electrician_note;
+            }
+
+            DB::table('sales_projects')
+                ->where('id', $project->id)
+                ->update($update);
+
+            $updated++;
         }
-
-        DB::table('sales_projects')
-            ->where('id', $project->id)
-            ->update($update);
     }
 
-    return response()->json(['ok' => true]);
+    return response()->json([
+        'ok' => true,
+        'received_rows' => count($rows),
+        'checked' => $checked,
+        'updated' => $updated,
+        'skipped' => array_values(array_unique($skipped)),
+        'not_found' => array_values(array_unique($notFound)),
+    ]);
 });
 
 // ❗ ПОКИ БЕЗ auth, ЩОБ НЕ ЗАВАЖАВ
