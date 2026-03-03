@@ -38,8 +38,16 @@ class SalesProjectController extends Controller
             $meta['electrician_note'] = ['section' => 'Персонал', 'label' => 'Електрик примітки'];
         }
 
+        if (Schema::hasColumn('sales_projects', 'electrician_task_note')) {
+            $meta['electrician_task_note'] = ['section' => 'Персонал', 'label' => 'Електрик: завдання з таблиці'];
+        }
+
         if (Schema::hasColumn('sales_projects', 'installation_team_note')) {
             $meta['installation_team_note'] = ['section' => 'Персонал', 'label' => 'Монтажна бригада примітки'];
+        }
+
+        if (Schema::hasColumn('sales_projects', 'installation_team_task_note')) {
+            $meta['installation_team_task_note'] = ['section' => 'Персонал', 'label' => 'Монтажна бригада: завдання з таблиці'];
         }
 
         if (Schema::hasColumn('sales_projects', 'phone_number')) {
@@ -69,8 +77,16 @@ class SalesProjectController extends Controller
                 $meta['electrician_note'] = ['section' => 'Персонал', 'label' => 'Електрик примітки'];
             }
 
+            if (Schema::hasColumn('sales_projects', 'electrician_task_note')) {
+                $meta['electrician_task_note'] = ['section' => 'Персонал', 'label' => 'Електрик: завдання з таблиці'];
+            }
+
             if (Schema::hasColumn('sales_projects', 'installation_team_note')) {
                 $meta['installation_team_note'] = ['section' => 'Персонал', 'label' => 'Монтажна бригада примітки'];
+            }
+
+            if (Schema::hasColumn('sales_projects', 'installation_team_task_note')) {
+                $meta['installation_team_task_note'] = ['section' => 'Персонал', 'label' => 'Монтажна бригада: завдання з таблиці'];
             }
         }
 
@@ -406,10 +422,16 @@ class SalesProjectController extends Controller
                 'electrician_note' => Schema::hasColumn('sales_projects', 'electrician_note')
                     ? $project->electrician_note
                     : null,
+                'electrician_task_note' => Schema::hasColumn('sales_projects', 'electrician_task_note')
+                    ? $project->electrician_task_note
+                    : null,
                 'installation_team' => $project->installation_team,
                 'installer_schedule_dates' => $installerScheduleDates,
                 'installation_team_note' => Schema::hasColumn('sales_projects', 'installation_team_note')
                     ? $project->installation_team_note
+                    : null,
+                'installation_team_task_note' => Schema::hasColumn('sales_projects', 'installation_team_task_note')
+                    ? $project->installation_team_task_note
                     : null,
                 'extra_works' => $project->extra_works,
                 'defects_note' => $project->defects_note,
@@ -747,8 +769,16 @@ class SalesProjectController extends Controller
             $rules['electrician_note'] = 'nullable|string|max:2000';
         }
 
+        if (Schema::hasColumn('sales_projects', 'electrician_task_note')) {
+            $rules['electrician_task_note'] = 'nullable|string|max:5000';
+        }
+
         if (Schema::hasColumn('sales_projects', 'installation_team_note')) {
             $rules['installation_team_note'] = 'nullable|string|max:2000';
+        }
+
+        if (Schema::hasColumn('sales_projects', 'installation_team_task_note')) {
+            $rules['installation_team_task_note'] = 'nullable|string|max:5000';
         }
 
         $data = $request->validate($rules);
@@ -772,8 +802,14 @@ class SalesProjectController extends Controller
         if (!Schema::hasColumn('sales_projects', 'electrician_note')) {
             unset($data['electrician_note']);
         }
+        if (!Schema::hasColumn('sales_projects', 'electrician_task_note')) {
+            unset($data['electrician_task_note']);
+        }
         if (!Schema::hasColumn('sales_projects', 'installation_team_note')) {
             unset($data['installation_team_note']);
+        }
+        if (!Schema::hasColumn('sales_projects', 'installation_team_task_note')) {
+            unset($data['installation_team_task_note']);
         }
         $hasDefectsPhotoUpload = $request->hasFile('defects_photo');
         $photoUploads = (array)$request->file('photos', []);

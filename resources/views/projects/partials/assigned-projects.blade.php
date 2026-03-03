@@ -239,6 +239,11 @@ document.addEventListener('DOMContentLoaded', async function () {
             <div class="project-field-label">Електрик примітки</div>
             <div class="btn project-textarea" style="text-align:left; cursor:default;">${esc(project.electrician_note || '—')}</div>
 
+            ${project.electrician_task_note ? `
+              <div class="project-field-label">Електрик: завдання з таблиці</div>
+              <div class="btn project-textarea" style="text-align:left; cursor:default;">${esc(project.electrician_task_note)}</div>
+            ` : ''}
+
             <hr class="project-divider" style="margin:8px 0 12px;">
 
             <div class="project-field-label">Монтажна бригада</div>
@@ -246,6 +251,11 @@ document.addEventListener('DOMContentLoaded', async function () {
 
             <div class="project-field-label">Монтажна бригада примітки</div>
             <div class="btn project-textarea" style="text-align:left; cursor:default;">${esc(project.installation_team_note || '—')}</div>
+
+            ${project.installation_team_task_note ? `
+              <div class="project-field-label">Монтажна бригада: завдання з таблиці</div>
+              <div class="btn project-textarea" style="text-align:left; cursor:default;">${esc(project.installation_team_task_note)}</div>
+            ` : ''}
 
             <div class="project-field-label">Доп. роботи</div>
             <div class="btn project-input-full">${esc(project.extra_works || '—')}</div>

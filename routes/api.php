@@ -30,6 +30,7 @@ $runAutomationProjectSync = function (
     $assignmentValue = $options['assignment_value'] ?? null;
     $dateField = $options['date_field'];
     $noteField = $options['note_field'] ?? null;
+    $taskNoteField = $options['task_note_field'] ?? null;
 
     $normalizeName = function ($value): string {
         $value = mb_strtolower((string) $value);
@@ -134,6 +135,9 @@ $runAutomationProjectSync = function (
     if ($noteField) {
         $projectColumns[] = $noteField;
     }
+    if ($taskNoteField) {
+        $projectColumns[] = $taskNoteField;
+    }
 
     $projects = DB::table('sales_projects')
         ->select($projectColumns)
@@ -163,6 +167,7 @@ $runAutomationProjectSync = function (
         $date = $normalizeSheetDate($row['date'] ?? null);
         $name = trim($row['name'] ?? '');
         $note = $row['note'] ?? null;
+        $taskNote = trim((string) ($row['task_note'] ?? ''));
 
         if (!$name || !$date) {
             continue;
@@ -217,6 +222,10 @@ $runAutomationProjectSync = function (
 
             if ($noteField && Schema::hasColumn('sales_projects', $noteField)) {
                 $update[$noteField] = $note ?: ($project->{$noteField} ?? null);
+            }
+
+            if ($taskNoteField && Schema::hasColumn('sales_projects', $taskNoteField) && $taskNote !== '') {
+                $update[$taskNoteField] = $taskNote;
             }
 
             DB::table('sales_projects')
@@ -287,6 +296,7 @@ Route::post('/automation/malinin-sync', fn (Request $request) => $runAutomationP
     'assignment_value' => 'Малінін',
     'date_field' => 'electric_work_start_date',
     'note_field' => 'electrician_note',
+    'task_note_field' => 'electrician_task_note',
 ]));
 
 Route::post('/automation/savenkov-sync', fn (Request $request) => $runAutomationProjectSync($request, [
@@ -294,6 +304,7 @@ Route::post('/automation/savenkov-sync', fn (Request $request) => $runAutomation
     'assignment_value' => 'Савенков',
     'date_field' => 'electric_work_start_date',
     'note_field' => 'electrician_note',
+    'task_note_field' => 'electrician_task_note',
 ]));
 
 Route::post('/automation/installers-sync', fn (Request $request) => $runAutomationProjectSync($request, [
@@ -301,6 +312,7 @@ Route::post('/automation/installers-sync', fn (Request $request) => $runAutomati
     'assignment_value' => null,
     'date_field' => 'panel_work_start_date',
     'note_field' => 'installation_team_note',
+    'task_note_field' => 'installation_team_task_note',
 ]));
 
 Route::post('/automation/shevchenko-sync', fn (Request $request) => $runAutomationProjectSync($request, [
@@ -308,6 +320,7 @@ Route::post('/automation/shevchenko-sync', fn (Request $request) => $runAutomati
     'assignment_value' => 'Шевченко',
     'date_field' => 'panel_work_start_date',
     'note_field' => 'installation_team_note',
+    'task_note_field' => 'installation_team_task_note',
 ]));
 
 Route::post('/automation/kukuiaka-sync', fn (Request $request) => $runAutomationProjectSync($request, [
@@ -315,6 +328,7 @@ Route::post('/automation/kukuiaka-sync', fn (Request $request) => $runAutomation
     'assignment_value' => 'Кукуяка',
     'date_field' => 'panel_work_start_date',
     'note_field' => 'installation_team_note',
+    'task_note_field' => 'installation_team_task_note',
 ]));
 
 Route::post('/automation/kryzhanovskyi-sync', fn (Request $request) => $runAutomationProjectSync($request, [
@@ -322,6 +336,7 @@ Route::post('/automation/kryzhanovskyi-sync', fn (Request $request) => $runAutom
     'assignment_value' => 'Крижановський',
     'date_field' => 'panel_work_start_date',
     'note_field' => 'installation_team_note',
+    'task_note_field' => 'installation_team_task_note',
 ]));
 
 // ❗ ПОКИ БЕЗ auth, ЩОБ НЕ ЗАВАЖАВ
