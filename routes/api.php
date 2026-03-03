@@ -78,9 +78,12 @@ Route::post('/automation/malinin-sync', function (Request $request) {
         return $best;
     };
     $malininProjects = DB::table('sales_projects')
-        ->select('id', 'client_name', 'electrician_note')
-        ->whereRaw('LOWER(TRIM(electrician)) = ?', ['малінін'])
-        ->get();
+        ->select('id', 'client_name', 'electrician', 'electrician_note')
+        ->get()
+        ->filter(function ($project) use ($normalizeName) {
+            return $normalizeName($project->electrician ?? '') === 'малінін';
+        })
+        ->values();
 
     $checked = 0;
     $updated = 0;
@@ -120,29 +123,23 @@ Route::post('/automation/malinin-sync', function (Request $request) {
                 continue;
             }
 
-            $project = DB::table('sales_projects')
-                ->whereRaw('LOWER(TRIM(client_name)) LIKE ?', ["%{$cleanName}%"])
-                ->whereRaw('LOWER(TRIM(electrician)) = ?', ['малінін'])
-                ->first();
+            $project = null;
+            $bestCandidate = null;
+            $bestScore = 0.0;
 
-            if (!$project) {
-                $bestCandidate = null;
-                $bestScore = 0.0;
-
-                foreach ($malininProjects as $candidateProject) {
-                    $score = $scoreNameMatch($candidateName, (string) $candidateProject->client_name);
-                    if ($score > $bestScore) {
-                        $bestScore = $score;
-                        $bestCandidate = $candidateProject;
-                    }
+            foreach ($malininProjects as $candidateProject) {
+                $score = $scoreNameMatch($candidateName, (string) $candidateProject->client_name);
+                if ($score > $bestScore) {
+                    $bestScore = $score;
+                    $bestCandidate = $candidateProject;
                 }
+            }
 
-                if ($bestCandidate && $bestScore >= 72.0) {
-                    $project = $bestCandidate;
-                } else {
-                    $notFound[] = $candidateName;
-                    continue;
-                }
+            if ($bestCandidate && $bestScore >= 72.0) {
+                $project = $bestCandidate;
+            } else {
+                $notFound[] = $candidateName;
+                continue;
             }
 
             $update = [
