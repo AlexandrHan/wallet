@@ -58,6 +58,11 @@
 
     <input id="totalAmount" type="number" class="btn" placeholder="Сума проекту" style="width:100%; margin-bottom:10px;">
 
+    <div id="projectTypeSegmented" class="segmented" style="margin-top:0; margin-bottom:10px;">
+      <button type="button" class="active" data-project-type="project">Проект</button>
+      <button type="button" data-project-type="retail">Роздріб</button>
+    </div>
+
     <select id="projectCurrency" class="btn" style="width:100%; margin-bottom:15px;">
       <option value="USD">USD</option>
       <option value="UAH">UAH</option>
@@ -422,8 +427,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
 // ===== Модалка проекту =====
 const modal = document.getElementById('projectModal');
+let CURRENT_PROJECT_TYPE = 'project';
 
 document.getElementById('createProjectBtn').onclick = () => {
+  const projectTypeButtons = document.querySelectorAll('#projectTypeSegmented [data-project-type]');
+  CURRENT_PROJECT_TYPE = 'project';
+  projectTypeButtons.forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.projectType === 'project');
+  });
   modal.style.display = 'flex';
 };
 
@@ -431,11 +442,21 @@ document.getElementById('closeModalBtn').onclick = () => {
   modal.style.display = 'none';
 };
 
+document.querySelectorAll('#projectTypeSegmented [data-project-type]').forEach(btn => {
+  btn.addEventListener('click', function () {
+    CURRENT_PROJECT_TYPE = this.dataset.projectType === 'retail' ? 'retail' : 'project';
+    document.querySelectorAll('#projectTypeSegmented [data-project-type]').forEach(el => {
+      el.classList.toggle('active', el === this);
+    });
+  });
+});
+
 document.getElementById('saveProjectBtn').onclick = () => {
 
   const client_name = document.getElementById('clientName').value;
   const total_amount = document.getElementById('totalAmount').value;
   const currency = document.getElementById('projectCurrency').value;
+  const is_retail = CURRENT_PROJECT_TYPE === 'retail';
 
   fetch('/api/sales-projects', {
     method: 'POST',
@@ -443,7 +464,7 @@ document.getElementById('saveProjectBtn').onclick = () => {
       'Content-Type': 'application/json',
       'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
     },
-    body: JSON.stringify({ client_name, total_amount, currency })
+    body: JSON.stringify({ client_name, total_amount, currency, is_retail })
   })
   .then(r => r.json())
   .then(res => {

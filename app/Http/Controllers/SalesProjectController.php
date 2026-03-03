@@ -211,6 +211,7 @@ class SalesProjectController extends Controller
             'total_amount'   => 'required|numeric|min:0.01',
             'advance_amount' => 'nullable|numeric|min:0',
             'currency'       => 'required|in:UAH,USD,EUR',
+            'is_retail'      => 'nullable|boolean',
             'from_wallet_id' => 'nullable|integer',
             'to_wallet_id'   => 'nullable|integer',
             'exchange_rate' => 'nullable|numeric|min:0.000001',
@@ -231,6 +232,7 @@ class SalesProjectController extends Controller
             'advance_amount'   => $advance,
             'remaining_amount' => $remaining,
             'currency'         => $data['currency'],
+            'is_retail'        => (bool)($data['is_retail'] ?? false),
             'created_by'       => auth()->id(),
             'status'           => 'active',
         ]);
@@ -356,6 +358,9 @@ class SalesProjectController extends Controller
                 'pending_amount' => $pending,
                 'remaining_amount' => (float)$project->total_amount - $paid,
                 'currency' => $project->currency,
+                'is_retail' => Schema::hasColumn('sales_projects', 'is_retail')
+                    ? (bool)$project->is_retail
+                    : false,
                 'status' => $project->status,
                 'telegram_group_link' => $project->telegram_group_link,
                 'geo_location_link' => $project->geo_location_link,

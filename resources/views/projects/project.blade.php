@@ -315,7 +315,8 @@ async function loadConstructionProjects() {
 
   const r = await fetch('/api/sales-projects');
   const projects = await r.json();
-  const sortedProjects = [...projects].sort((a, b) => {
+  const visibleProjects = [...projects].filter(p => !p.is_retail);
+  const sortedProjects = visibleProjects.sort((a, b) => {
     const aHasDefects = String(a.defects_note || '').trim() !== '';
     const bHasDefects = String(b.defects_note || '').trim() !== '';
 

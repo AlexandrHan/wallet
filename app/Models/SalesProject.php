@@ -12,6 +12,7 @@ class SalesProject extends Model
         'advance_amount',
         'remaining_amount',
         'currency',
+        'is_retail',
         'created_by',
         'lead_manager_user_id',
         'status',

@@ -377,6 +377,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
   function renderProjects(projects) {
     const filtered = projects
+      .filter(project => !project?.is_retail)
       .filter(project => matchesAssignment(project?.[MATCH_FIELD]))
       .filter(project => String(project.status || '') !== 'completed');
 
