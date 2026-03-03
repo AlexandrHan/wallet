@@ -134,9 +134,15 @@ class ErpNextService
             $payload
         );
 
-if (! $create->successful()) {
-    dd($create->status(), $create->body());
-}
+        if (! $create->successful()) {
+            DB::table('entries')->where('id', $entry->id)->update([
+                'erp_error' => $create->body(),
+            ]);
+
+            throw new \RuntimeException(
+                'ERP JE create failed: ' . $create->status() . ' ' . $create->body()
+            );
+        }
 
 
         $jeName = $create->json('data.name');
