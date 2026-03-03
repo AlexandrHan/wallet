@@ -16,6 +16,7 @@
   ],
   'scheduleField' => 'electric_work_start_date',
   'scheduleDurationField' => 'electric_work_days',
+  'scheduleDatesKey' => 'electric_schedule_dates',
   'emptyText' => 'У вас поки немає проєктів, де ви вказані як електрик.',
 ])
 

@@ -157,6 +157,7 @@ $runAutomationProjectSync = function (
     $notFound = [];
     $skipped = [];
     $skipTokens = ['вихідні', 'сервіси'];
+    $scheduleRows = [];
 
     foreach ($rows as $row) {
         $date = $normalizeSheetDate($row['date'] ?? null);
@@ -222,7 +223,52 @@ $runAutomationProjectSync = function (
                 ->where('id', $project->id)
                 ->update($update);
 
+            if (Schema::hasTable('project_schedule_entries')) {
+                $scheduleAssignmentValue = $assignmentValue ?? trim((string) ($project->{$assignmentField} ?? ''));
+                if ($scheduleAssignmentValue !== '') {
+                    $scheduleKey = implode('|', [
+                        (string) $project->id,
+                        $assignmentField,
+                        $scheduleAssignmentValue,
+                        $date,
+                    ]);
+
+                    $scheduleRows[$scheduleKey] = [
+                        'project_id' => $project->id,
+                        'assignment_field' => $assignmentField,
+                        'assignment_value' => $scheduleAssignmentValue,
+                        'work_date' => $date,
+                        'source' => 'automation',
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ];
+                }
+            }
+
             $updated++;
+        }
+    }
+
+    if (Schema::hasTable('project_schedule_entries')) {
+        $deleteQuery = DB::table('project_schedule_entries')
+            ->where('assignment_field', $assignmentField);
+
+        if ($assignmentValue !== null) {
+            $deleteQuery->where('assignment_value', $assignmentValue);
+        } elseif (!empty($scheduleRows)) {
+            $deleteQuery->whereIn(
+                'assignment_value',
+                array_values(array_unique(array_map(
+                    fn ($row) => $row['assignment_value'],
+                    $scheduleRows
+                )))
+            );
+        }
+
+        $deleteQuery->delete();
+
+        if (!empty($scheduleRows)) {
+            DB::table('project_schedule_entries')->insert(array_values($scheduleRows));
         }
     }
 

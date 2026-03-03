@@ -348,6 +348,25 @@ class SalesProjectController extends Controller
                     ->get()
                 : collect();
 
+            $scheduleEntries = Schema::hasTable('project_schedule_entries')
+                ? DB::table('project_schedule_entries')
+                    ->where('project_id', $project->id)
+                    ->orderBy('work_date')
+                    ->get()
+                : collect();
+
+            $electricScheduleDates = $scheduleEntries
+                ->where('assignment_field', 'electrician')
+                ->pluck('work_date')
+                ->values()
+                ->all();
+
+            $installerScheduleDates = $scheduleEntries
+                ->where('assignment_field', 'installation_team')
+                ->pluck('work_date')
+                ->values()
+                ->all();
+
             return [
                 'id' => $project->id,
                 'client_name' => $project->client_name,
@@ -383,10 +402,12 @@ class SalesProjectController extends Controller
                 'panel_name' => $project->panel_name,
                 'panel_qty' => $project->panel_qty,
                 'electrician' => $project->electrician,
+                'electric_schedule_dates' => $electricScheduleDates,
                 'electrician_note' => Schema::hasColumn('sales_projects', 'electrician_note')
                     ? $project->electrician_note
                     : null,
                 'installation_team' => $project->installation_team,
+                'installer_schedule_dates' => $installerScheduleDates,
                 'installation_team_note' => Schema::hasColumn('sales_projects', 'installation_team_note')
                     ? $project->installation_team_note
                     : null,

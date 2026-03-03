@@ -28,6 +28,7 @@ document.addEventListener('DOMContentLoaded', async function () {
   const EMPTY_TEXT = @json($emptyText);
   const SCHEDULE_FIELD = @json($scheduleField ?? null);
   const SCHEDULE_DURATION_FIELD = @json($scheduleDurationField ?? null);
+  const SCHEDULE_DATES_KEY = @json($scheduleDatesKey ?? null);
   const REFRESH_MS = 15000;
   const WEEKDAY_LABELS = ['Неділя', 'Понеділок', 'Вівторок', 'Середа', 'Четвер', "П'ятниця", 'Субота'];
 
@@ -324,6 +325,22 @@ document.addEventListener('DOMContentLoaded', async function () {
     const grouped = new Map(days.map(day => [day.key, []]));
 
     projects.forEach(project => {
+      const explicitDates = Array.isArray(project?.[SCHEDULE_DATES_KEY]) ? project[SCHEDULE_DATES_KEY] : [];
+      const normalizedKeys = new Set();
+
+      explicitDates.forEach(rawDate => {
+        const date = parseProjectDate(rawDate);
+        if (!date) return;
+        const key = date.toISOString().slice(0, 10);
+        if (!grouped.has(key) || normalizedKeys.has(key)) return;
+        normalizedKeys.add(key);
+        grouped.get(key).push(project);
+      });
+
+      if (normalizedKeys.size > 0) {
+        return;
+      }
+
       const startDate = parseProjectDate(project?.[SCHEDULE_FIELD]);
       if (!startDate) return;
 
@@ -332,7 +349,8 @@ document.addEventListener('DOMContentLoaded', async function () {
         const date = new Date(startDate);
         date.setDate(startDate.getDate() + offset);
         const key = date.toISOString().slice(0, 10);
-        if (!grouped.has(key)) continue;
+        if (!grouped.has(key) || normalizedKeys.has(key)) continue;
+        normalizedKeys.add(key);
         grouped.get(key).push(project);
       }
     });
