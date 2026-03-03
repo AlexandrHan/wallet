@@ -27,6 +27,7 @@ document.addEventListener('DOMContentLoaded', async function () {
   const ASSIGNMENT_MAP = @json($assignmentMap);
   const EMPTY_TEXT = @json($emptyText);
   const SCHEDULE_FIELD = @json($scheduleField ?? null);
+  const SCHEDULE_DURATION_FIELD = @json($scheduleDurationField ?? null);
   const REFRESH_MS = 15000;
   const WEEKDAY_LABELS = ['Неділя', 'Понеділок', 'Вівторок', 'Середа', 'Четвер', "П'ятниця", 'Субота'];
 
@@ -73,6 +74,13 @@ document.addEventListener('DOMContentLoaded', async function () {
     if (Number.isNaN(date.getTime())) return null;
     date.setHours(0, 0, 0, 0);
     return date;
+  }
+
+  function parseProjectDuration(project) {
+    if (!SCHEDULE_DURATION_FIELD) return 1;
+    const raw = Number(project?.[SCHEDULE_DURATION_FIELD]);
+    if (!Number.isFinite(raw) || raw < 1) return 1;
+    return Math.max(1, Math.round(raw));
   }
 
   function getWeekRange() {
@@ -316,11 +324,17 @@ document.addEventListener('DOMContentLoaded', async function () {
     const grouped = new Map(days.map(day => [day.key, []]));
 
     projects.forEach(project => {
-      const date = parseProjectDate(project?.[SCHEDULE_FIELD]);
-      if (!date) return;
-      const key = date.toISOString().slice(0, 10);
-      if (!grouped.has(key)) return;
-      grouped.get(key).push(project);
+      const startDate = parseProjectDate(project?.[SCHEDULE_FIELD]);
+      if (!startDate) return;
+
+      const duration = parseProjectDuration(project);
+      for (let offset = 0; offset < duration; offset++) {
+        const date = new Date(startDate);
+        date.setDate(startDate.getDate() + offset);
+        const key = date.toISOString().slice(0, 10);
+        if (!grouped.has(key)) continue;
+        grouped.get(key).push(project);
+      }
     });
 
     container.innerHTML = '';

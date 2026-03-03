@@ -15,6 +15,7 @@
     'serviceman_2' => 'Малінін',
   ],
   'scheduleField' => 'electric_work_start_date',
+  'scheduleDurationField' => 'electric_work_days',
   'emptyText' => 'У вас поки немає проєктів, де ви вказані як електрик.',
 ])
 

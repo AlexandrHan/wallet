@@ -387,10 +387,14 @@ async function loadConstructionProjects() {
           <div class="project-date-col">
             <div class="project-field-label" style="text-align:center;">Дата початку монтажу інверторної частини</div>
             <input type="date" class="btn project-input-full" data-field="electric_work_start_date" value="${esc(p.electric_work_start_date)}">
+            <div class="project-field-label" style="text-align:center;">Тривалість робіт електрика (днів)</div>
+            <input type="number" min="1" max="365" class="btn project-input-full" data-field="electric_work_days" value="${esc(p.electric_work_days || 1)}">
           </div>
           <div class="project-date-col">
             <div class="project-field-label" style="text-align:center;">Дата початку монтажу ФЕМ</div>
             <input type="date" class="btn project-input-full" data-field="panel_work_start_date" value="${esc(p.panel_work_start_date)}">
+            <div class="project-field-label" style="text-align:center;">Тривалість монтажу ФЕМ (днів)</div>
+            <input type="number" min="1" max="365" class="btn project-input-full" data-field="panel_work_days" value="${esc(p.panel_work_days || 1)}">
           </div>
         </div>
 

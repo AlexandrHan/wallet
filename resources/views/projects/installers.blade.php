@@ -16,6 +16,7 @@
     'shevchenko' => 'Шевченко',
   ],
   'scheduleField' => 'panel_work_start_date',
+  'scheduleDurationField' => 'panel_work_days',
   'emptyText' => 'У вас поки немає проєктів, де ви вказані як монтажна бригада.',
 ])
 

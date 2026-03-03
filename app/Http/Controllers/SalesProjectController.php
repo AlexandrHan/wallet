@@ -18,7 +18,9 @@ class SalesProjectController extends Controller
             'geo_location_link' => ['section' => 'Дані клієнта', 'label' => 'Посилання на геолокацію'],
             'has_green_tariff' => ['section' => 'Дані клієнта', 'label' => 'Зелений тариф'],
             'electric_work_start_date' => ['section' => 'Планування', 'label' => 'Дата початку монтажу інверторної частини'],
+            'electric_work_days' => ['section' => 'Планування', 'label' => 'Тривалість робіт електрика (днів)'],
             'panel_work_start_date' => ['section' => 'Планування', 'label' => 'Дата початку монтажу ФЕМ'],
+            'panel_work_days' => ['section' => 'Планування', 'label' => 'Тривалість монтажу ФЕМ (днів)'],
             'inverter' => ['section' => 'Обладнання', 'label' => 'Інвертор'],
             'bms' => ['section' => 'Обладнання', 'label' => 'BMS'],
             'battery_name' => ['section' => 'Обладнання', 'label' => 'АКБ'],
@@ -47,7 +49,9 @@ class SalesProjectController extends Controller
                 'phone_number' => ['section' => 'Дані клієнта', 'label' => 'Номер телефону'],
                 'has_green_tariff' => ['section' => 'Дані клієнта', 'label' => 'Зелений тариф'],
                 'electric_work_start_date' => ['section' => 'Планування', 'label' => 'Дата початку монтажу інверторної частини'],
+                'electric_work_days' => ['section' => 'Планування', 'label' => 'Тривалість робіт електрика (днів)'],
                 'panel_work_start_date' => ['section' => 'Планування', 'label' => 'Дата початку монтажу ФЕМ'],
+                'panel_work_days' => ['section' => 'Планування', 'label' => 'Тривалість монтажу ФЕМ (днів)'],
                 'inverter' => ['section' => 'Обладнання', 'label' => 'Інвертор'],
                 'bms' => ['section' => 'Обладнання', 'label' => 'BMS'],
                 'battery_name' => ['section' => 'Обладнання', 'label' => 'АКБ'],
@@ -360,7 +364,13 @@ class SalesProjectController extends Controller
                     : null,
                 'has_green_tariff' => (bool)$project->has_green_tariff,
                 'electric_work_start_date' => $project->electric_work_start_date,
+                'electric_work_days' => Schema::hasColumn('sales_projects', 'electric_work_days')
+                    ? $project->electric_work_days
+                    : 1,
                 'panel_work_start_date' => $project->panel_work_start_date,
+                'panel_work_days' => Schema::hasColumn('sales_projects', 'panel_work_days')
+                    ? $project->panel_work_days
+                    : 1,
                 'inverter' => $project->inverter,
                 'bms' => $project->bms,
                 'battery_name' => $project->battery_name,
@@ -683,7 +693,9 @@ class SalesProjectController extends Controller
             'geo_location_link' => 'nullable|string|max:1000',
             'has_green_tariff' => 'nullable|boolean',
             'electric_work_start_date' => 'nullable|date',
+            'electric_work_days' => 'nullable|integer|min:1|max:365',
             'panel_work_start_date' => 'nullable|date',
+            'panel_work_days' => 'nullable|integer|min:1|max:365',
             'inverter' => 'nullable|string|max:255',
             'bms' => 'nullable|string|max:255',
             'battery_name' => 'nullable|string|max:255',
@@ -724,6 +736,12 @@ class SalesProjectController extends Controller
         $data['has_green_tariff'] = (bool)($data['has_green_tariff'] ?? false);
         if (!Schema::hasColumn('sales_projects', 'phone_number')) {
             unset($data['phone_number']);
+        }
+        if (!Schema::hasColumn('sales_projects', 'electric_work_days')) {
+            unset($data['electric_work_days']);
+        }
+        if (!Schema::hasColumn('sales_projects', 'panel_work_days')) {
+            unset($data['panel_work_days']);
         }
         if (!Schema::hasColumn('sales_projects', 'electrician_note')) {
             unset($data['electrician_note']);
