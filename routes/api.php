@@ -6,7 +6,6 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use App\Http\Controllers\EntryReceiptController;
-use App\Services\ErpNextService;
 use Illuminate\Support\Facades\Storage;
 use App\Http\Controllers\DeliveryController;
 
@@ -86,19 +85,6 @@ Route::post('/entries', function (Request $request) {
         'created_at'   => now(),
         'updated_at'   => now(),
     ]);
-
-
-    // ⬅️ ОЦЕГО РАНІШЕ НЕ БУЛО
-    try {
-        app(\App\Services\ErpNextService::class)->syncEntry($id);
-    } catch (\Throwable $e) {
-        \Log::error('ERP sync failed', [
-            'entry_id' => $id,
-            'error' => $e->getMessage(),
-        ]);
-    }
-
-
 
     return response()->json([
         'id' => $id,

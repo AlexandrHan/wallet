@@ -36,11 +36,30 @@ class ErpNextService
      */
     public function syncEntry(int $entryId): array
     {
-
         $entry = DB::table('entries')->where('id', $entryId)->first();
         if (! $entry) {
             throw new \RuntimeException("Entry {$entryId} not found");
         }
+
+        // ERP integration is intentionally disabled.
+        $updates = [];
+        if (property_exists($entry, 'synced_to_erp')) {
+            $updates['synced_to_erp'] = 1;
+        }
+        if (property_exists($entry, 'erp_synced_at')) {
+            $updates['erp_synced_at'] = now();
+        }
+        if (property_exists($entry, 'erp_sync_date')) {
+            $updates['erp_sync_date'] = now()->toDateString();
+        }
+        if (property_exists($entry, 'erp_error')) {
+            $updates['erp_error'] = 'ERP integration disabled';
+        }
+        if ($updates !== []) {
+            DB::table('entries')->where('id', $entryId)->update($updates);
+        }
+
+        return ['status' => 'disabled'];
 
         if ($entry->synced_to_erp) {
             return ['status' => 'already_synced'];
@@ -210,6 +229,8 @@ class ErpNextService
         float $amount,
         string $postingDate
     ): void {
+        // ERP integration is intentionally disabled.
+        return;
 
         $isIncome = $amount > 0;
         $amount = abs($amount);
