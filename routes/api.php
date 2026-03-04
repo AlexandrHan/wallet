@@ -243,6 +243,31 @@ $runAutomationProjectSync = function (
                     $servicePayload['installation_team'] = $assignmentValue;
                 }
 
+                $existingServiceQuery = DB::table('service_requests')
+                    ->where('client_name', $candidateName)
+                    ->where('description', $servicePayload['description']);
+
+                if ($assignmentField === 'electrician') {
+                    $existingServiceQuery->where('electrician', $assignmentValue);
+                }
+
+                if ($assignmentField === 'installation_team') {
+                    $existingServiceQuery->where('installation_team', $assignmentValue);
+                }
+
+                $existingService = $existingServiceQuery
+                    ->select('id')
+                    ->orderByDesc('id')
+                    ->first();
+
+                if ($existingService) {
+                    DB::table('service_requests')
+                        ->where('id', $existingService->id)
+                        ->update($servicePayload);
+                    $serviceUpdated++;
+                    continue;
+                }
+
                 $servicePayload['created_at'] = now();
                 $servicePayload['status'] = 'open';
                 $servicePayload['created_by'] = null;
