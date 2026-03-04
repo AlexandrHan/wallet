@@ -293,8 +293,10 @@ Route::get('/telegram/salary', function (Request $request) use (
     $normalizedName = $telegramNormalizeName($name);
 
     $rule = \App\Models\SalaryRule::query()
-        ->whereRaw('LOWER(TRIM(staff_name)) = ?', [$normalizedName])
-        ->first();
+        ->get()
+        ->first(function ($candidate) use ($telegramNormalizeName, $normalizedName) {
+            return $telegramNormalizeName($candidate->staff_name ?? '') === $normalizedName;
+        });
 
     if ($rule) {
         $totals = [];
@@ -322,9 +324,12 @@ Route::get('/telegram/salary', function (Request $request) use (
             }
         } elseif ((string) $rule->staff_group === 'electrician') {
             $matched = \App\Models\SalesProject::query()
-                ->whereRaw('LOWER(TRIM(electrician)) = ?', [$normalizedName])
                 ->orderByDesc('id')
-                ->get();
+                ->get()
+                ->filter(function ($project) use ($telegramNormalizeName, $normalizedName) {
+                    return $telegramNormalizeName($project->electrician ?? '') === $normalizedName;
+                })
+                ->values();
 
             foreach ($matched as $project) {
                 $amount = $telegramCalculateElectricianSalary($project, $rule);
@@ -341,9 +346,12 @@ Route::get('/telegram/salary', function (Request $request) use (
             }
         } elseif ((string) $rule->staff_group === 'installation_team') {
             $matched = \App\Models\SalesProject::query()
-                ->whereRaw('LOWER(TRIM(installation_team)) = ?', [$normalizedName])
                 ->orderByDesc('id')
-                ->get();
+                ->get()
+                ->filter(function ($project) use ($telegramNormalizeName, $normalizedName) {
+                    return $telegramNormalizeName($project->installation_team ?? '') === $normalizedName;
+                })
+                ->values();
 
             foreach ($matched as $project) {
                 $amount = $telegramCalculateInstallerSalary($project, $rule);
@@ -374,8 +382,10 @@ Route::get('/telegram/salary', function (Request $request) use (
 
     $manager = \App\Models\User::query()
         ->where('role', 'ntv')
-        ->whereRaw('LOWER(TRIM(name)) = ?', [$normalizedName])
-        ->first();
+        ->get()
+        ->first(function ($candidate) use ($telegramNormalizeName, $normalizedName) {
+            return $telegramNormalizeName($candidate->name ?? '') === $normalizedName;
+        });
 
     if ($manager) {
         $acceptedTransfers = DB::table('cash_transfers')
