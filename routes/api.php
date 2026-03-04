@@ -17,6 +17,20 @@ use App\Http\Controllers\DeliveryController;
 
 Route::get('/ping', fn () => response()->json(['ok' => true]));
 
+Route::get('/telegram/projects', function (Request $request) {
+    if ($request->header('X-AUTO-TOKEN') !== config('services.automation.token')) {
+        return response()->json(['ok' => false], 403);
+    }
+
+    $projects = DB::table('sales_projects')
+        ->select('client_name', 'status', 'electrician')
+        ->orderByDesc('id')
+        ->limit(10)
+        ->get();
+
+    return response()->json($projects);
+});
+
 $runAutomationProjectSync = function (
     Request $request,
     array $options
