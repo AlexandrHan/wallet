@@ -223,6 +223,59 @@ $runAutomationProjectSync = function (
                 continue;
             }
 
+            if ($taskNote !== '' && $serviceTableAvailable) {
+                $serviceRequests = DB::table('service_requests')
+                    ->select('id', 'client_name', $assignmentField)
+                    ->where($assignmentField, $assignmentValue)
+                    ->get();
+
+                $serviceMatch = null;
+                $serviceBestScore = 0.0;
+
+                foreach ($serviceRequests as $candidateService) {
+                    $score = $scoreNameMatch($candidateName, (string) $candidateService->client_name);
+                    if ($score > $serviceBestScore) {
+                        $serviceBestScore = $score;
+                        $serviceMatch = $candidateService;
+                    }
+                }
+
+                $taskMeta = $extractTaskMeta($taskNote);
+                $servicePayload = [
+                    'client_name' => $candidateName,
+                    'settlement' => $taskMeta['D'] !== '' ? $taskMeta['D'] : 'Автоматизація',
+                    'description' => $taskNote,
+                    'updated_at' => now(),
+                ];
+
+                if ($noteField && $note) {
+                    $servicePayload['description'] = trim($taskNote . "\n\nПримітка: " . $note);
+                }
+
+                if ($assignmentField === 'electrician') {
+                    $servicePayload['electrician'] = $assignmentValue;
+                }
+                if ($assignmentField === 'installation_team') {
+                    $servicePayload['installation_team'] = $assignmentValue;
+                }
+
+                if ($serviceMatch && $serviceBestScore >= 72.0) {
+                    DB::table('service_requests')
+                        ->where('id', $serviceMatch->id)
+                        ->update($servicePayload);
+                    $serviceUpdated++;
+                    continue;
+                }
+
+                $servicePayload['created_at'] = now();
+                $servicePayload['status'] = 'open';
+                $servicePayload['created_by'] = null;
+
+                DB::table('service_requests')->insert($servicePayload);
+                $serviceCreated++;
+                continue;
+            }
+
             $project = null;
             $bestCandidate = null;
             $bestScore = 0.0;
@@ -238,59 +291,6 @@ $runAutomationProjectSync = function (
             if ($bestCandidate && $bestScore >= 72.0) {
                 $project = $bestCandidate;
             } else {
-                if ($taskNote !== '' && $serviceTableAvailable) {
-                    $serviceRequests = DB::table('service_requests')
-                        ->select('id', 'client_name', $assignmentField)
-                        ->where($assignmentField, $assignmentValue)
-                        ->get();
-
-                    $serviceMatch = null;
-                    $serviceBestScore = 0.0;
-
-                    foreach ($serviceRequests as $candidateService) {
-                        $score = $scoreNameMatch($candidateName, (string) $candidateService->client_name);
-                        if ($score > $serviceBestScore) {
-                            $serviceBestScore = $score;
-                            $serviceMatch = $candidateService;
-                        }
-                    }
-
-                    $taskMeta = $extractTaskMeta($taskNote);
-                    $servicePayload = [
-                        'client_name' => $candidateName,
-                        'settlement' => $taskMeta['D'] !== '' ? $taskMeta['D'] : 'Автоматизація',
-                        'description' => $taskNote,
-                        'updated_at' => now(),
-                    ];
-
-                    if ($noteField && $note) {
-                        $servicePayload['description'] = trim($taskNote . "\n\nПримітка: " . $note);
-                    }
-
-                    if ($assignmentField === 'electrician') {
-                        $servicePayload['electrician'] = $assignmentValue;
-                    }
-                    if ($assignmentField === 'installation_team') {
-                        $servicePayload['installation_team'] = $assignmentValue;
-                    }
-
-                    if ($serviceMatch && $serviceBestScore >= 72.0) {
-                        DB::table('service_requests')
-                            ->where('id', $serviceMatch->id)
-                            ->update($servicePayload);
-                        $serviceUpdated++;
-                        continue;
-                    }
-
-                    $servicePayload['created_at'] = now();
-                    $servicePayload['status'] = 'open';
-                    $servicePayload['created_by'] = null;
-
-                    DB::table('service_requests')->insert($servicePayload);
-                    $serviceCreated++;
-                    continue;
-                }
-
                 $notFound[] = $candidateName;
                 continue;
             }
