@@ -84,6 +84,84 @@ document.addEventListener('DOMContentLoaded', async function () {
     return Math.max(1, Math.round(raw));
   }
 
+  function makeServiceCard(service) {
+    const card = document.createElement('div');
+    const telegramUrl = normalizeExternalUrl(service.telegram_group_link);
+    const mapsUrl = normalizeExternalUrl(service.geo_location_link);
+    const phoneHref = normalizePhoneHref(service.phone_number);
+
+    card.className = 'card project-card';
+    if (service.is_urgent) card.style.border = '2px solid #ff001aad';
+
+    card.innerHTML = `
+      <div class="project-header">
+        <div class="project-header-row">
+          <div class="project-header-name">${esc(service.client_name)}</div>
+          <div class="project-header-meta">${esc(service.created_at || '')} • 🛠 Сервіс</div>
+        </div>
+        <div class="project-header-row project-header-sub">
+          <div>${esc(service.settlement || 'Населений пункт не вказаний')}</div>
+          <div class="project-header-meta" style="font-size:12px; opacity:.78;">
+            ${service.is_urgent ? 'Терміново' : 'Звичайна'}
+          </div>
+        </div>
+      </div>
+
+      <div class="project-body">
+        <div class="project-section is-open">
+          <button type="button" class="project-section-toggle" disabled>
+            <span>Сервіс</span>
+            <span class="project-section-caret">▸</span>
+          </button>
+          <div class="project-section-body">
+            <div class="project-field-label">Опис</div>
+            <div class="btn project-textarea" style="text-align:left; cursor:default; white-space:pre-wrap;">${esc(service.description || '—')}</div>
+
+            <div class="project-field-label">Телефон</div>
+            <a
+              class="btn project-input-full ${phoneHref ? '' : 'tg-menu__item--static'}"
+              href="${phoneHref ? esc(phoneHref) : '#'}"
+              onclick="${phoneHref ? '' : 'return false;'}"
+              style="display:block; text-align:left;"
+            >
+              ${esc(service.phone_number || '—')}
+            </a>
+
+            <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;">
+              <a
+                class="btn project-action-btn project-action-btn--telegram ${telegramUrl ? '' : 'tg-menu__item--static'}"
+                href="${telegramUrl ? esc(telegramUrl) : '#'}"
+                ${telegramUrl ? 'target="_blank" rel="noopener noreferrer"' : 'aria-disabled="true"'}
+                onclick="${telegramUrl ? '' : 'return false;'}"
+              >
+                <img src="/img/telegram.png" alt="Telegram" class="project-action-icon">
+                <span>Відкрити Telegram</span>
+              </a>
+
+              <a
+                class="btn project-action-btn project-action-btn--maps ${mapsUrl ? '' : 'tg-menu__item--static'}"
+                href="${mapsUrl ? esc(mapsUrl) : '#'}"
+                ${mapsUrl ? 'target="_blank" rel="noopener noreferrer"' : 'aria-disabled="true"'}
+                onclick="${mapsUrl ? '' : 'return false;'}"
+              >
+                <span style="font-size:18px; line-height:1;">📍</span>
+                <span>Відкрити Google Maps</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    card.querySelector('.project-header')?.addEventListener('click', function () {
+      const body = card.querySelector('.project-body');
+      const isHidden = window.getComputedStyle(body).display === 'none';
+      body.style.display = isHidden ? 'block' : 'none';
+    });
+
+    return card;
+  }
+
   function getWeekRange() {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
@@ -389,7 +467,9 @@ document.addEventListener('DOMContentLoaded', async function () {
       `;
 
       dayProjects.forEach(project => {
-        const projectCard = makeCard(project);
+        const projectCard = project?.entry_type === 'service'
+          ? makeServiceCard(project)
+          : makeCard(project);
         projectCard.style.marginBottom = '12px';
         daySection.appendChild(projectCard);
       });
@@ -428,14 +508,32 @@ document.addEventListener('DOMContentLoaded', async function () {
 
   async function loadProjects() {
     try {
-      const res = await fetch('/api/sales-projects', { headers: { 'Accept': 'application/json' } });
-      const projects = await res.json();
+      const [projectsRes, servicesRes] = await Promise.all([
+        fetch('/api/sales-projects', { headers: { 'Accept': 'application/json' } }),
+        fetch('/api/my-service-requests', { headers: { 'Accept': 'application/json' } }),
+      ]);
+      const projects = await projectsRes.json();
+      const services = servicesRes.ok ? await servicesRes.json() : [];
 
-      if (!res.ok || !Array.isArray(projects)) {
+      if (!projectsRes.ok || !Array.isArray(projects)) {
         throw new Error('Не вдалося завантажити проекти');
       }
 
-      renderProjects(projects);
+      const normalizedServices = Array.isArray(services)
+        ? services.map((item) => ({
+            ...item,
+            client_name: item.client_name,
+            status: 'service',
+            is_retail: false,
+            created_at: item.created_at,
+            electric_work_start_date: item.schedule_date || '',
+            panel_work_start_date: item.schedule_date || '',
+            electric_schedule_dates: item.schedule_date ? [item.schedule_date] : [],
+            installer_schedule_dates: item.schedule_date ? [item.schedule_date] : [],
+          }))
+        : [];
+
+      renderProjects([...projects, ...normalizedServices]);
     } catch (err) {
       container.innerHTML = `<div class="card">${esc(err.message || 'Помилка')}</div>`;
     }

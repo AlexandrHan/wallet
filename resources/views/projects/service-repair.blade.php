@@ -51,11 +51,13 @@
         <div>
           <div style="font-weight:700; margin-bottom:6px;">Група в Telegram</div>
           <input id="serviceTelegramLink" class="btn" placeholder="Посилання на Telegram" style="width:100%; margin-bottom:0;">
+          <button type="button" id="openServiceTelegramBtn" class="btn mini" style="margin-top:8px; margin-bottom:0;">✈️ Відкрити Telegram</button>
         </div>
 
         <div>
           <div style="font-weight:700; margin-bottom:6px;">Геолокація</div>
           <input id="serviceGeoLink" class="btn" placeholder="Посилання на геолокацію" style="width:100%; margin-bottom:0;">
+          <button type="button" id="openServiceGeoBtn" class="btn mini" style="margin-top:8px; margin-bottom:0;">📍 Відкрити Google Maps</button>
         </div>
 
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
@@ -113,14 +115,23 @@ document.addEventListener('DOMContentLoaded', function () {
   const modal = document.getElementById('serviceRequestModal');
   const container = document.getElementById('serviceRequestsContainer');
   const urgentToggle = document.getElementById('serviceUrgentToggle');
+  const clientNameEl = document.getElementById('serviceClientName');
+  const settlementEl = document.getElementById('serviceSettlement');
+  const phoneNumberEl = document.getElementById('servicePhoneNumber');
   const descEl = document.getElementById('serviceDescription');
   const dictationBtn = document.getElementById('serviceDictationBtn');
   const dictationHint = document.getElementById('serviceDictationHint');
+  const telegramInputEl = document.getElementById('serviceTelegramLink');
+  const geoInputEl = document.getElementById('serviceGeoLink');
+  const electricianEl = document.getElementById('serviceElectrician');
+  const installationTeamEl = document.getElementById('serviceInstallationTeam');
   const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
   let urgentValue = '0';
   let recognition = null;
   let dictationActive = false;
+  const OPEN_SERVICE_KEY = 'service_repair_open_id';
+  const OPEN_SERVICE_SECTIONS_KEY = 'service_repair_open_sections';
 
   const esc = (v) => String(v ?? '')
     .replace(/&/g, '&amp;')
@@ -136,6 +147,27 @@ document.addEventListener('DOMContentLoaded', function () {
     return `https://${v}`;
   }
 
+  function getRememberedOpenSections() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(OPEN_SERVICE_SECTIONS_KEY) || '{}');
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function setRememberedOpenSections(serviceId, sectionKeys) {
+    const current = getRememberedOpenSections();
+    current[String(serviceId)] = Array.isArray(sectionKeys) ? sectionKeys : [];
+    localStorage.setItem(OPEN_SERVICE_SECTIONS_KEY, JSON.stringify(current));
+  }
+
+  function clearRememberedOpenSections(serviceId) {
+    const current = getRememberedOpenSections();
+    delete current[String(serviceId)];
+    localStorage.setItem(OPEN_SERVICE_SECTIONS_KEY, JSON.stringify(current));
+  }
+
   function renderRequests(items) {
     if (!Array.isArray(items) || !items.length) {
       container.innerHTML = `
@@ -146,13 +178,15 @@ document.addEventListener('DOMContentLoaded', function () {
       return;
     }
 
+    const rememberedId = Number(localStorage.getItem(OPEN_SERVICE_KEY) || 0);
+    const rememberedSectionsMap = getRememberedOpenSections();
+    const rememberedSections = Array.isArray(rememberedSectionsMap[String(rememberedId)])
+      ? rememberedSectionsMap[String(rememberedId)]
+      : [];
+
     container.innerHTML = items.map(item => {
       const urgentBadge = item.is_urgent
-        ? `<span class="tag" style="background:rgba(255, 196, 0, .18); border-color:rgba(255, 196, 0, .35); color:#ffd76a;">Терміново</span>`
-        : '';
-
-      const phoneHtml = item.phone_number
-        ? `<a href="tel:${esc(String(item.phone_number).replace(/[^\d+]/g, ''))}" class="btn mini" style="text-decoration:none; margin-bottom:0;">📞 ${esc(item.phone_number)}</a>`
+        ? `<span class="tag" style="background:rgba(255, 0, 26, .14); border-color:rgba(255, 0, 26, .35); color:#ff8a96;">Терміново</span>`
         : '';
 
       const telegramHtml = item.telegram_group_link
@@ -163,33 +197,241 @@ document.addEventListener('DOMContentLoaded', function () {
         ? `<a href="${esc(normalizeUrl(item.geo_location_link))}" target="_blank" rel="noopener" class="btn mini" style="text-decoration:none; margin-bottom:0;">📍 Геолокація</a>`
         : '';
 
+      const isOpen = rememberedId === Number(item.id);
+
       return `
-        <div class="card" style="margin-bottom:12px; ${item.is_urgent ? 'border:2px solid #f2c200;' : ''}">
-          <div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
+        <div class="card service-card" data-id="${item.id}" style="margin-bottom:30px; cursor:pointer; ${item.is_urgent ? 'border:2px solid #ff001aad;' : ''}">
+          <div class="project-header" style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
             <div>
               <div style="font-weight:800; font-size:18px;">${esc(item.client_name)}</div>
               <div style="opacity:.75; margin-top:4px;">${esc(item.settlement)}</div>
             </div>
-            <div style="text-align:right;">
+
+          </div>
+
+          <div class="project-body" style="display:${isOpen ? 'block' : 'none'}; margin-top:12px; border-top:1px solid #ffffff20; padding-top:12px;">
+            <div style="text-align:center;">
+              
               ${urgentBadge}
-              <div style="opacity:.65; font-size:12px; margin-top:6px;">${esc(item.created_at || '')}</div>
+              <div style="opacity:.65; font-size:12px; font-weight:600; margin-top:14px;">${esc(item.created_at || '')}</div>
+              <div style="margin-top:8px;">
+                <button type="button" class="btn mini service-expand-btn" style="margin-bottom:14px;">Розкрити сервіс</button>
+              </div>
             </div>
-          </div>
+            <div class="project-section ${isOpen && rememberedSections.includes('client') ? 'is-open' : ''}" data-section data-section-key="client">
+              <button type="button" class="project-section-toggle">
+                <span>Дані клієнта</span>
+                <span class="project-section-caret">▸</span>
+              </button>
+              <div class="project-section-body">
+                <div class="project-kv">
+                  <div class="project-field-label" style="margin-top:14px;">Ім'я</div>
+                  <div style="margin-bottom:14px;">${esc(item.client_name)}</div>
+                </div>
+                <hr style="margin:14px 0; border-color:#ffffff20;">
+                <div class="project-kv">
+                  <div class="project-field-label">Населений пункт</div>
+                  <div>${esc(item.settlement || 'Не вказано')}</div>
+                </div>
+                <hr style="margin:14px 0; border-color:#ffffff20;">
+                <div class="project-kv">
+                  <div class="project-field-label">Номер телефону</div>
+                  <div>${item.phone_number ? `<a href="tel:${esc(String(item.phone_number).replace(/[^\d+]/g, ''))}" style="color:inherit; text-decoration:none;">${esc(item.phone_number)}</a>` : 'Не вказано'}</div>
+                </div>
+                <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;">
+                  ${telegramHtml}
+                  ${mapsHtml}
+                </div>
+              </div>
+            </div>
 
-          <div style="margin-top:12px; display:grid; gap:8px;">
-            <div><strong>Електрик:</strong> ${esc(item.electrician || 'Не вказано')}</div>
-            <div><strong>Монтажна бригада:</strong> ${esc(item.installation_team || 'Не вказано')}</div>
-            <div><strong>Опис:</strong><br>${esc(item.description || '').replace(/\n/g, '<br>')}</div>
-          </div>
+            <div class="project-section ${isOpen && rememberedSections.includes('staff') ? 'is-open' : ''}" data-section data-section-key="staff">
+              <button type="button" class="project-section-toggle">
+                <span>Персонал</span>
+                <span class="project-section-caret">▸</span>
+              </button>
+              <div class="project-section-body">
+                <div class="project-kv">
+                  <div class="project-field-label" style="margin-top:14px;">Електрик</div>
+                  <div>${esc(item.electrician || 'Не вказано')}</div>
+                </div>
+                <hr style="margin:14px 0; border-color:#ffffff20;">
+                <div class="project-kv">
+                  <div class="project-field-label">Монтажна бригада</div>
+                  <div>${esc(item.installation_team || 'Не вказано')}</div>
+                </div>
+              </div>
+            </div>
 
-          <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:14px;">
-            ${phoneHtml}
-            ${telegramHtml}
-            ${mapsHtml}
+            <div class="project-section ${isOpen && rememberedSections.includes('description') ? 'is-open' : ''}" data-section data-section-key="description">
+              <button type="button" class="project-section-toggle">
+                <span>Опис</span>
+                <span class="project-section-caret">▸</span>
+              </button>
+              <div class="project-section-body">
+                <div style="white-space:pre-wrap; word-break:break-word;">${esc(item.description || '')}</div>
+              </div>
+            </div>
+
+            <div style="margin-top:12px;">
+              <button
+                type="button"
+                class="btn danger delete-service-btn"
+                data-id="${item.id}"
+                style="width:100%; margin-bottom:0;"
+              >
+                🗑 Видалити сервіс
+              </button>
+            </div>
           </div>
         </div>
       `;
     }).join('');
+
+    const closeAllServiceCards = () => {
+      container.querySelectorAll('.service-card').forEach((otherCard) => {
+        const otherId = otherCard.dataset.id || '';
+        const otherBody = otherCard.querySelector('.project-body');
+        if (otherBody) {
+          otherBody.style.display = 'none';
+        }
+        otherCard.querySelectorAll('.project-section').forEach((section) => {
+          section.classList.remove('is-open');
+        });
+        if (otherId) {
+          clearRememberedOpenSections(otherId);
+        }
+        const otherBtn = otherCard.querySelector('.service-expand-btn');
+        if (otherBtn) {
+          otherBtn.textContent = 'Розкрити сервіс';
+        }
+      });
+      localStorage.removeItem(OPEN_SERVICE_KEY);
+    };
+
+    const openServiceCard = (card, openSections = false) => {
+      if (!card) return;
+
+      closeAllServiceCards();
+
+      const body = card.querySelector('.project-body');
+      if (!body) return;
+
+      body.style.display = 'block';
+      localStorage.setItem(OPEN_SERVICE_KEY, String(card.dataset.id || ''));
+
+      const sections = Array.from(card.querySelectorAll('.project-section'));
+      sections.forEach((section) => {
+        if (openSections) {
+          section.classList.add('is-open');
+        } else {
+          section.classList.remove('is-open');
+        }
+      });
+      setRememberedOpenSections(
+        card.dataset.id || '',
+        openSections ? sections.map((section) => section.dataset.sectionKey).filter(Boolean) : []
+      );
+
+      const btn = card.querySelector('.service-expand-btn');
+      if (btn) {
+        btn.textContent = openSections ? 'Згорнути сервіс' : 'Розкрити сервіс';
+      }
+    };
+
+    const collapseServiceCard = (card) => {
+      if (!card) return;
+      const body = card.querySelector('.project-body');
+      if (body) {
+        body.style.display = 'none';
+      }
+      card.querySelectorAll('.project-section').forEach((section) => {
+        section.classList.remove('is-open');
+      });
+      clearRememberedOpenSections(card.dataset.id || '');
+      const btn = card.querySelector('.service-expand-btn');
+      if (btn) {
+        btn.textContent = 'Розкрити сервіс';
+      }
+      if (localStorage.getItem(OPEN_SERVICE_KEY) === String(card.dataset.id || '')) {
+        localStorage.removeItem(OPEN_SERVICE_KEY);
+      }
+    };
+
+    container.querySelectorAll('.service-card .project-header').forEach((header) => {
+      header.addEventListener('click', () => {
+        const card = header.closest('.service-card');
+        if (!card) return;
+        const body = card.querySelector('.project-body');
+        if (!body) return;
+
+        const isOpen = window.getComputedStyle(body).display !== 'none';
+        if (isOpen) {
+          collapseServiceCard(card);
+        } else {
+          openServiceCard(card, false);
+        }
+      });
+    });
+
+    container.querySelectorAll('.service-expand-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const card = btn.closest('.service-card');
+        if (!card) return;
+        const body = card.querySelector('.project-body');
+        if (!body) return;
+
+        const sections = Array.from(card.querySelectorAll('.project-section'));
+        const bodyIsOpen = window.getComputedStyle(body).display !== 'none';
+        const allSectionsOpen = sections.length > 0 && sections.every((section) => section.classList.contains('is-open'));
+
+        if (!bodyIsOpen) {
+          openServiceCard(card, true);
+          return;
+        }
+
+        if (!allSectionsOpen) {
+          sections.forEach((section) => section.classList.add('is-open'));
+          setRememberedOpenSections(
+            card.dataset.id || '',
+            sections.map((section) => section.dataset.sectionKey).filter(Boolean)
+          );
+          btn.textContent = 'Згорнути сервіс';
+          return;
+        }
+
+        collapseServiceCard(card);
+      });
+    });
+
+    container.querySelectorAll('.project-section-toggle').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const section = btn.closest('.project-section');
+        if (!section) return;
+
+        section.classList.toggle('is-open');
+
+        const card = btn.closest('.service-card');
+        if (!card) return;
+
+        const openSectionKeys = Array.from(card.querySelectorAll('.project-section.is-open'))
+          .map((item) => item.dataset.sectionKey)
+          .filter(Boolean);
+        setRememberedOpenSections(card.dataset.id || '', openSectionKeys);
+
+        const expandBtn = card.querySelector('.service-expand-btn');
+        if (!expandBtn) return;
+
+        const sections = Array.from(card.querySelectorAll('.project-section'));
+        const allSectionsOpen = sections.length > 0 && sections.every((item) => item.classList.contains('is-open'));
+        expandBtn.textContent = allSectionsOpen ? 'Згорнути сервіс' : 'Розкрити сервіс';
+      });
+    });
   }
 
   async function loadServiceRequests() {
@@ -227,13 +469,13 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function resetForm() {
-    document.getElementById('serviceClientName').value = '';
-    document.getElementById('serviceSettlement').value = '';
-    document.getElementById('servicePhoneNumber').value = '';
-    document.getElementById('serviceTelegramLink').value = '';
-    document.getElementById('serviceGeoLink').value = '';
-    document.getElementById('serviceElectrician').value = '';
-    document.getElementById('serviceInstallationTeam').value = '';
+    clientNameEl.value = '';
+    settlementEl.value = '';
+    phoneNumberEl.value = '';
+    telegramInputEl.value = '';
+    geoInputEl.value = '';
+    electricianEl.value = '';
+    installationTeamEl.value = '';
     descEl.value = '';
     urgentValue = '0';
     urgentToggle.querySelectorAll('button').forEach((btn, index) => {
@@ -252,6 +494,23 @@ document.addEventListener('DOMContentLoaded', function () {
   document.getElementById('openServiceRequestModalBtn').addEventListener('click', () => {
     resetForm();
     modal.style.display = 'flex';
+  });
+
+  function openDraftLink(rawValue, emptyMessage) {
+    const url = normalizeUrl(rawValue);
+    if (!url) {
+      alert(emptyMessage);
+      return;
+    }
+    window.open(url, '_blank', 'noopener');
+  }
+
+  document.getElementById('openServiceTelegramBtn').addEventListener('click', () => {
+    openDraftLink(telegramInputEl.value, 'Введи посилання на Telegram');
+  });
+
+  document.getElementById('openServiceGeoBtn').addEventListener('click', () => {
+    openDraftLink(geoInputEl.value, 'Введи посилання на геолокацію');
   });
 
   document.getElementById('closeServiceRequestModalBtn').addEventListener('click', () => {
@@ -329,20 +588,29 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   document.getElementById('saveServiceRequestBtn').addEventListener('click', async () => {
+    const clientName = clientNameEl.value.trim();
+    const settlement = settlementEl.value.trim();
+    const description = descEl.value.trim();
+
     const payload = {
-      client_name: document.getElementById('serviceClientName').value.trim(),
-      settlement: document.getElementById('serviceSettlement').value.trim(),
-      phone_number: document.getElementById('servicePhoneNumber').value.trim(),
-      telegram_group_link: document.getElementById('serviceTelegramLink').value.trim(),
-      geo_location_link: document.getElementById('serviceGeoLink').value.trim(),
-      electrician: document.getElementById('serviceElectrician').value,
-      installation_team: document.getElementById('serviceInstallationTeam').value,
+      client_name: clientName,
+      settlement,
+      phone_number: phoneNumberEl.value.trim(),
+      telegram_group_link: telegramInputEl.value.trim(),
+      geo_location_link: geoInputEl.value.trim(),
+      electrician: electricianEl.value,
+      installation_team: installationTeamEl.value,
       is_urgent: urgentValue === '1',
-      description: descEl.value.trim(),
+      description,
     };
 
-    if (!payload.client_name || !payload.settlement || !payload.description) {
-      alert('Заповни імʼя, населений пункт і опис');
+    const missing = [];
+    if (!clientName) missing.push('імʼя');
+    if (!settlement) missing.push('населений пункт');
+    if (!description) missing.push('опис');
+
+    if (missing.length) {
+      alert(`Заповни: ${missing.join(', ')}`);
       return;
     }
 
@@ -364,6 +632,44 @@ document.addEventListener('DOMContentLoaded', function () {
 
       stopDictation();
       modal.style.display = 'none';
+      await loadServiceRequests();
+    } catch (error) {
+      alert(error.message || 'Помилка');
+    }
+  });
+
+  container.addEventListener('click', async (e) => {
+    const btn = e.target instanceof Element ? e.target.closest('.delete-service-btn') : null;
+    if (!btn) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const serviceId = btn.dataset.id;
+    if (!serviceId) return;
+
+    if (!confirm('Видалити сервісну картку?')) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/service-requests/${serviceId}`, {
+        method: 'DELETE',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': csrf,
+        },
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || 'Не вдалося видалити сервіс');
+      }
+
+      if (localStorage.getItem(OPEN_SERVICE_KEY) === String(serviceId)) {
+        localStorage.removeItem(OPEN_SERVICE_KEY);
+      }
+
       await loadServiceRequests();
     } catch (error) {
       alert(error.message || 'Помилка');

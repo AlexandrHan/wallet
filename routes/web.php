@@ -173,7 +173,9 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         Route::get('/salary/my', [SalaryRuleController::class, 'mySalaryData']);
         Route::get('/salary/managers-data', [SalaryRuleController::class, 'managerPayoutData'])->middleware('only.owner');
         Route::get('/service-requests', [ServiceRequestController::class, 'index']);
+        Route::get('/my-service-requests', [ServiceRequestController::class, 'myIndex']);
         Route::post('/service-requests', [ServiceRequestController::class, 'store']);
+        Route::delete('/service-requests/{serviceRequest}', [ServiceRequestController::class, 'destroy']);
         
         Route::post('/send-project-money', [\App\Http\Controllers\CashTransferController::class, 'sendProjectMoney']);
 
