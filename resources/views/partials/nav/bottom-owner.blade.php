@@ -64,33 +64,27 @@
     </details>
 
     <details class="tg-acc">
-      <summary class="tg-acc__title">📈 Продажі</summary>
+      <summary class="tg-acc__title">📈 Відділ продажу</summary>
       <div class="tg-acc__body">
-        <a class="tg-menu__item" href="/finance">🧾 Сторінка продажів</a>
+        <a class="tg-menu__item" href="/finance">🧾 Продажі</a>
       </div>
     </details>
 
     <details class="tg-acc">
-      <summary class="tg-acc__title">💸 Борги</summary>
+      <summary class="tg-acc__title">📦 Sun Fix</summary>
       <div class="tg-acc__body">
-        <a class="tg-menu__item" href="/stock/supplier-cash">💸 Борги постачальнику</a>
-      </div>
-    </details>
-
-    <details class="tg-acc">
-      <summary class="tg-acc__title">📦 Склад</summary>
-      <div class="tg-acc__body">
-        <a class="tg-menu__item" href="/stock">📦 Склад SunFix</a>
+        <a class="tg-menu__item" href="/stock">📦 Склад</a>
         <a class="tg-menu__item" href="/deliveries">🚚 Поставки</a>
-        <a class="tg-menu__item" href="{{ route('reclamations.index') }}">🧾 Рекламації</a>
+        <a class="tg-menu__item" href="/stock/supplier-cash">💸 Борги</a>
       </div>
     </details>
 
     <details class="tg-acc">
-      <summary class="tg-acc__title">🏗 Будівництво</summary>
+      <summary class="tg-acc__title">🏗 Технічний відділ</summary>
       <div class="tg-acc__body">
         <a class="tg-menu__item" href="/projects">🏗 Проекти (активні)</a>
         <a class="tg-menu__item" href="/projects/service-repair">🛠 Сервіс та ремонт</a>
+        <a class="tg-menu__item" href="{{ route('reclamations.index') }}">🧾 Рекламації</a>
         <button type="button" class="tg-menu__item tg-menu__item--static" disabled>📊 Графіки</button>
       </div>
     </details>

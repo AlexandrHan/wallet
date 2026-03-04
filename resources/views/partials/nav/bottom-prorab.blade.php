@@ -75,7 +75,7 @@
         <a class="tg-menu__item" style="margin-bottom:15px;" href="/reclamations">🛠️ Сервіс</a>
         
         <details class="tg-acc">
-          <summary class="tg-acc__title">🏗 Будівництво</summary>
+          <summary class="tg-acc__title">🏗 Технічний відділ</summary>
           <div class="tg-acc__body">
             <a class="tg-menu__item" href="/projects"> 🧾 Проекти</a>
             <a class="tg-menu__item" href="/projects/service-repair"> 🛠 Сервіс та ремонт</a>
