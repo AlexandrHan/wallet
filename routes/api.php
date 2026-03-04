@@ -31,6 +31,504 @@ Route::get('/telegram/projects', function (Request $request) {
     return response()->json($projects);
 });
 
+Route::get('/telegram/services', function (Request $request) {
+    if ($request->header('X-AUTO-TOKEN') !== config('services.automation.token')) {
+        return response()->json(['ok' => false], 403);
+    }
+
+    if (!Schema::hasTable('service_requests')) {
+        return response()->json([]);
+    }
+
+    $services = DB::table('service_requests')
+        ->select('client_name', 'status', 'electrician', 'installation_team', 'is_urgent')
+        ->orderByDesc('id')
+        ->limit(10)
+        ->get();
+
+    return response()->json($services);
+});
+
+Route::get('/telegram/assigned-projects', function (Request $request) {
+    if ($request->header('X-AUTO-TOKEN') !== config('services.automation.token')) {
+        return response()->json(['ok' => false], 403);
+    }
+
+    $name = trim((string) $request->query('name', ''));
+    $type = trim((string) $request->query('type', 'auto'));
+
+    if ($name === '') {
+        return response()->json(['ok' => false, 'error' => 'Name is required'], 422);
+    }
+
+    $normalizedName = trim(mb_strtolower($name));
+    $items = [];
+
+    $includeElectrician = in_array($type, ['auto', 'electrician'], true);
+    $includeInstallers = in_array($type, ['auto', 'installation_team', 'installer', 'installers'], true);
+
+    if ($includeElectrician) {
+        $projects = DB::table('sales_projects')
+            ->select('id', 'client_name', 'status', 'electrician', 'installation_team', 'electric_work_start_date')
+            ->whereRaw('LOWER(TRIM(electrician)) = ?', [$normalizedName])
+            ->orderByDesc('id')
+            ->get();
+
+        foreach ($projects as $project) {
+            $items[] = [
+                'entry_type' => 'project',
+                'assignment_type' => 'electrician',
+                'entity_id' => (int) $project->id,
+                'client_name' => (string) $project->client_name,
+                'status' => (string) ($project->status ?? 'active'),
+                'electrician' => $project->electrician,
+                'installation_team' => $project->installation_team,
+                'schedule_date' => $project->electric_work_start_date,
+            ];
+        }
+
+        if (Schema::hasTable('service_requests')) {
+            $services = DB::table('service_requests')
+                ->select('id', 'client_name', 'status', 'electrician', 'installation_team', 'is_urgent', 'created_at')
+                ->whereRaw('LOWER(TRIM(electrician)) = ?', [$normalizedName])
+                ->orderByDesc('id')
+                ->get();
+
+            foreach ($services as $service) {
+                $items[] = [
+                    'entry_type' => 'service',
+                    'assignment_type' => 'electrician',
+                    'entity_id' => (int) $service->id,
+                    'client_name' => (string) $service->client_name,
+                    'status' => (string) ($service->status ?? 'open'),
+                    'electrician' => $service->electrician,
+                    'installation_team' => $service->installation_team,
+                    'is_urgent' => (bool) ($service->is_urgent ?? false),
+                    'schedule_date' => $service->created_at
+                        ? \Carbon\Carbon::parse($service->created_at)->format('Y-m-d')
+                        : null,
+                ];
+            }
+        }
+    }
+
+    if ($includeInstallers) {
+        $projects = DB::table('sales_projects')
+            ->select('id', 'client_name', 'status', 'electrician', 'installation_team', 'panel_work_start_date')
+            ->whereRaw('LOWER(TRIM(installation_team)) = ?', [$normalizedName])
+            ->orderByDesc('id')
+            ->get();
+
+        foreach ($projects as $project) {
+            $key = 'project:installation_team:' . $project->id;
+            $items[$key] = [
+                'entry_type' => 'project',
+                'assignment_type' => 'installation_team',
+                'entity_id' => (int) $project->id,
+                'client_name' => (string) $project->client_name,
+                'status' => (string) ($project->status ?? 'active'),
+                'electrician' => $project->electrician,
+                'installation_team' => $project->installation_team,
+                'schedule_date' => $project->panel_work_start_date,
+            ];
+        }
+
+        if (Schema::hasTable('service_requests')) {
+            $services = DB::table('service_requests')
+                ->select('id', 'client_name', 'status', 'electrician', 'installation_team', 'is_urgent', 'created_at')
+                ->whereRaw('LOWER(TRIM(installation_team)) = ?', [$normalizedName])
+                ->orderByDesc('id')
+                ->get();
+
+            foreach ($services as $service) {
+                $key = 'service:installation_team:' . $service->id;
+                $items[$key] = [
+                    'entry_type' => 'service',
+                    'assignment_type' => 'installation_team',
+                    'entity_id' => (int) $service->id,
+                    'client_name' => (string) $service->client_name,
+                    'status' => (string) ($service->status ?? 'open'),
+                    'electrician' => $service->electrician,
+                    'installation_team' => $service->installation_team,
+                    'is_urgent' => (bool) ($service->is_urgent ?? false),
+                    'schedule_date' => $service->created_at
+                        ? \Carbon\Carbon::parse($service->created_at)->format('Y-m-d')
+                        : null,
+                ];
+            }
+        }
+    }
+
+    $values = array_values($items);
+
+    usort($values, function (array $a, array $b) {
+        $aDate = (string) ($a['schedule_date'] ?? '');
+        $bDate = (string) ($b['schedule_date'] ?? '');
+
+        if ($aDate === $bDate) {
+            return strcmp($a['client_name'], $b['client_name']);
+        }
+
+        return strcmp($aDate, $bDate);
+    });
+
+    return response()->json($values);
+});
+
+$telegramAutoGuard = function (Request $request) {
+    return $request->header('X-AUTO-TOKEN') === config('services.automation.token');
+};
+
+$telegramAddAmount = function (array &$bucket, string $currency, float $amount): void {
+    $currency = strtoupper(trim($currency)) ?: 'UAH';
+    if (!isset($bucket[$currency])) {
+        $bucket[$currency] = 0.0;
+    }
+    $bucket[$currency] += round($amount, 2);
+};
+
+$telegramRenderTotals = function (array $bucket): array {
+    ksort($bucket);
+    return collect($bucket)
+        ->map(fn ($amount, $currency) => [
+            'currency' => $currency,
+            'amount' => round((float) $amount, 2),
+        ])
+        ->values()
+        ->all();
+};
+
+$telegramCurrentSalaryPeriod = function (): array {
+    $now = now();
+    $year = (int) $now->year;
+    $month = (int) $now->month;
+
+    if ($year < 2026) {
+        $year = 2026;
+        $month = 1;
+    }
+
+    return [$year, $month];
+};
+
+$telegramNormalizeName = function ($value): string {
+    return trim(mb_strtolower((string) $value));
+};
+
+$telegramCalculateElectricianSalary = function ($project, $rule): float {
+    $text = trim((string) ($project->inverter_name ?? ''));
+    if ($text === '') {
+        return 0.0;
+    }
+
+    preg_match('/(\d+(?:[.,]\d+)?)\s*(?:k|kw|квт)/iu', str_replace(',', '.', $text), $match);
+    if (!empty($match[1])) {
+        $power = (float) str_replace(',', '.', $match[1]);
+    } elseif (preg_match('/(\d+(?:[.,]\d+)?)/u', str_replace(',', '.', $text), $match)) {
+        $power = (float) str_replace(',', '.', $match[1]);
+    } else {
+        $power = 0.0;
+    }
+
+    $underOrEqual50 = $power <= 50;
+    $lower = mb_strtolower($text);
+    $isHybrid = (bool) preg_match('/hybrid|гібрид|гибрид|гвбрид/u', $lower);
+
+    if ($isHybrid) {
+        return $underOrEqual50
+            ? (float) ($rule->piecework_hybrid_le_50 ?? 0)
+            : (float) ($rule->piecework_hybrid_gt_50 ?? 0);
+    }
+
+    return $underOrEqual50
+        ? (float) ($rule->piecework_grid_le_50 ?? 0)
+        : (float) ($rule->piecework_grid_gt_50 ?? 0);
+};
+
+$telegramCalculateInstallerSalary = function ($project, $rule): float {
+    $panelName = str_replace(',', '.', (string) ($project->panel_name ?? ''));
+    if (preg_match('/(\d+(?:\.\d+)?)\s*(?:w|wp|вт)/iu', $panelName, $match)) {
+        $watts = (float) $match[1];
+    } elseif (preg_match('/(\d+(?:\.\d+)?)/u', $panelName, $match)) {
+        $watts = (float) $match[1];
+    } else {
+        $watts = 0.0;
+    }
+
+    $qty = (float) ($project->panel_qty ?? 0);
+    if ($watts <= 0 || $qty <= 0) {
+        return 0.0;
+    }
+
+    $totalKw = (int) ceil(($watts * $qty) / 1000);
+    $unitRate = (float) ($rule->piecework_unit_rate ?? 0);
+    $foremanBonus = (float) ($rule->foreman_bonus ?? 0);
+
+    return ($totalKw * $unitRate) + $foremanBonus;
+};
+
+Route::get('/telegram/salary', function (Request $request) use (
+    $telegramAutoGuard,
+    $telegramAddAmount,
+    $telegramRenderTotals,
+    $telegramCurrentSalaryPeriod,
+    $telegramNormalizeName,
+    $telegramCalculateElectricianSalary,
+    $telegramCalculateInstallerSalary
+) {
+    if (!$telegramAutoGuard($request)) {
+        return response()->json(['ok' => false], 403);
+    }
+
+    $name = trim((string) $request->query('name', ''));
+    if ($name === '') {
+        return response()->json(['ok' => false, 'error' => 'Name is required'], 422);
+    }
+
+    if (!Schema::hasTable('salary_rules')) {
+        return response()->json(['ok' => false, 'error' => 'Salary rules table is not ready'], 503);
+    }
+
+    [$year, $month] = $telegramCurrentSalaryPeriod();
+    $normalizedName = $telegramNormalizeName($name);
+
+    $rule = \App\Models\SalaryRule::query()
+        ->whereRaw('LOWER(TRIM(staff_name)) = ?', [$normalizedName])
+        ->first();
+
+    if ($rule) {
+        $totals = [];
+        $projects = [];
+
+        if ((string) $rule->mode === 'fixed') {
+            $telegramAddAmount($totals, (string) ($rule->currency ?? 'UAH'), (float) ($rule->fixed_amount ?? 0));
+
+            if (Schema::hasTable('salary_penalties') && Schema::hasColumn('salary_penalties', 'entry_type')) {
+                $adjustments = \App\Models\SalaryPenalty::query()
+                    ->where('staff_group', $rule->staff_group)
+                    ->where('staff_name', $rule->staff_name)
+                    ->where('year', $year)
+                    ->where('month', $month)
+                    ->get();
+
+                foreach ($adjustments as $adj) {
+                    $amount = (float) ($adj->amount ?? 0);
+                    if ((string) $adj->entry_type === 'bonus') {
+                        $telegramAddAmount($totals, (string) ($rule->currency ?? 'UAH'), $amount);
+                    } elseif ((string) $adj->entry_type === 'penalty') {
+                        $telegramAddAmount($totals, (string) ($rule->currency ?? 'UAH'), -$amount);
+                    }
+                }
+            }
+        } elseif ((string) $rule->staff_group === 'electrician') {
+            $matched = \App\Models\SalesProject::query()
+                ->whereRaw('LOWER(TRIM(electrician)) = ?', [$normalizedName])
+                ->orderByDesc('id')
+                ->get();
+
+            foreach ($matched as $project) {
+                $amount = $telegramCalculateElectricianSalary($project, $rule);
+                if ($amount <= 0) {
+                    continue;
+                }
+
+                $telegramAddAmount($totals, (string) ($rule->currency ?? 'USD'), $amount);
+                $projects[] = [
+                    'client_name' => (string) $project->client_name,
+                    'amount' => round($amount, 2),
+                    'currency' => (string) ($rule->currency ?? 'USD'),
+                ];
+            }
+        } elseif ((string) $rule->staff_group === 'installation_team') {
+            $matched = \App\Models\SalesProject::query()
+                ->whereRaw('LOWER(TRIM(installation_team)) = ?', [$normalizedName])
+                ->orderByDesc('id')
+                ->get();
+
+            foreach ($matched as $project) {
+                $amount = $telegramCalculateInstallerSalary($project, $rule);
+                if ($amount <= 0) {
+                    continue;
+                }
+
+                $telegramAddAmount($totals, (string) ($rule->currency ?? 'USD'), $amount);
+                $projects[] = [
+                    'client_name' => (string) $project->client_name,
+                    'amount' => round($amount, 2),
+                    'currency' => (string) ($rule->currency ?? 'USD'),
+                ];
+            }
+        }
+
+        return response()->json([
+            'ok' => true,
+            'year' => $year,
+            'month' => $month,
+            'staff_group' => (string) $rule->staff_group,
+            'staff_name' => (string) $rule->staff_name,
+            'mode' => (string) $rule->mode,
+            'totals' => $telegramRenderTotals($totals),
+            'projects' => $projects,
+        ]);
+    }
+
+    $manager = \App\Models\User::query()
+        ->where('role', 'ntv')
+        ->whereRaw('LOWER(TRIM(name)) = ?', [$normalizedName])
+        ->first();
+
+    if ($manager) {
+        $acceptedTransfers = DB::table('cash_transfers')
+            ->select(
+                'project_id',
+                DB::raw('SUM(usd_amount) as paid_amount'),
+                DB::raw('MAX(created_at) as paid_at')
+            )
+            ->where('status', 'accepted')
+            ->whereNotNull('project_id')
+            ->groupBy('project_id')
+            ->get()
+            ->keyBy('project_id');
+
+        $totals = [];
+        $projects = [];
+
+        $managerProjects = \App\Models\SalesProject::query()
+            ->where('created_by', $manager->id)
+            ->orderByDesc('id')
+            ->get();
+
+        foreach ($managerProjects as $project) {
+            $transferMeta = $acceptedTransfers->get($project->id);
+            if (!$transferMeta) {
+                continue;
+            }
+
+            $paidAmount = round((float) ($transferMeta->paid_amount ?? 0), 2);
+            if ($paidAmount + 0.0001 < (float) $project->total_amount) {
+                continue;
+            }
+
+            $paidAt = $transferMeta->paid_at ? \Carbon\Carbon::parse($transferMeta->paid_at) : null;
+            if (!$paidAt || (int) $paidAt->year !== $year || (int) $paidAt->month !== $month) {
+                continue;
+            }
+
+            $amount = round((float) $project->total_amount * 0.01, 2);
+            $currency = (string) $project->currency;
+
+            $telegramAddAmount($totals, $currency, $amount);
+            $projects[] = [
+                'client_name' => (string) $project->client_name,
+                'amount' => $amount,
+                'currency' => $currency,
+            ];
+        }
+
+        return response()->json([
+            'ok' => true,
+            'year' => $year,
+            'month' => $month,
+            'staff_group' => 'manager',
+            'staff_name' => (string) ($manager->name ?: $manager->email),
+            'mode' => 'piecework',
+            'totals' => $telegramRenderTotals($totals),
+            'projects' => $projects,
+        ]);
+    }
+
+    return response()->json(['ok' => false, 'error' => 'Salary subject not found'], 404);
+});
+
+Route::get('/telegram/salary-summary', function (Request $request) use (
+    $telegramAutoGuard,
+    $telegramAddAmount,
+    $telegramRenderTotals,
+    $telegramCurrentSalaryPeriod,
+    $telegramCalculateElectricianSalary,
+    $telegramCalculateInstallerSalary
+) {
+    if (!$telegramAutoGuard($request)) {
+        return response()->json(['ok' => false], 403);
+    }
+
+    if (!Schema::hasTable('salary_rules')) {
+        return response()->json(['ok' => false, 'error' => 'Salary rules table is not ready'], 503);
+    }
+
+    [$year, $month] = $telegramCurrentSalaryPeriod();
+    $projects = \App\Models\SalesProject::query()->get();
+
+    $categories = [
+        'electricians' => [],
+        'installers' => [],
+        'sales' => [],
+        'accountant' => [],
+        'foreman' => [],
+    ];
+
+    $rules = \App\Models\SalaryRule::query()->get();
+
+    foreach ($rules as $rule) {
+        $group = (string) $rule->staff_group;
+        $mode = (string) $rule->mode;
+        $currency = (string) ($rule->currency ?? 'UAH');
+        $nameNorm = mb_strtolower(trim((string) $rule->staff_name));
+
+        if ($group === 'electrician') {
+            if ($mode === 'fixed') {
+                $telegramAddAmount($categories['electricians'], $currency, (float) ($rule->fixed_amount ?? 0));
+            } else {
+                foreach ($projects as $project) {
+                    if (mb_strtolower(trim((string) ($project->electrician ?? ''))) !== $nameNorm) {
+                        continue;
+                    }
+                    $telegramAddAmount($categories['electricians'], $currency ?: 'USD', $telegramCalculateElectricianSalary($project, $rule));
+                }
+            }
+        } elseif ($group === 'installation_team') {
+            if ($mode === 'fixed') {
+                $telegramAddAmount($categories['installers'], $currency, (float) ($rule->fixed_amount ?? 0));
+            } else {
+                foreach ($projects as $project) {
+                    if (mb_strtolower(trim((string) ($project->installation_team ?? ''))) !== $nameNorm) {
+                        continue;
+                    }
+                    $telegramAddAmount($categories['installers'], $currency ?: 'USD', $telegramCalculateInstallerSalary($project, $rule));
+                }
+            }
+        } elseif ($group === 'accountant' && $mode === 'fixed') {
+            $telegramAddAmount($categories['accountant'], $currency, (float) ($rule->fixed_amount ?? 0));
+        } elseif ($group === 'foreman' && $mode === 'fixed') {
+            $telegramAddAmount($categories['foreman'], $currency, (float) ($rule->fixed_amount ?? 0));
+        }
+    }
+
+    $managerResponse = app(\App\Http\Controllers\SalaryRuleController::class)->managerPayoutData(new Request([
+        'year' => $year,
+        'month' => $month,
+    ]));
+    $managerPayload = $managerResponse->getData(true);
+    foreach (($managerPayload['managers'] ?? []) as $manager) {
+        foreach (($manager['totals_by_currency'] ?? []) as $item) {
+            $telegramAddAmount($categories['sales'], (string) ($item['currency'] ?? 'UAH'), (float) ($item['amount'] ?? 0));
+        }
+    }
+
+    return response()->json([
+        'ok' => true,
+        'year' => $year,
+        'month' => $month,
+        'categories' => [
+            'electricians' => $telegramRenderTotals($categories['electricians']),
+            'installers' => $telegramRenderTotals($categories['installers']),
+            'sales' => $telegramRenderTotals($categories['sales']),
+            'accountant' => $telegramRenderTotals($categories['accountant']),
+            'foreman' => $telegramRenderTotals($categories['foreman']),
+        ],
+    ]);
+});
+
 $runAutomationProjectSync = function (
     Request $request,
     array $options
@@ -735,6 +1233,14 @@ $fxRatesResponse = function () {
 
 Route::get('/exchange-rates', $fxRatesResponse);
 Route::get('/fx/rates', $fxRatesResponse);
+
+Route::get('/telegram/fx', function (Request $request) use ($fxRatesResponse) {
+    if ($request->header('X-AUTO-TOKEN') !== config('services.automation.token')) {
+        return response()->json(['ok' => false], 403);
+    }
+
+    return $fxRatesResponse();
+});
 
 Route::post('/fx/update', function (Request $request) {
     if (!Schema::hasTable('fx_rates')) {
