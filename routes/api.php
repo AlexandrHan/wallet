@@ -224,22 +224,6 @@ $runAutomationProjectSync = function (
             }
 
             if ($taskNote !== '' && $serviceTableAvailable) {
-                $serviceRequests = DB::table('service_requests')
-                    ->select('id', 'client_name', $assignmentField)
-                    ->where($assignmentField, $assignmentValue)
-                    ->get();
-
-                $serviceMatch = null;
-                $serviceBestScore = 0.0;
-
-                foreach ($serviceRequests as $candidateService) {
-                    $score = $scoreNameMatch($candidateName, (string) $candidateService->client_name);
-                    if ($score > $serviceBestScore) {
-                        $serviceBestScore = $score;
-                        $serviceMatch = $candidateService;
-                    }
-                }
-
                 $taskMeta = $extractTaskMeta($taskNote);
                 $servicePayload = [
                     'client_name' => $candidateName,
@@ -257,14 +241,6 @@ $runAutomationProjectSync = function (
                 }
                 if ($assignmentField === 'installation_team') {
                     $servicePayload['installation_team'] = $assignmentValue;
-                }
-
-                if ($serviceMatch && $serviceBestScore >= 72.0) {
-                    DB::table('service_requests')
-                        ->where('id', $serviceMatch->id)
-                        ->update($servicePayload);
-                    $serviceUpdated++;
-                    continue;
                 }
 
                 $servicePayload['created_at'] = now();
