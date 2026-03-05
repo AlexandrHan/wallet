@@ -307,6 +307,52 @@ class AmoCrmService
                 $responsibleName = trim((string) ($amoUser['name'] ?? ''));
             }
 
+            DB::transaction(function () use ($amoDealId, $clientName, $lead, $totalAmount, &$created, &$updated) {
+                $map = AmoCrmDealMap::query()
+                    ->where('amo_deal_id', $amoDealId)
+                    ->lockForUpdate()
+                    ->first();
+
+                $project = $map
+                    ? SalesProject::query()->find($map->wallet_project_id)
+                    : null;
+
+                if (!$project) {
+                    $currency = $this->extractCurrency($lead, 'USD');
+                    $project = SalesProject::query()->create([
+                        'client_name' => mb_substr($clientName, 0, 255),
+                        'total_amount' => round($totalAmount, 2),
+                        'remaining_amount' => round($totalAmount, 2),
+                        'currency' => $currency,
+                        'created_by' => $this->systemUserId(),
+                    ]);
+
+                    DB::table('cash_transfers')
+                        ->where('project_id', $project->id)
+                        ->delete();
+
+                    if ($map) {
+                        $map->update([
+                            'wallet_project_id' => $project->id,
+                        ]);
+                    } else {
+                        AmoCrmDealMap::query()->create([
+                            'amo_deal_id' => $amoDealId,
+                            'wallet_project_id' => $project->id,
+                            'created_at' => now(),
+                        ]);
+                    }
+
+                    $created++;
+                } else {
+                    $project->update([
+                        'client_name' => mb_substr($clientName, 0, 255),
+                        'total_amount' => round($totalAmount, 2),
+                    ]);
+                    $updated++;
+                }
+            }, 3);
+
             $row = AmoComplectationProject::query()->where('amo_deal_id', $amoDealId)->first();
             $payload = [
                 'amo_deal_id' => $amoDealId,
@@ -321,10 +367,8 @@ class AmoCrmService
 
             if ($row) {
                 $row->update($payload);
-                $updated++;
             } else {
                 AmoComplectationProject::query()->create($payload);
-                $created++;
             }
         }
 
