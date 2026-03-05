@@ -12,6 +12,7 @@ use App\Http\Controllers\FemDebtController;
 use App\Http\Controllers\CashTransferController;
 use App\Http\Controllers\SalaryRuleController;
 use App\Http\Controllers\ServiceRequestController;
+use App\Http\Controllers\StockController;
 use App\Models\AutomationLog;
 use App\Services\AutomationService;
 
@@ -1094,6 +1095,10 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
 
         return view('stock.sales');
     });
+
+    Route::get('/stock/sales-reports', [StockController::class, 'salesReports'])
+        ->middleware('only.owner.or.sunfix.manager')
+        ->name('stock.sales-reports');
 
     Route::get('/finance', function () {
         $u = auth()->user();

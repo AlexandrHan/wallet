@@ -21,6 +21,7 @@ class OnlySunfixManager
         $allowed =
             // pages
             $request->is('stock') ||
+            $request->is('stock/sales-reports*') ||
             $request->is('deliveries*') ||
             $request->is('reclamations*') ||
             $request->is('stock/supplier-cash*') ||
@@ -54,4 +55,3 @@ class OnlySunfixManager
         return redirect('/deliveries');
     }
 }
-

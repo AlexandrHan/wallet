@@ -80,4 +80,14 @@ return [
         'token' => env('AUTOMATION_TOKEN'),
     ],
 
+    'amocrm' => [
+        'domain' => env('AMO_DOMAIN'),
+        'client_id' => env('AMO_CLIENT_ID'),
+        'client_secret' => env('AMO_CLIENT_SECRET'),
+        'redirect_uri' => env('AMO_REDIRECT_URI'),
+        'refresh_token' => env('AMO_REFRESH_TOKEN'),
+        'authorization_code' => env('AMO_AUTHORIZATION_CODE'),
+        'won_status_id' => (int) env('AMO_WON_STATUS_ID', 142),
+    ],
+
 ];

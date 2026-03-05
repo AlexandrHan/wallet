@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Schema;
 use App\Http\Controllers\EntryReceiptController;
 use Illuminate\Support\Facades\Storage;
 use App\Http\Controllers\DeliveryController;
+use App\Http\Controllers\AmoWebhookController;
 
 
 
@@ -16,6 +17,7 @@ use App\Http\Controllers\DeliveryController;
 
 
 Route::get('/ping', fn () => response()->json(['ok' => true]));
+Route::post('/amocrm/webhook', AmoWebhookController::class);
 
 Route::get('/telegram/projects', function (Request $request) {
     if ($request->header('X-AUTO-TOKEN') !== config('services.automation.token')) {

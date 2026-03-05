@@ -111,4 +111,67 @@ class StockController extends Controller
             
         ]);
     }
+
+    public function salesReports(Request $request)
+    {
+        $u = $request->user();
+        if (!$u || !in_array($u->role, ['owner', 'sunfix_manager'], true)) {
+            abort(403);
+        }
+
+        $saleDateExpr = "date(COALESCE(s.sold_at, s.created_at))";
+
+        $reports = DB::table('sales as s')
+            ->selectRaw("{$saleDateExpr} as report_date")
+            ->selectRaw('MAX(s.created_at) as report_created_at')
+            ->selectRaw('ROUND(SUM(s.qty * s.supplier_price), 2) as report_total')
+            ->groupBy(DB::raw($saleDateExpr))
+            ->orderByDesc('report_date')
+            ->get()
+            ->map(function ($row) {
+                return [
+                    'report_date' => (string) $row->report_date,
+                    'report_created_at' => $row->report_created_at
+                        ? Carbon::parse($row->report_created_at)->format('d.m.Y H:i')
+                        : null,
+                    'report_total' => (float) $row->report_total,
+                ];
+            })
+            ->values();
+
+        $rows = DB::table('sales as s')
+            ->join('products as p', 'p.id', '=', 's.product_id')
+            ->selectRaw("
+                {$saleDateExpr} as report_date,
+                p.id as product_id,
+                p.name as product_name,
+                SUM(s.qty) as qty,
+                ROUND(SUM(s.qty * s.supplier_price), 2) as total,
+                ROUND(SUM(s.qty * s.supplier_price) / NULLIF(SUM(s.qty),0), 2) as unit_price
+            ")
+            ->groupBy(DB::raw($saleDateExpr), 'p.id', 'p.name')
+            ->orderByDesc('report_date')
+            ->orderBy('p.name')
+            ->get();
+
+        $itemsByDate = [];
+        foreach ($rows as $row) {
+            $dateKey = (string) $row->report_date;
+            if (!isset($itemsByDate[$dateKey])) {
+                $itemsByDate[$dateKey] = [];
+            }
+            $itemsByDate[$dateKey][] = [
+                'product_id' => (int) $row->product_id,
+                'product_name' => (string) $row->product_name,
+                'qty' => (int) $row->qty,
+                'unit_price' => (float) $row->unit_price,
+                'total' => (float) $row->total,
+            ];
+        }
+
+        return view('stock.sales-reports', [
+            'reports' => $reports,
+            'itemsByDate' => $itemsByDate,
+        ]);
+    }
 }

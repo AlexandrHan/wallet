@@ -50,6 +50,8 @@
         <a class="tg-menu__item" style="margin-bottom:15px;" href="/stock">📦 Склад SunFix</a>
 
         <a class="tg-menu__item" style="margin-bottom:15px;" href="/deliveries">🚚 Поставки</a>
+        
+        <a class="tg-menu__item" style="margin-bottom:15px;" href="/stock/sales-reports">📊 Історія звітів складу</a>
 
         <a class="tg-menu__item" style="margin-bottom:15px;" href="/reclamations">🛠️ Сервіс</a>
 

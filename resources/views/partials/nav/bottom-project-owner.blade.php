@@ -57,6 +57,7 @@
       <div class="tg-acc__body">
         <a class="tg-menu__item" href="/stock">📦 Склад</a>
         <a class="tg-menu__item" href="/deliveries">🚚 Поставки</a>
+        <a class="tg-menu__item" href="/stock/sales-reports">📊 Історія звітів складу</a>
         <a class="tg-menu__item" href="/stock/supplier-cash">💸 Борги</a>
       </div>
     </details>
