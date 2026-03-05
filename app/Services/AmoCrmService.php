@@ -705,12 +705,15 @@ class AmoCrmService
             return null;
         }
 
-        if (preg_match('/\b(\d{1,4})\b/u', $raw, $m) !== 1) {
-            return null;
+        $value = mb_strtolower(trim($raw));
+
+        // Typical amo formats: "5шт", "5 шт.", "5штук", "5 in", "5in".
+        if (preg_match('/(\d{1,4})\s*(шт|штук|in)\.?\b/u', $value, $m) === 1) {
+            $qty = (int) $m[1];
+            return $qty > 0 ? $qty : null;
         }
 
-        $qty = (int) $m[1];
-        return $qty > 0 ? $qty : null;
+        return null;
     }
 
     private function normalizeBooleanLikeValue(string $raw): bool
