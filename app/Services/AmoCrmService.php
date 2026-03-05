@@ -282,9 +282,14 @@ class AmoCrmService
             }
 
             if (!$project) {
+                $currency = $this->extractCurrency($lead, 'USD');
+
                 $project = SalesProject::query()->create([
                     'client_name' => mb_substr($clientName, 0, 255),
                     'total_amount' => round($totalAmount, 2),
+                    'remaining_amount' => round($totalAmount, 2),
+                    'currency' => $currency,
+                    'created_by' => $this->systemUserId(),
                 ]);
 
                 if ($map) {
