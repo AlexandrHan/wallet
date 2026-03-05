@@ -106,6 +106,7 @@ class AmoCrmService
             'query' => [
                 'page' => $page,
                 'limit' => $limit,
+                'with' => 'contacts',
                 'filter[statuses][0][status_id]' => $importStatusId,
             ],
         ]);
@@ -117,7 +118,11 @@ class AmoCrmService
 
     public function getLeadById(int $leadId): ?array
     {
-        $response = $this->apiRequest('GET', '/leads/'.$leadId);
+        $response = $this->apiRequest('GET', '/leads/'.$leadId, [
+            'query' => [
+                'with' => 'contacts',
+            ],
+        ]);
 
         if (!$response->successful()) {
             return null;
@@ -253,7 +258,12 @@ class AmoCrmService
             return null;
         }
 
-        $clientName = trim((string) ($lead['name'] ?? ''));
+        $clientName = trim((string) (
+            Arr::get($lead, '_embedded.contacts.0.name')
+            ?? Arr::get($lead, '_embedded.contacts.0.first_name')
+            ?? $lead['name']
+            ?? ''
+        ));
         if ($clientName === '') {
             $clientName = 'amoCRM deal #'.$amoDealId;
         }
