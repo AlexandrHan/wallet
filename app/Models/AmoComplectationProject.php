@@ -10,6 +10,7 @@ class AmoComplectationProject extends Model
 
     protected $fillable = [
         'amo_deal_id',
+        'wallet_project_id',
         'client_name',
         'deal_name',
         'total_amount',
@@ -21,10 +22,10 @@ class AmoComplectationProject extends Model
 
     protected $casts = [
         'amo_deal_id' => 'integer',
+        'wallet_project_id' => 'integer',
         'total_amount' => 'float',
         'responsible_user_id' => 'integer',
         'status_id' => 'integer',
         'raw_payload' => 'array',
     ];
 }
-

@@ -304,6 +304,13 @@ class SalesProjectController extends Controller
                 ->get()
                 ->keyBy('wallet_project_id')
             : collect();
+        $amoComplectationByProjectId = Schema::hasTable('amo_complectation_projects')
+            ? DB::table('amo_complectation_projects')
+                ->select('wallet_project_id', 'responsible_name')
+                ->whereNotNull('wallet_project_id')
+                ->get()
+                ->keyBy('wallet_project_id')
+            : collect();
 
         $amoResponsibleCache = [];
         $amoCrmService = app(AmoCrmService::class);
@@ -503,7 +510,7 @@ class SalesProjectController extends Controller
                     ];
                 })->values(),
             ];
-        })->map(function ($project) use ($userNames, $amoMapByProjectId, &$amoResponsibleCache, $amoCrmService) {
+        })->map(function ($project) use ($userNames, $amoMapByProjectId, $amoComplectationByProjectId, &$amoResponsibleCache, $amoCrmService) {
             $managerId = (int) ($project['lead_manager_user_id'] ?? 0);
             if ($managerId <= 0) {
                 $managerId = (int) ($project['created_by'] ?? 0);
@@ -539,6 +546,12 @@ class SalesProjectController extends Controller
                 if (!empty($amoResponsibleName)) {
                     $managerName = $amoResponsibleName;
                 }
+            }
+
+            $amoComplectation = $amoComplectationByProjectId->get($projectId);
+            $amoComplectationManager = trim((string) ($amoComplectation->responsible_name ?? ''));
+            if ($amoComplectationManager !== '') {
+                $managerName = $amoComplectationManager;
             }
 
             $project['manager_name'] = $managerName ?: '—';

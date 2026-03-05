@@ -308,15 +308,20 @@ class AmoCrmService
                 $responsibleName = trim((string) ($amoUser['name'] ?? ''));
             }
 
-            DB::transaction(function () use ($amoDealId, $clientName, $lead, $totalAmount, $projectPayload, &$created, &$updated) {
-                $map = AmoCrmDealMap::query()
+            DB::transaction(function () use ($amoDealId, $clientName, $lead, $totalAmount, $projectPayload, $responsibleUserId, $responsibleName, $statusId, &$created, &$updated) {
+                $row = AmoComplectationProject::query()
                     ->where('amo_deal_id', $amoDealId)
                     ->lockForUpdate()
                     ->first();
 
-                $project = $map
-                    ? SalesProject::query()->find($map->wallet_project_id)
-                    : null;
+                $project = null;
+                $walletProjectId = (int) ($row->wallet_project_id ?? 0);
+                if ($walletProjectId > 0) {
+                    $project = SalesProject::query()
+                        ->where('id', $walletProjectId)
+                        ->where('source_layer', 'projects')
+                        ->first();
+                }
 
                 if (!$project) {
                     $currency = $this->extractCurrency($lead, 'USD');
@@ -329,22 +334,6 @@ class AmoCrmService
                         'source_layer' => 'projects',
                     ], $projectPayload));
 
-                    DB::table('cash_transfers')
-                        ->where('project_id', $project->id)
-                        ->delete();
-
-                    if ($map) {
-                        $map->update([
-                            'wallet_project_id' => $project->id,
-                        ]);
-                    } else {
-                        AmoCrmDealMap::query()->create([
-                            'amo_deal_id' => $amoDealId,
-                            'wallet_project_id' => $project->id,
-                            'created_at' => now(),
-                        ]);
-                    }
-
                     $created++;
                 } else {
                     $project->update(array_merge([
@@ -353,25 +342,25 @@ class AmoCrmService
                     ], $projectPayload));
                     $updated++;
                 }
+                $payload = [
+                    'wallet_project_id' => $project->id,
+                    'client_name' => mb_substr($clientName, 0, 255),
+                    'deal_name' => mb_substr(trim((string) ($lead['name'] ?? '')), 0, 255),
+                    'total_amount' => round($totalAmount, 2),
+                    'responsible_user_id' => $responsibleUserId ?: null,
+                    'responsible_name' => $responsibleName !== '' ? mb_substr($responsibleName, 0, 255) : null,
+                    'status_id' => $statusId,
+                    'raw_payload' => $lead,
+                ];
+
+                if ($row) {
+                    $row->update($payload);
+                } else {
+                    AmoComplectationProject::query()->create(array_merge([
+                        'amo_deal_id' => $amoDealId,
+                    ], $payload));
+                }
             }, 3);
-
-            $row = AmoComplectationProject::query()->where('amo_deal_id', $amoDealId)->first();
-            $payload = [
-                'amo_deal_id' => $amoDealId,
-                'client_name' => mb_substr($clientName, 0, 255),
-                'deal_name' => mb_substr(trim((string) ($lead['name'] ?? '')), 0, 255),
-                'total_amount' => round($totalAmount, 2),
-                'responsible_user_id' => $responsibleUserId ?: null,
-                'responsible_name' => $responsibleName !== '' ? mb_substr($responsibleName, 0, 255) : null,
-                'status_id' => $statusId,
-                'raw_payload' => $lead,
-            ];
-
-            if ($row) {
-                $row->update($payload);
-            } else {
-                AmoComplectationProject::query()->create($payload);
-            }
         }
 
         return [
