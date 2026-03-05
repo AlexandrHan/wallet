@@ -302,6 +302,12 @@ class AmoCrmService
                     'created_by' => $this->systemUserId(),
                 ]);
 
+                // New amoCRM-created project must start with no advances/transfers.
+                // This also protects against SQLite id reuse inheriting old transfers.
+                DB::table('cash_transfers')
+                    ->where('project_id', $project->id)
+                    ->delete();
+
                 if ($map) {
                     $map->update([
                         'wallet_project_id' => $project->id,
