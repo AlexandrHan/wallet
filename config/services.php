@@ -87,7 +87,7 @@ return [
         'redirect_uri' => env('AMO_REDIRECT_URI'),
         'refresh_token' => env('AMO_REFRESH_TOKEN'),
         'authorization_code' => env('AMO_AUTHORIZATION_CODE'),
-        'project_status_id' => (int) env('AMO_PROJECT_STATUS_ID', 69586234),
+        'project_status_id' => (int) env('AMO_PROJECT_STATUS_ID', 29352208),
         'won_status_id' => (int) env('AMO_WON_STATUS_ID', 142),
     ],
 
