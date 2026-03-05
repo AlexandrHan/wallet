@@ -490,6 +490,11 @@ async function loadConstructionProjects() {
             <span class="project-section-caret">▸</span>
           </button>
           <div class="project-section-body">
+            <div class="project-field-label">Менеджер</div>
+            <input class="btn project-input-full" value="${esc(p.manager_name || '—')}" readonly>
+
+            <hr class="project-divider" style="margin:8px 0 12px;">
+
             <div class="project-field-label">Електрик</div>
             <select class="btn project-input-full" data-field="electrician">
               <option value="">Оберіть електрика</option>

@@ -296,6 +296,7 @@ class AmoCrmService
             if ($totalAmount <= 0) {
                 $totalAmount = 0.01;
             }
+            $projectPayload = $this->extractComplectationProjectFields($lead);
 
             $responsibleUserId = (int) ($lead['responsible_user_id'] ?? 0);
             $responsibleName = trim((string) (
@@ -307,7 +308,7 @@ class AmoCrmService
                 $responsibleName = trim((string) ($amoUser['name'] ?? ''));
             }
 
-            DB::transaction(function () use ($amoDealId, $clientName, $lead, $totalAmount, &$created, &$updated) {
+            DB::transaction(function () use ($amoDealId, $clientName, $lead, $totalAmount, $projectPayload, &$created, &$updated) {
                 $map = AmoCrmDealMap::query()
                     ->where('amo_deal_id', $amoDealId)
                     ->lockForUpdate()
@@ -319,14 +320,14 @@ class AmoCrmService
 
                 if (!$project) {
                     $currency = $this->extractCurrency($lead, 'USD');
-                    $project = SalesProject::query()->create([
+                    $project = SalesProject::query()->create(array_merge([
                         'client_name' => mb_substr($clientName, 0, 255),
                         'total_amount' => round($totalAmount, 2),
                         'remaining_amount' => round($totalAmount, 2),
                         'currency' => $currency,
                         'created_by' => $this->systemUserId(),
                         'source_layer' => 'projects',
-                    ]);
+                    ], $projectPayload));
 
                     DB::table('cash_transfers')
                         ->where('project_id', $project->id)
@@ -346,10 +347,10 @@ class AmoCrmService
 
                     $created++;
                 } else {
-                    $project->update([
+                    $project->update(array_merge([
                         'client_name' => mb_substr($clientName, 0, 255),
                         'total_amount' => round($totalAmount, 2),
-                    ]);
+                    ], $projectPayload));
                     $updated++;
                 }
             }, 3);
@@ -378,6 +379,50 @@ class AmoCrmService
             'created' => $created,
             'updated' => $updated,
         ];
+    }
+
+    private function extractComplectationProjectFields(array $lead): array
+    {
+        $payload = [];
+
+        $inverter = $this->extractLeadFieldValue($lead, ['Інвертор', 'Инвертор', 'Inverter']);
+        $bms = $this->extractLeadFieldValue($lead, ['BMS', 'БМС']);
+        $battery = $this->extractLeadFieldValue($lead, ['АКБ', 'Акумулятор', 'Батарея', 'Battery']);
+        $panels = $this->extractLeadFieldValue($lead, ['Панелі', 'Панели', 'ФЕМ', 'Сонячні панелі']);
+        $hasGreenTariffRaw = $this->extractLeadFieldValue($lead, ['Зелений тариф', 'Зеленый тариф', 'Green tariff']);
+        $phone = $this->extractLeadPhone($lead);
+
+        if ($this->hasSalesProjectColumn('phone_number') && $phone !== null) {
+            $payload['phone_number'] = mb_substr($phone, 0, 50);
+        }
+        if ($this->hasSalesProjectColumn('inverter') && $inverter !== null) {
+            $payload['inverter'] = mb_substr($inverter, 0, 255);
+        }
+        if ($this->hasSalesProjectColumn('bms') && $bms !== null) {
+            $payload['bms'] = mb_substr($bms, 0, 255);
+        }
+        if ($this->hasSalesProjectColumn('battery_name') && $battery !== null) {
+            $payload['battery_name'] = mb_substr($battery, 0, 255);
+        }
+        if ($this->hasSalesProjectColumn('battery_qty') && $battery !== null) {
+            $batteryQty = $this->extractQuantity($battery);
+            if ($batteryQty !== null) {
+                $payload['battery_qty'] = $batteryQty;
+            }
+        }
+        if ($this->hasSalesProjectColumn('panel_name') && $panels !== null) {
+            $payload['panel_name'] = mb_substr($panels, 0, 255);
+        }
+        if ($this->hasSalesProjectColumn('panel_qty') && $panels !== null) {
+            $panelQty = $this->extractQuantity($panels);
+            if ($panelQty !== null) {
+                $payload['panel_qty'] = $panelQty;
+            }
+        }
+        if ($this->hasSalesProjectColumn('has_green_tariff') && $hasGreenTariffRaw !== null) {
+            $payload['has_green_tariff'] = $this->normalizeBooleanLikeValue($hasGreenTariffRaw);
+        }
+        return $payload;
     }
 
     public function extractWebhookEvents(array $payload): array
@@ -588,6 +633,101 @@ class AmoCrmService
 
         // 4) Fallback to deal title.
         return trim((string) ($lead['name'] ?? ''));
+    }
+
+    private function extractLeadFieldValue(array $lead, array $fieldNames): ?string
+    {
+        $normalized = collect($fieldNames)
+            ->map(fn ($name) => mb_strtolower(trim((string) $name)))
+            ->filter()
+            ->values()
+            ->all();
+
+        if ($normalized === []) {
+            return null;
+        }
+
+        foreach ((array) ($lead['custom_fields_values'] ?? []) as $field) {
+            $currentName = mb_strtolower(trim((string) ($field['field_name'] ?? '')));
+            if (!in_array($currentName, $normalized, true)) {
+                continue;
+            }
+
+            foreach ((array) ($field['values'] ?? []) as $valueRow) {
+                $value = trim((string) ($valueRow['value'] ?? ''));
+                if ($value !== '') {
+                    return $value;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function extractLeadPhone(array $lead): ?string
+    {
+        $embeddedPhone = trim((string) Arr::get($lead, '_embedded.contacts.0.custom_fields_values.0.values.0.value'));
+        if ($embeddedPhone !== '') {
+            return $embeddedPhone;
+        }
+
+        $contactId = (int) (Arr::get($lead, '_embedded.contacts.0.id') ?? 0);
+        if ($contactId <= 0) {
+            return null;
+        }
+
+        $contact = $this->getContactById($contactId);
+        if (!$contact) {
+            return null;
+        }
+
+        foreach ((array) ($contact['custom_fields_values'] ?? []) as $field) {
+            $code = mb_strtolower(trim((string) ($field['field_code'] ?? '')));
+            $name = mb_strtolower(trim((string) ($field['field_name'] ?? '')));
+            if ($code !== 'phone' && !in_array($name, ['телефон', 'phone'], true)) {
+                continue;
+            }
+
+            foreach ((array) ($field['values'] ?? []) as $valueRow) {
+                $value = trim((string) ($valueRow['value'] ?? ''));
+                if ($value !== '') {
+                    return $value;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function extractQuantity(?string $raw): ?int
+    {
+        if (!$raw) {
+            return null;
+        }
+
+        if (preg_match('/\b(\d{1,4})\b/u', $raw, $m) !== 1) {
+            return null;
+        }
+
+        $qty = (int) $m[1];
+        return $qty > 0 ? $qty : null;
+    }
+
+    private function normalizeBooleanLikeValue(string $raw): bool
+    {
+        $value = mb_strtolower(trim($raw));
+        return in_array($value, ['1', 'yes', 'true', 'так', 'є', 'y'], true);
+    }
+
+    private function hasSalesProjectColumn(string $column): bool
+    {
+        static $cache = [];
+
+        if (!array_key_exists($column, $cache)) {
+            $cache[$column] = Schema::hasColumn('sales_projects', $column);
+        }
+
+        return $cache[$column];
     }
 
     private function isWonStatus(array $lead): bool
