@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\AmoCrmDealMap;
+use App\Models\AmoComplectationProject;
 use App\Models\AmoCrmToken;
 use App\Models\SalesProject;
 use App\Models\User;
@@ -100,7 +101,7 @@ class AmoCrmService
 
     public function fetchDeals(int $page = 1, int $limit = 250): array
     {
-        $importStatusId = (int) config('services.amocrm.complectation_status_id', 69586234);
+        $importStatusId = (int) config('services.amocrm.won_status_id');
 
         $response = $this->apiRequest('GET', '/leads', [
             'query' => [
@@ -108,6 +109,24 @@ class AmoCrmService
                 'limit' => $limit,
                 'with' => 'contacts,users',
                 'filter[statuses][0][status_id]' => $importStatusId,
+            ],
+        ]);
+
+        $json = $response->json();
+
+        return Arr::get($json, '_embedded.leads', []);
+    }
+
+    public function fetchComplectationDeals(int $page = 1, int $limit = 250): array
+    {
+        $statusId = (int) config('services.amocrm.complectation_status_id', 69586234);
+
+        $response = $this->apiRequest('GET', '/leads', [
+            'query' => [
+                'page' => $page,
+                'limit' => $limit,
+                'with' => 'contacts,users',
+                'filter[statuses][0][status_id]' => $statusId,
             ],
         ]);
 
@@ -219,7 +238,7 @@ class AmoCrmService
     {
         $created = 0;
         $updated = 0;
-        $importStatusId = (int) config('services.amocrm.complectation_status_id', 69586234);
+        $importStatusId = (int) config('services.amocrm.won_status_id');
 
         foreach ($deals as $deal) {
             $statusId = (int) ($deal['status_id'] ?? 0);
@@ -240,6 +259,71 @@ class AmoCrmService
             if ($existingMap) {
                 $updated++;
             } else {
+                $created++;
+            }
+        }
+
+        return [
+            'total' => count($deals),
+            'created' => $created,
+            'updated' => $updated,
+        ];
+    }
+
+    public function syncComplectationDeals(array $deals): array
+    {
+        $statusId = (int) config('services.amocrm.complectation_status_id', 69586234);
+        $created = 0;
+        $updated = 0;
+
+        foreach ($deals as $deal) {
+            $lead = (array) $deal;
+            if ((int) ($lead['status_id'] ?? 0) !== $statusId) {
+                continue;
+            }
+
+            $amoDealId = (int) ($lead['id'] ?? 0);
+            if ($amoDealId <= 0) {
+                continue;
+            }
+
+            $clientName = $this->extractProjectClientName($lead);
+            if ($clientName === '') {
+                $clientName = 'amoCRM deal #'.$amoDealId;
+            }
+
+            $totalAmount = (float) ($lead['price'] ?? 0);
+            if ($totalAmount <= 0) {
+                $totalAmount = 0.01;
+            }
+
+            $responsibleUserId = (int) ($lead['responsible_user_id'] ?? 0);
+            $responsibleName = trim((string) (
+                Arr::get($lead, '_embedded.users.0.name')
+                ?? ''
+            ));
+            if ($responsibleName === '' && $responsibleUserId > 0) {
+                $amoUser = $this->getUserById($responsibleUserId);
+                $responsibleName = trim((string) ($amoUser['name'] ?? ''));
+            }
+
+            $row = AmoComplectationProject::query()->where('amo_deal_id', $amoDealId)->first();
+            $payload = [
+                'amo_deal_id' => $amoDealId,
+                'client_name' => mb_substr($clientName, 0, 255),
+                'deal_name' => mb_substr(trim((string) ($lead['name'] ?? '')), 0, 255),
+                'total_amount' => round($totalAmount, 2),
+                'responsible_user_id' => $responsibleUserId ?: null,
+                'responsible_name' => $responsibleName !== '' ? mb_substr($responsibleName, 0, 255) : null,
+                'status_id' => $statusId,
+                'raw_payload' => $lead,
+            ];
+
+            if ($row) {
+                $row->update($payload);
+                $updated++;
+            } else {
+                AmoComplectationProject::query()->create($payload);
                 $created++;
             }
         }
@@ -304,12 +388,12 @@ class AmoCrmService
                 $totalAmount = $project ? (float) $project->total_amount : 0.01;
             }
 
-            $projectCreateStatusId = (int) config('services.amocrm.complectation_status_id', 69586234);
+            $projectCreateStatusId = (int) config('services.amocrm.won_status_id');
             $leadStatusId = (int) ($lead['status_id'] ?? 0);
             $isProjectCreateStage = $leadStatusId > 0 && $leadStatusId === $projectCreateStatusId;
 
-            if (!$isProjectCreateStage) {
-                return $project?->fresh();
+            if (!$project && !$isProjectCreateStage) {
+                return null;
             }
 
             if (!$project) {
@@ -341,14 +425,13 @@ class AmoCrmService
                     ]);
                 }
 
-                $project->update($this->buildComplectationPayload($lead));
                 return $project;
             }
 
-            $project->update(array_merge([
+            $project->update([
                 'client_name' => mb_substr($clientName, 0, 255),
                 'total_amount' => round($totalAmount, 2),
-            ], $this->buildComplectationPayload($lead)));
+            ]);
 
             return $project->fresh();
         }, 3);
@@ -459,113 +542,6 @@ class AmoCrmService
 
         // 4) Fallback to deal title.
         return trim((string) ($lead['name'] ?? ''));
-    }
-
-    private function buildComplectationPayload(array $lead): array
-    {
-        $payload = [];
-
-        $inverter = $this->extractCustomFieldText($lead, ['інвертор', 'инвертор']);
-        if ($inverter !== null) {
-            $payload['inverter'] = $inverter;
-        }
-
-        $panelName = $this->extractCustomFieldText($lead, ['панелі', 'панели', 'фем']);
-        if ($panelName !== null) {
-            $payload['panel_name'] = $panelName;
-        }
-
-        $batteryName = $this->extractCustomFieldText($lead, ['акб', 'батарея', 'акумулятор']);
-        if ($batteryName !== null) {
-            $payload['battery_name'] = $batteryName;
-        }
-
-        $workStartRaw = $this->extractCustomFieldText($lead, ['початок робіт', 'дата монтажа', 'дата монтажа']);
-        $workStart = $this->normalizeAmoDate($workStartRaw);
-        if ($workStart !== null) {
-            $payload['electric_work_start_date'] = $workStart;
-        }
-
-        $phone = $this->extractContactPhone($lead);
-        if ($phone !== null) {
-            $payload['phone_number'] = $phone;
-        }
-
-        return $payload;
-    }
-
-    private function extractCustomFieldText(array $lead, array $fieldNames): ?string
-    {
-        $fieldNames = array_map(static fn ($v) => mb_strtolower(trim((string) $v)), $fieldNames);
-
-        foreach ((array) ($lead['custom_fields_values'] ?? []) as $field) {
-            $fieldName = mb_strtolower(trim((string) ($field['field_name'] ?? '')));
-            if (!in_array($fieldName, $fieldNames, true)) {
-                continue;
-            }
-
-            foreach ((array) ($field['values'] ?? []) as $valueRow) {
-                $value = trim((string) ($valueRow['value'] ?? ''));
-                if ($value !== '') {
-                    return $value;
-                }
-            }
-        }
-
-        return null;
-    }
-
-    private function normalizeAmoDate(?string $value): ?string
-    {
-        $value = trim((string) $value);
-        if ($value === '') {
-            return null;
-        }
-
-        if (ctype_digit($value)) {
-            return date('Y-m-d', (int) $value);
-        }
-
-        try {
-            return Carbon::parse($value)->format('Y-m-d');
-        } catch (\Throwable $e) {
-            return null;
-        }
-    }
-
-    private function extractContactPhone(array $lead): ?string
-    {
-        $phone = trim((string) (Arr::get($lead, '_embedded.contacts.0.custom_fields_values.0.values.0.value') ?? ''));
-        if ($phone !== '') {
-            return $phone;
-        }
-
-        $contactId = (int) (Arr::get($lead, '_embedded.contacts.0.id') ?? 0);
-        if ($contactId <= 0) {
-            return null;
-        }
-
-        $contact = $this->getContactById($contactId);
-        if (!$contact) {
-            return null;
-        }
-
-        foreach ((array) ($contact['custom_fields_values'] ?? []) as $field) {
-            $fieldCode = mb_strtolower(trim((string) ($field['field_code'] ?? '')));
-            $fieldName = mb_strtolower(trim((string) ($field['field_name'] ?? '')));
-            if ($fieldCode !== 'phone' && !in_array($fieldName, ['телефон', 'phone'], true)) {
-                continue;
-            }
-
-            foreach ((array) ($field['values'] ?? []) as $valueRow) {
-                $value = trim((string) ($valueRow['value'] ?? ''));
-                if ($value !== '') {
-                    return $value;
-                }
-            }
-        }
-
-        return null;
     }
 
     private function isWonStatus(array $lead): bool
