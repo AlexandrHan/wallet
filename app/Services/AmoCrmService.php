@@ -146,6 +146,21 @@ class AmoCrmService
         return $response->json();
     }
 
+    public function getContactById(int $contactId): ?array
+    {
+        if ($contactId <= 0) {
+            return null;
+        }
+
+        $response = $this->apiRequest('GET', '/contacts/'.$contactId);
+
+        if (!$response->successful()) {
+            return null;
+        }
+
+        return $response->json();
+    }
+
     public function processWebhookPayload(array $payload): array
     {
         $events = $this->extractWebhookEvents($payload);
@@ -431,7 +446,21 @@ class AmoCrmService
             return $contactName;
         }
 
-        // 3) Fallback to deal title.
+        // 3) If embedded contact has only id, load full contact.
+        $contactId = (int) (Arr::get($lead, '_embedded.contacts.0.id') ?? 0);
+        if ($contactId > 0) {
+            $contact = $this->getContactById($contactId);
+            $contactName = trim((string) (
+                $contact['name']
+                ?? $contact['first_name']
+                ?? ''
+            ));
+            if ($contactName !== '') {
+                return $contactName;
+            }
+        }
+
+        // 4) Fallback to deal title.
         return trim((string) ($lead['name'] ?? ''));
     }
 
