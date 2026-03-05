@@ -36,6 +36,11 @@ class Kernel extends ConsoleKernel
         
         $schedule->command('reclamations:prune-files')->dailyAt('03:30');
 
+        // amoCRM deals -> Wallet projects
+        $schedule->command('amocrm:sync-deals')
+            ->everyFiveMinutes()
+            ->withoutOverlapping();
+
     }
 
 
