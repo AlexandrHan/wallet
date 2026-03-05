@@ -105,6 +105,7 @@ class AmoCrmService
             'query' => [
                 'page' => $page,
                 'limit' => $limit,
+                'filter[statuses][0][status_id]' => (int) config('services.amocrm.won_status_id'),
             ],
         ]);
 
@@ -179,11 +180,6 @@ class AmoCrmService
             $this->markProjectCompleted($project);
         }
 
-        $advance = $this->extractAdvancePayment($lead);
-        if ($advance > 0) {
-            $this->syncAdvancePayment($project, $advance);
-        }
-
         return $project;
     }
 
@@ -210,11 +206,6 @@ class AmoCrmService
 
             if ($this->isWonStatus((array) $deal)) {
                 $this->markProjectCompleted($project);
-            }
-
-            $advance = $this->extractAdvancePayment((array) $deal);
-            if ($advance > 0) {
-                $this->syncAdvancePayment($project, $advance);
             }
 
             if ($existingMap) {
@@ -264,56 +255,75 @@ class AmoCrmService
             return null;
         }
 
-        $map = AmoCrmDealMap::query()->where('amo_deal_id', $amoDealId)->first();
-        $project = $map
-            ? SalesProject::query()->find($map->wallet_project_id)
-            : null;
-
         $clientName = trim((string) ($lead['name'] ?? ''));
         if ($clientName === '') {
             $clientName = 'amoCRM deal #'.$amoDealId;
         }
 
-        $totalAmount = (float) ($lead['price'] ?? 0);
-        if ($totalAmount <= 0) {
-            $totalAmount = $project ? (float) $project->total_amount : 0.01;
-        }
+        return DB::transaction(function () use ($amoDealId, $lead, $clientName) {
+            $map = AmoCrmDealMap::query()
+                ->where('amo_deal_id', $amoDealId)
+                ->lockForUpdate()
+                ->first();
 
-        $currency = $this->extractCurrency($lead, $project?->currency);
+            $project = $map
+                ? SalesProject::query()->find($map->wallet_project_id)
+                : null;
 
-        if (!$project) {
-            $project = SalesProject::query()->create([
+            $totalAmount = (float) ($lead['price'] ?? 0);
+            if ($totalAmount <= 0) {
+                $totalAmount = $project ? (float) $project->total_amount : 0.01;
+            }
+
+            $currency = $this->extractCurrency($lead, $project?->currency);
+            $partialPaidStatusId = (int) config('services.amocrm.won_status_id');
+            $leadStatusId = (int) ($lead['status_id'] ?? 0);
+            $isPartialPaidStage = $leadStatusId > 0 && $leadStatusId === $partialPaidStatusId;
+
+            if (!$project) {
+                $project = SalesProject::query()->create([
+                    'client_name' => mb_substr($clientName, 0, 255),
+                    'total_amount' => round($totalAmount, 2),
+                    'advance_amount' => 0,
+                    'remaining_amount' => round($totalAmount, 2),
+                    'currency' => $currency,
+                    'created_by' => $this->systemUserId(),
+                    'status' => $isPartialPaidStage
+                        ? 'active'
+                        : ($this->isWonStatus($lead) ? 'completed' : 'active'),
+                ]);
+
+                if ($map) {
+                    $map->update([
+                        'wallet_project_id' => $project->id,
+                    ]);
+                } else {
+                    AmoCrmDealMap::query()->create([
+                        'amo_deal_id' => $amoDealId,
+                        'wallet_project_id' => $project->id,
+                        'created_at' => now(),
+                    ]);
+                }
+
+                return $project;
+            }
+
+            $acceptedPaid = $this->acceptedAdvanceSum($project->id);
+            $remaining = max(round($totalAmount - $acceptedPaid, 2), 0);
+
+            $project->update([
                 'client_name' => mb_substr($clientName, 0, 255),
                 'total_amount' => round($totalAmount, 2),
-                'advance_amount' => 0,
-                'remaining_amount' => round($totalAmount, 2),
+                'advance_amount' => round($acceptedPaid, 2),
+                'remaining_amount' => $remaining,
                 'currency' => $currency,
-                'created_by' => $this->systemUserId(),
-                'status' => $this->isWonStatus($lead) ? 'completed' : 'active',
+                'status' => $isPartialPaidStage
+                    ? 'active'
+                    : ($this->isWonStatus($lead) ? 'completed' : ((string) $project->status ?: 'active')),
             ]);
 
-            AmoCrmDealMap::query()->create([
-                'amo_deal_id' => $amoDealId,
-                'wallet_project_id' => $project->id,
-                'created_at' => now(),
-            ]);
-
-            return $project;
-        }
-
-        $acceptedPaid = $this->acceptedAdvanceSum($project->id);
-        $remaining = max(round($totalAmount - $acceptedPaid, 2), 0);
-
-        $project->update([
-            'client_name' => mb_substr($clientName, 0, 255),
-            'total_amount' => round($totalAmount, 2),
-            'advance_amount' => round($acceptedPaid, 2),
-            'remaining_amount' => $remaining,
-            'currency' => $currency,
-            'status' => $this->isWonStatus($lead) ? 'completed' : ((string) $project->status ?: 'active'),
-        ]);
-
-        return $project->fresh();
+            return $project->fresh();
+        }, 3);
     }
 
     private function markProjectCompleted(SalesProject $project): void
