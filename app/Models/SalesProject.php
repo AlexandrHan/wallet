@@ -16,6 +16,7 @@ class SalesProject extends Model
         'created_by',
         'lead_manager_user_id',
         'status',
+        'source_layer',
         'telegram_group_link',
         'geo_location_link',
         'phone_number',

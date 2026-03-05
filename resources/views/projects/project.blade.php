@@ -329,7 +329,7 @@ async function loadConstructionProjects() {
     }
   } catch (_) {}
 
-  const r = await fetch('/api/sales-projects');
+  const r = await fetch('/api/sales-projects?layer=projects');
   const projects = await r.json();
   const visibleProjects = [...projects].filter(p => !p.is_retail);
   const sortedProjects = visibleProjects.sort((a, b) => {

@@ -467,7 +467,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (isProjectsLoading) return;
     isProjectsLoading = true;
 
-    return fetch('/api/sales-projects')
+    return fetch('/api/sales-projects?layer=finance')
       .then(r => r.json())
       .then(projects => {
         renderProjects(projects);
@@ -994,7 +994,7 @@ document.addEventListener('click', function(e){
   ///////////////////////////////////////////////////////////////
 
   async function loadAndRenderSales() {
-    const res = await fetch('/api/sales-projects', { credentials: 'same-origin' });
+    const res = await fetch('/api/sales-projects?layer=finance', { credentials: 'same-origin' });
     if (!res.ok) throw new Error(`GET /api/sales-projects failed (${res.status})`);
     const projects = await res.json();
 

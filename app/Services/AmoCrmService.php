@@ -325,6 +325,7 @@ class AmoCrmService
                         'remaining_amount' => round($totalAmount, 2),
                         'currency' => $currency,
                         'created_by' => $this->systemUserId(),
+                        'source_layer' => 'projects',
                     ]);
 
                     DB::table('cash_transfers')
@@ -449,6 +450,7 @@ class AmoCrmService
                     'remaining_amount' => round($totalAmount, 2),
                     'currency' => $currency,
                     'created_by' => $this->systemUserId(),
+                    'source_layer' => 'finance',
                 ]);
 
                 // New amoCRM-created project must start with no advances/transfers.

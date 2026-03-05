@@ -296,7 +296,7 @@ class SalesProjectController extends Controller
         ]);
     }
 
-    public function index()
+    public function index(Request $request)
     {
         $amoMapByProjectId = Schema::hasTable('amocrm_deal_map')
             ? DB::table('amocrm_deal_map')
@@ -329,7 +329,19 @@ class SalesProjectController extends Controller
                 return [(int) $user->id => $label];
             });
 
-        $projects = SalesProject::orderByDesc('id')->get()->map(function ($project) {
+        $layer = trim((string) $request->query('layer', ''));
+
+        $projectsQuery = SalesProject::query();
+        if ($layer === 'finance') {
+            $projectsQuery->where(function ($q) {
+                $q->where('source_layer', 'finance')
+                    ->orWhereNull('source_layer');
+            });
+        } elseif ($layer === 'projects') {
+            $projectsQuery->where('source_layer', 'projects');
+        }
+
+        $projects = $projectsQuery->orderByDesc('id')->get()->map(function ($project) {
 
             $transfers = CashTransfer::where('project_id', $project->id)
                 ->orderByDesc('id')
