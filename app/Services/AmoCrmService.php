@@ -278,12 +278,18 @@ class AmoCrmService
 
         foreach ($deals as $deal) {
             $lead = (array) $deal;
-            if ((int) ($lead['status_id'] ?? 0) !== $statusId) {
+            $amoDealId = (int) ($lead['id'] ?? 0);
+            if ($amoDealId <= 0) {
                 continue;
             }
 
-            $amoDealId = (int) ($lead['id'] ?? 0);
-            if ($amoDealId <= 0) {
+            // Use full lead payload to ensure custom_fields_values are available.
+            $fullLead = $this->getLeadById($amoDealId);
+            if (is_array($fullLead) && !empty($fullLead)) {
+                $lead = $fullLead;
+            }
+
+            if ((int) ($lead['status_id'] ?? 0) !== $statusId) {
                 continue;
             }
 
@@ -374,10 +380,10 @@ class AmoCrmService
     {
         $payload = [];
 
-        $inverter = $this->extractLeadFieldValue($lead, ['Інвертор', 'Инвертор', 'Inverter']);
+        $inverter = $this->extractLeadFieldValue($lead, ['Інвертор', 'Инвертор', 'Inverter'], [1202241]);
         $bms = $this->extractLeadFieldValue($lead, ['BMS', 'БМС']);
-        $battery = $this->extractLeadFieldValue($lead, ['АКБ', 'Акумулятор', 'Батарея', 'Battery']);
-        $panels = $this->extractLeadFieldValue($lead, ['Панелі', 'Панели', 'ФЕМ', 'Сонячні панелі']);
+        $battery = $this->extractLeadFieldValue($lead, ['АКБ', 'Акумулятор', 'Батарея', 'Battery'], [1200259]);
+        $panels = $this->extractLeadFieldValue($lead, ['Панелі', 'Панели', 'ФЕМ', 'Сонячні панелі'], [1200253]);
         $hasGreenTariffRaw = $this->extractLeadFieldValue($lead, ['Зелений тариф', 'Зеленый тариф', 'Green tariff']);
         $phone = $this->extractLeadPhone($lead);
 
@@ -624,21 +630,30 @@ class AmoCrmService
         return trim((string) ($lead['name'] ?? ''));
     }
 
-    private function extractLeadFieldValue(array $lead, array $fieldNames): ?string
+    private function extractLeadFieldValue(array $lead, array $fieldNames, array $fieldIds = []): ?string
     {
         $normalized = collect($fieldNames)
             ->map(fn ($name) => mb_strtolower(trim((string) $name)))
             ->filter()
             ->values()
             ->all();
+        $normalizedIds = collect($fieldIds)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->values()
+            ->all();
 
-        if ($normalized === []) {
+        if ($normalized === [] && $normalizedIds === []) {
             return null;
         }
 
         foreach ((array) ($lead['custom_fields_values'] ?? []) as $field) {
+            $currentId = (int) ($field['field_id'] ?? 0);
             $currentName = mb_strtolower(trim((string) ($field['field_name'] ?? '')));
-            if (!in_array($currentName, $normalized, true)) {
+            $matchesById = in_array($currentId, $normalizedIds, true);
+            $matchesByName = in_array($currentName, $normalized, true);
+
+            if (!$matchesById && !$matchesByName) {
                 continue;
             }
 
