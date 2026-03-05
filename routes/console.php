@@ -21,3 +21,7 @@ Schedule::call(function () {
 Schedule::command('amocrm:sync-deals')
     ->everyFiveMinutes()
     ->withoutOverlapping();
+
+Schedule::command('amocrm:sync-complectation-projects')
+    ->everyFiveMinutes()
+    ->withoutOverlapping();
