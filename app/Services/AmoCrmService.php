@@ -100,13 +100,13 @@ class AmoCrmService
 
     public function fetchDeals(int $page = 1, int $limit = 250): array
     {
-        $importStatusId = (int) config('services.amocrm.won_status_id');
+        $importStatusId = (int) config('services.amocrm.complectation_status_id', 69586234);
 
         $response = $this->apiRequest('GET', '/leads', [
             'query' => [
                 'page' => $page,
                 'limit' => $limit,
-                'with' => 'contacts',
+                'with' => 'contacts,users',
                 'filter[statuses][0][status_id]' => $importStatusId,
             ],
         ]);
@@ -212,10 +212,6 @@ class AmoCrmService
             return null;
         }
 
-        if ($eventType === self::EVENT_LEAD_WON || $this->isWonStatus($lead)) {
-            $this->markProjectCompleted($project);
-        }
-
         return $project;
     }
 
@@ -223,7 +219,7 @@ class AmoCrmService
     {
         $created = 0;
         $updated = 0;
-        $importStatusId = (int) config('services.amocrm.won_status_id');
+        $importStatusId = (int) config('services.amocrm.complectation_status_id', 69586234);
 
         foreach ($deals as $deal) {
             $statusId = (int) ($deal['status_id'] ?? 0);
@@ -308,12 +304,12 @@ class AmoCrmService
                 $totalAmount = $project ? (float) $project->total_amount : 0.01;
             }
 
-            $projectCreateStatusId = (int) config('services.amocrm.won_status_id');
+            $projectCreateStatusId = (int) config('services.amocrm.complectation_status_id', 69586234);
             $leadStatusId = (int) ($lead['status_id'] ?? 0);
             $isProjectCreateStage = $leadStatusId > 0 && $leadStatusId === $projectCreateStatusId;
 
-            if (!$project && !$isProjectCreateStage) {
-                return null;
+            if (!$isProjectCreateStage) {
+                return $project?->fresh();
             }
 
             if (!$project) {
@@ -345,13 +341,14 @@ class AmoCrmService
                     ]);
                 }
 
+                $project->update($this->buildComplectationPayload($lead));
                 return $project;
             }
 
-            $project->update([
+            $project->update(array_merge([
                 'client_name' => mb_substr($clientName, 0, 255),
                 'total_amount' => round($totalAmount, 2),
-            ]);
+            ], $this->buildComplectationPayload($lead)));
 
             return $project->fresh();
         }, 3);
@@ -462,6 +459,113 @@ class AmoCrmService
 
         // 4) Fallback to deal title.
         return trim((string) ($lead['name'] ?? ''));
+    }
+
+    private function buildComplectationPayload(array $lead): array
+    {
+        $payload = [];
+
+        $inverter = $this->extractCustomFieldText($lead, ['інвертор', 'инвертор']);
+        if ($inverter !== null) {
+            $payload['inverter'] = $inverter;
+        }
+
+        $panelName = $this->extractCustomFieldText($lead, ['панелі', 'панели', 'фем']);
+        if ($panelName !== null) {
+            $payload['panel_name'] = $panelName;
+        }
+
+        $batteryName = $this->extractCustomFieldText($lead, ['акб', 'батарея', 'акумулятор']);
+        if ($batteryName !== null) {
+            $payload['battery_name'] = $batteryName;
+        }
+
+        $workStartRaw = $this->extractCustomFieldText($lead, ['початок робіт', 'дата монтажа', 'дата монтажа']);
+        $workStart = $this->normalizeAmoDate($workStartRaw);
+        if ($workStart !== null) {
+            $payload['electric_work_start_date'] = $workStart;
+        }
+
+        $phone = $this->extractContactPhone($lead);
+        if ($phone !== null) {
+            $payload['phone_number'] = $phone;
+        }
+
+        return $payload;
+    }
+
+    private function extractCustomFieldText(array $lead, array $fieldNames): ?string
+    {
+        $fieldNames = array_map(static fn ($v) => mb_strtolower(trim((string) $v)), $fieldNames);
+
+        foreach ((array) ($lead['custom_fields_values'] ?? []) as $field) {
+            $fieldName = mb_strtolower(trim((string) ($field['field_name'] ?? '')));
+            if (!in_array($fieldName, $fieldNames, true)) {
+                continue;
+            }
+
+            foreach ((array) ($field['values'] ?? []) as $valueRow) {
+                $value = trim((string) ($valueRow['value'] ?? ''));
+                if ($value !== '') {
+                    return $value;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function normalizeAmoDate(?string $value): ?string
+    {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return null;
+        }
+
+        if (ctype_digit($value)) {
+            return date('Y-m-d', (int) $value);
+        }
+
+        try {
+            return Carbon::parse($value)->format('Y-m-d');
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    private function extractContactPhone(array $lead): ?string
+    {
+        $phone = trim((string) (Arr::get($lead, '_embedded.contacts.0.custom_fields_values.0.values.0.value') ?? ''));
+        if ($phone !== '') {
+            return $phone;
+        }
+
+        $contactId = (int) (Arr::get($lead, '_embedded.contacts.0.id') ?? 0);
+        if ($contactId <= 0) {
+            return null;
+        }
+
+        $contact = $this->getContactById($contactId);
+        if (!$contact) {
+            return null;
+        }
+
+        foreach ((array) ($contact['custom_fields_values'] ?? []) as $field) {
+            $fieldCode = mb_strtolower(trim((string) ($field['field_code'] ?? '')));
+            $fieldName = mb_strtolower(trim((string) ($field['field_name'] ?? '')));
+            if ($fieldCode !== 'phone' && !in_array($fieldName, ['телефон', 'phone'], true)) {
+                continue;
+            }
+
+            foreach ((array) ($field['values'] ?? []) as $valueRow) {
+                $value = trim((string) ($valueRow['value'] ?? ''));
+                if ($value !== '') {
+                    return $value;
+                }
+            }
+        }
+
+        return null;
     }
 
     private function isWonStatus(array $lead): bool
