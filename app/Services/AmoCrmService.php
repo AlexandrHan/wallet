@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Models\AmoCrmDealMap;
 use App\Models\AmoCrmToken;
-use App\Models\CashTransfer;
 use App\Models\SalesProject;
 use App\Models\User;
 use Carbon\Carbon;
@@ -274,7 +273,6 @@ class AmoCrmService
                 $totalAmount = $project ? (float) $project->total_amount : 0.01;
             }
 
-            $currency = $this->extractCurrency($lead, $project?->currency);
             $projectCreateStatusId = (int) config('services.amocrm.project_status_id', 29352208);
             $leadStatusId = (int) ($lead['status_id'] ?? 0);
             $isProjectCreateStage = $leadStatusId > 0 && $leadStatusId === $projectCreateStatusId;
@@ -287,11 +285,6 @@ class AmoCrmService
                 $project = SalesProject::query()->create([
                     'client_name' => mb_substr($clientName, 0, 255),
                     'total_amount' => round($totalAmount, 2),
-                    'advance_amount' => 0,
-                    'remaining_amount' => round($totalAmount, 2),
-                    'currency' => $currency,
-                    'created_by' => $this->systemUserId(),
-                    'status' => 'active',
                 ]);
 
                 if ($map) {
@@ -333,46 +326,6 @@ class AmoCrmService
         $project->update($payload);
     }
 
-    private function syncAdvancePayment(SalesProject $project, float $advanceTargetTotal): void
-    {
-        $alreadyAccepted = $this->acceptedAdvanceSum($project->id);
-        $delta = round($advanceTargetTotal - $alreadyAccepted, 2);
-
-        if ($delta <= 0) {
-            return;
-        }
-
-        CashTransfer::query()->create([
-            'project_id' => $project->id,
-            'from_wallet_id' => null,
-            'to_wallet_id' => null,
-            'amount' => $delta,
-            'currency' => $project->currency,
-            'exchange_rate' => null,
-            // In this project this legacy field stores amount in project currency as well.
-            'usd_amount' => $delta,
-            'status' => 'accepted',
-            'created_by' => $this->systemUserId(),
-            'accepted_at' => now(),
-        ]);
-
-        $acceptedPaid = $alreadyAccepted + $delta;
-        $project->update([
-            'advance_amount' => round($acceptedPaid, 2),
-            'remaining_amount' => max(round((float) $project->total_amount - $acceptedPaid, 2), 0),
-        ]);
-    }
-
-    private function acceptedAdvanceSum(int $projectId): float
-    {
-        $sum = (float) CashTransfer::query()
-            ->where('project_id', $projectId)
-            ->where('status', 'accepted')
-            ->sum('usd_amount');
-
-        return round($sum, 2);
-    }
-
     private function extractCurrency(array $lead, ?string $fallback = null): string
     {
         $fallback = strtoupper(trim((string) $fallback));
@@ -399,34 +352,6 @@ class AmoCrmService
         }
 
         return in_array($fallback, ['UAH', 'USD', 'EUR'], true) ? $fallback : 'USD';
-    }
-
-    private function extractAdvancePayment(array $lead): float
-    {
-        foreach ((array) ($lead['custom_fields_values'] ?? []) as $field) {
-            $fieldName = mb_strtolower(trim((string) ($field['field_name'] ?? '')));
-            $fieldCode = mb_strtolower(trim((string) ($field['field_code'] ?? '')));
-
-            $isAdvance = in_array($fieldName, [
-                'advance payment',
-                'аванс',
-                'предоплата',
-                'передплата',
-            ], true) || in_array($fieldCode, ['advance_payment', 'advance'], true);
-
-            if (!$isAdvance) {
-                continue;
-            }
-
-            foreach ((array) ($field['values'] ?? []) as $valueRow) {
-                $raw = str_replace(',', '.', (string) ($valueRow['value'] ?? '0'));
-                if (is_numeric($raw)) {
-                    return max((float) $raw, 0);
-                }
-            }
-        }
-
-        return 0.0;
     }
 
     private function isWonStatus(array $lead): bool
