@@ -117,6 +117,8 @@ document.addEventListener('DOMContentLoaded', function () {
   const OPEN_KEY = 'finance_open_project_id';
   const OPEN_PAID_KEY = 'finance_open_paid_projects';
   const OPEN_ACTIVE_KEY = 'finance_open_active_projects';
+  const SEARCH_PAID_KEY = 'finance_search_paid_projects';
+  const SEARCH_ACTIVE_KEY = 'finance_search_active_projects';
   const rememberOpenProject = (id) => localStorage.setItem(OPEN_KEY, String(id));
   const getOpenProject = () => {
     const v = localStorage.getItem(OPEN_KEY);
@@ -133,15 +135,57 @@ document.addEventListener('DOMContentLoaded', function () {
     const openId = getOpenProject();
     const isPaidOpen = localStorage.getItem(OPEN_PAID_KEY) === '1';
     const isActiveOpen = localStorage.getItem(OPEN_ACTIVE_KEY) === '1';
+    const paidQuery = (localStorage.getItem(SEARCH_PAID_KEY) || '').trim();
+    const activeQuery = (localStorage.getItem(SEARCH_ACTIVE_KEY) || '').trim();
     container.innerHTML = '';
 
     const byName = (a, b) => String(a.client_name || '').localeCompare(String(b.client_name || ''), 'uk', { sensitivity: 'base' });
-    const activeProjects = (projects || [])
+    const allActiveProjects = (projects || [])
       .filter(p => Number(p.remaining_amount || 0) > 0)
       .sort(byName);
-    const paidProjects = (projects || [])
+    const allPaidProjects = (projects || [])
       .filter(p => Number(p.remaining_amount || 0) <= 0)
       .sort(byName);
+
+    const normalizeText = (v) => String(v ?? '').toLowerCase().trim();
+    const numberForms = (n) => {
+      const num = Number(n ?? 0);
+      if (!Number.isFinite(num)) return '';
+      const fixed = num.toFixed(2);
+      const short = String(num);
+      const comma = fixed.replace('.', ',');
+      return `${short} ${fixed} ${comma}`;
+    };
+    const projectSearchText = (p) => {
+      const transfersText = (p.transfers || []).map(t => [
+        t.amount,
+        t.currency,
+        t.exchange_rate,
+        t.project_amount,
+        t.usd_amount,
+        t.status,
+        t.created_at
+      ].join(' ')).join(' ');
+
+      return normalizeText([
+        p.client_name,
+        p.currency,
+        p.manager_name,
+        p.created_at,
+        numberForms(p.total_amount),
+        numberForms(p.paid_amount),
+        numberForms(p.pending_amount),
+        numberForms(p.remaining_amount),
+        transfersText
+      ].join(' '));
+    };
+    const matchesQuery = (p, query) => {
+      const q = normalizeText(query);
+      if (!q) return true;
+      return projectSearchText(p).includes(q);
+    };
+    const activeProjects = allActiveProjects.filter(p => matchesQuery(p, activeQuery));
+    const paidProjects = allPaidProjects.filter(p => matchesQuery(p, paidQuery));
 
     function buildProjectCard(p) {
       const card = document.createElement('div');
@@ -321,8 +365,8 @@ document.addEventListener('DOMContentLoaded', function () {
       return card;
     }
 
-    if (paidProjects.length > 0) {
-      const shouldOpenPaid = isPaidOpen || !!paidProjects.find(p => Number(p.id) === openId);
+    if (allPaidProjects.length > 0) {
+      const shouldOpenPaid = isPaidOpen || !!paidProjects.find(p => Number(p.id) === openId) || !!paidQuery;
 
       const paidCard = document.createElement('div');
       paidCard.className = 'card';
@@ -330,13 +374,31 @@ document.addEventListener('DOMContentLoaded', function () {
       paidCard.innerHTML = `
         <div class="paid-projects-toggle" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
           <div style="font-weight:700;">✅ Оплачені</div>
-          <div style="opacity:.75;">${paidProjects.length}</div>
+          <div style="opacity:.75;">${paidProjects.length}${paidQuery ? ` / ${allPaidProjects.length}` : ''}</div>
         </div>
-        <div class="paid-projects-details" style="display:${shouldOpenPaid ? 'block' : 'none'}; margin-top:12px; border-top:1px solid #ffffff; padding-top:10px;"></div>
+        <div class="paid-projects-details" style="display:${shouldOpenPaid ? 'block' : 'none'}; margin-top:12px; border-top:1px solid #ffffff; padding-top:10px;">
+          <input
+            class="btn paid-projects-search"
+            type="text"
+            value="${paidQuery.replace(/"/g, '&quot;')}"
+            placeholder="Пошук: імʼя, сума, валюта, менеджер..."
+            style="width:100%; margin-bottom:10px;"
+          >
+          <div class="paid-projects-list"></div>
+        </div>
       `;
 
-      const paidDetails = paidCard.querySelector('.paid-projects-details');
-      paidProjects.forEach(p => paidDetails.appendChild(buildProjectCard(p)));
+      const paidDetails = paidCard.querySelector('.paid-projects-list');
+      if (paidProjects.length > 0) {
+        paidProjects.forEach(p => paidDetails.appendChild(buildProjectCard(p)));
+      } else {
+        paidDetails.innerHTML = `<div style="opacity:.75; text-align:center;">Нічого не знайдено</div>`;
+      }
+
+      paidCard.querySelector('.paid-projects-search')?.addEventListener('input', function () {
+        localStorage.setItem(SEARCH_PAID_KEY, this.value || '');
+        renderProjects(projects || []);
+      });
 
       paidCard.querySelector('.paid-projects-toggle')?.addEventListener('click', function () {
         const details = paidCard.querySelector('.paid-projects-details');
@@ -354,17 +416,31 @@ document.addEventListener('DOMContentLoaded', function () {
     activeCard.innerHTML = `
       <div class="active-projects-toggle" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
         <div style="font-weight:700;">🟡 Проавансовані</div>
-        <div style="opacity:.75;">${activeProjects.length}</div>
+        <div style="opacity:.75;">${activeProjects.length}${activeQuery ? ` / ${allActiveProjects.length}` : ''}</div>
       </div>
-      <div class="active-projects-details" style="display:${isActiveOpen ? 'block' : 'none'}; margin-top:12px; border-top:1px solid #ffffff; padding-top:10px;"></div>
+      <div class="active-projects-details" style="display:${isActiveOpen || !!activeQuery ? 'block' : 'none'}; margin-top:12px; border-top:1px solid #ffffff; padding-top:10px;">
+        <input
+          class="btn active-projects-search"
+          type="text"
+          value="${activeQuery.replace(/"/g, '&quot;')}"
+          placeholder="Пошук: імʼя, сума, валюта, менеджер..."
+          style="width:100%; margin-bottom:10px;"
+        >
+        <div class="active-projects-list"></div>
+      </div>
     `;
 
-    const activeDetails = activeCard.querySelector('.active-projects-details');
+    const activeDetails = activeCard.querySelector('.active-projects-list');
     if (activeProjects.length > 0) {
       activeProjects.forEach(p => activeDetails.appendChild(buildProjectCard(p)));
     } else {
-      activeDetails.innerHTML = `<div style="opacity:.75; text-align:center;">Немає активних проектів</div>`;
+      activeDetails.innerHTML = `<div style="opacity:.75; text-align:center;">${activeQuery ? 'Нічого не знайдено' : 'Немає активних проектів'}</div>`;
     }
+
+    activeCard.querySelector('.active-projects-search')?.addEventListener('input', function () {
+      localStorage.setItem(SEARCH_ACTIVE_KEY, this.value || '');
+      renderProjects(projects || []);
+    });
 
     activeCard.querySelector('.active-projects-toggle')?.addEventListener('click', function () {
       const details = activeCard.querySelector('.active-projects-details');

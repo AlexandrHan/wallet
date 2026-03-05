@@ -193,6 +193,12 @@ class AmoCrmService
         $updated = 0;
 
         foreach ($deals as $deal) {
+            $statusId = (int) ($deal['status_id'] ?? 0);
+
+            if ($statusId !== (int) config('services.amocrm.won_status_id')) {
+                continue;
+            }
+
             $existingMap = AmoCrmDealMap::query()
                 ->where('amo_deal_id', (int) ($deal['id'] ?? 0))
                 ->exists();
