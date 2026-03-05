@@ -208,13 +208,21 @@ class AmoCrmService
                 continue;
             }
 
-            if ($this->isWonStatus((array) $deal)) {
-                $this->markProjectCompleted($project);
+            if ((string) $project->status === 'completed') {
+                $project->update(['status' => 'active']);
+                $project = $project->fresh();
             }
 
             $advance = $this->extractAdvancePayment((array) $deal);
             if ($advance > 0) {
                 $this->syncAdvancePayment($project, $advance);
+                $project = $project->fresh();
+            }
+
+            if ((float) ($project->remaining_amount ?? 0) <= 0) {
+                $this->markProjectCompleted($project);
+            } elseif ((string) $project->status === 'completed') {
+                $project->update(['status' => 'active']);
             }
 
             if ($existingMap) {
