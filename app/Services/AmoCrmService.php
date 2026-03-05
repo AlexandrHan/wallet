@@ -101,11 +101,15 @@ class AmoCrmService
 
     public function fetchDeals(int $page = 1, int $limit = 250): array
     {
+        $wonStatusId = (int) config('services.amocrm.won_status_id');
+        $projectStatusId = (int) config('services.amocrm.project_status_id', 69586234);
+
         $response = $this->apiRequest('GET', '/leads', [
             'query' => [
                 'page' => $page,
                 'limit' => $limit,
-                'filter[statuses][0][status_id]' => (int) config('services.amocrm.won_status_id'),
+                'filter[statuses][0][status_id]' => $wonStatusId,
+                'filter[statuses][1][status_id]' => $projectStatusId,
             ],
         ]);
 
@@ -187,11 +191,13 @@ class AmoCrmService
     {
         $created = 0;
         $updated = 0;
+        $wonStatusId = (int) config('services.amocrm.won_status_id');
+        $projectStatusId = (int) config('services.amocrm.project_status_id', 69586234);
 
         foreach ($deals as $deal) {
             $statusId = (int) ($deal['status_id'] ?? 0);
 
-            if ($statusId !== (int) config('services.amocrm.won_status_id')) {
+            if (!in_array($statusId, [$wonStatusId, $projectStatusId], true)) {
                 continue;
             }
 
@@ -277,8 +283,10 @@ class AmoCrmService
 
             $currency = $this->extractCurrency($lead, $project?->currency);
             $partialPaidStatusId = (int) config('services.amocrm.won_status_id');
+            $projectCreateStatusId = (int) config('services.amocrm.project_status_id', 69586234);
             $leadStatusId = (int) ($lead['status_id'] ?? 0);
             $isPartialPaidStage = $leadStatusId > 0 && $leadStatusId === $partialPaidStatusId;
+            $isProjectCreateStage = $leadStatusId > 0 && $leadStatusId === $projectCreateStatusId;
 
             if (!$project) {
                 $project = SalesProject::query()->create([
@@ -288,7 +296,7 @@ class AmoCrmService
                     'remaining_amount' => round($totalAmount, 2),
                     'currency' => $currency,
                     'created_by' => $this->systemUserId(),
-                    'status' => $isPartialPaidStage
+                    'status' => ($isPartialPaidStage || $isProjectCreateStage)
                         ? 'active'
                         : ($this->isWonStatus($lead) ? 'completed' : 'active'),
                 ]);
@@ -317,7 +325,7 @@ class AmoCrmService
                 'advance_amount' => round($acceptedPaid, 2),
                 'remaining_amount' => $remaining,
                 'currency' => $currency,
-                'status' => $isPartialPaidStage
+                'status' => ($isPartialPaidStage || $isProjectCreateStage)
                     ? 'active'
                     : ($this->isWonStatus($lead) ? 'completed' : ((string) $project->status ?: 'active')),
             ]);
