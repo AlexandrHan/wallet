@@ -208,21 +208,13 @@ class AmoCrmService
                 continue;
             }
 
-            if ((string) $project->status === 'completed') {
-                $project->update(['status' => 'active']);
-                $project = $project->fresh();
+            if ($this->isWonStatus((array) $deal)) {
+                $this->markProjectCompleted($project);
             }
 
             $advance = $this->extractAdvancePayment((array) $deal);
             if ($advance > 0) {
                 $this->syncAdvancePayment($project, $advance);
-                $project = $project->fresh();
-            }
-
-            if ((float) ($project->remaining_amount ?? 0) <= 0) {
-                $this->markProjectCompleted($project);
-            } elseif ((string) $project->status === 'completed') {
-                $project->update(['status' => 'active']);
             }
 
             if ($existingMap) {
@@ -437,10 +429,10 @@ class AmoCrmService
 
     private function isWonStatus(array $lead): bool
     {
-        $wonId = (int) config('services.amocrm.won_status_id', 142);
+        $completedId = (int) config('services.amocrm.completed_status_id', 0);
         $statusId = (int) ($lead['status_id'] ?? 0);
 
-        if ($statusId > 0 && $statusId === $wonId) {
+        if ($completedId > 0 && $statusId === $completedId) {
             return true;
         }
 
