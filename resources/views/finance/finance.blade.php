@@ -140,11 +140,21 @@ document.addEventListener('DOMContentLoaded', function () {
     container.innerHTML = '';
 
     const byName = (a, b) => String(a.client_name || '').localeCompare(String(b.client_name || ''), 'uk', { sensitivity: 'base' });
+    const toNum = (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : 0;
+    };
+    const isPaidProject = (p) => {
+      const total = toNum(p.total_amount);
+      const paid = toNum(p.paid_amount);
+      const remaining = toNum(p.remaining_amount);
+      return total > 0 && paid >= total && remaining <= 0;
+    };
     const allActiveProjects = (projects || [])
-      .filter(p => Number(p.remaining_amount || 0) > 0)
+      .filter(p => !isPaidProject(p))
       .sort(byName);
     const allPaidProjects = (projects || [])
-      .filter(p => Number(p.remaining_amount || 0) <= 0)
+      .filter(p => isPaidProject(p))
       .sort(byName);
 
     const normalizeText = (v) => String(v ?? '').toLowerCase().trim();

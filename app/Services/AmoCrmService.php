@@ -100,13 +100,13 @@ class AmoCrmService
 
     public function fetchDeals(int $page = 1, int $limit = 250): array
     {
-        $projectStatusId = (int) config('services.amocrm.project_status_id', 29352208);
+        $importStatusId = (int) config('services.amocrm.won_status_id');
 
         $response = $this->apiRequest('GET', '/leads', [
             'query' => [
                 'page' => $page,
                 'limit' => $limit,
-                'filter[statuses][0][status_id]' => $projectStatusId,
+                'filter[statuses][0][status_id]' => $importStatusId,
             ],
         ]);
 
@@ -188,12 +188,12 @@ class AmoCrmService
     {
         $created = 0;
         $updated = 0;
-        $projectStatusId = (int) config('services.amocrm.project_status_id', 29352208);
+        $importStatusId = (int) config('services.amocrm.won_status_id');
 
         foreach ($deals as $deal) {
             $statusId = (int) ($deal['status_id'] ?? 0);
 
-            if ($statusId !== $projectStatusId) {
+            if ($statusId !== $importStatusId) {
                 continue;
             }
 
@@ -273,7 +273,7 @@ class AmoCrmService
                 $totalAmount = $project ? (float) $project->total_amount : 0.01;
             }
 
-            $projectCreateStatusId = (int) config('services.amocrm.project_status_id', 29352208);
+            $projectCreateStatusId = (int) config('services.amocrm.won_status_id');
             $leadStatusId = (int) ($lead['status_id'] ?? 0);
             $isProjectCreateStage = $leadStatusId > 0 && $leadStatusId === $projectCreateStatusId;
 
