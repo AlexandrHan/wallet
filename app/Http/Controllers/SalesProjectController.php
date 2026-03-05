@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use App\Models\SalesProject;
 use App\Models\CashTransfer;
+use App\Services\AmoCrmService;
 
 class SalesProjectController extends Controller
 {
@@ -297,6 +298,16 @@ class SalesProjectController extends Controller
 
     public function index()
     {
+        $amoMapByProjectId = Schema::hasTable('amocrm_deal_map')
+            ? DB::table('amocrm_deal_map')
+                ->select('wallet_project_id', 'amo_deal_id')
+                ->get()
+                ->keyBy('wallet_project_id')
+            : collect();
+
+        $amoResponsibleCache = [];
+        $amoCrmService = app(AmoCrmService::class);
+
         $userNames = DB::table('users')
             ->select('id', 'name', 'email', 'actor')
             ->get()
@@ -480,13 +491,45 @@ class SalesProjectController extends Controller
                     ];
                 })->values(),
             ];
-        })->map(function ($project) use ($userNames) {
+        })->map(function ($project) use ($userNames, $amoMapByProjectId, &$amoResponsibleCache, $amoCrmService) {
             $managerId = (int) ($project['lead_manager_user_id'] ?? 0);
             if ($managerId <= 0) {
                 $managerId = (int) ($project['created_by'] ?? 0);
             }
 
-            $project['manager_name'] = $userNames->get($managerId, '—');
+            $managerName = $userNames->get($managerId);
+
+            $projectId = (int) ($project['id'] ?? 0);
+            $amoMap = $amoMapByProjectId->get($projectId);
+
+            if ($amoMap) {
+                $amoDealId = (int) ($amoMap->amo_deal_id ?? 0);
+                if (!array_key_exists($amoDealId, $amoResponsibleCache)) {
+                    $responsibleName = null;
+                    $lead = $amoCrmService->getLeadById($amoDealId);
+                    if ($lead) {
+                        $responsibleName = trim((string) (
+                            data_get($lead, '_embedded.users.0.name')
+                            ?? ''
+                        ));
+
+                        if ($responsibleName === '') {
+                            $responsibleId = (int) ($lead['responsible_user_id'] ?? 0);
+                            $amoUser = $amoCrmService->getUserById($responsibleId);
+                            $responsibleName = trim((string) ($amoUser['name'] ?? ''));
+                        }
+                    }
+
+                    $amoResponsibleCache[$amoDealId] = $responsibleName ?: null;
+                }
+
+                $amoResponsibleName = $amoResponsibleCache[$amoDealId] ?? null;
+                if (!empty($amoResponsibleName)) {
+                    $managerName = $amoResponsibleName;
+                }
+            }
+
+            $project['manager_name'] = $managerName ?: '—';
             return $project;
         });
 

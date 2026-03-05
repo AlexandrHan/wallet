@@ -120,9 +120,24 @@ class AmoCrmService
     {
         $response = $this->apiRequest('GET', '/leads/'.$leadId, [
             'query' => [
-                'with' => 'contacts',
+                'with' => 'contacts,users',
             ],
         ]);
+
+        if (!$response->successful()) {
+            return null;
+        }
+
+        return $response->json();
+    }
+
+    public function getUserById(int $userId): ?array
+    {
+        if ($userId <= 0) {
+            return null;
+        }
+
+        $response = $this->apiRequest('GET', '/users/'.$userId);
 
         if (!$response->successful()) {
             return null;
@@ -258,12 +273,7 @@ class AmoCrmService
             return null;
         }
 
-        $clientName = trim((string) (
-            Arr::get($lead, '_embedded.contacts.0.name')
-            ?? Arr::get($lead, '_embedded.contacts.0.first_name')
-            ?? $lead['name']
-            ?? ''
-        ));
+        $clientName = $this->extractProjectClientName($lead);
         if ($clientName === '') {
             $clientName = 'amoCRM deal #'.$amoDealId;
         }
@@ -373,6 +383,56 @@ class AmoCrmService
         }
 
         return in_array($fallback, ['UAH', 'USD', 'EUR'], true) ? $fallback : 'USD';
+    }
+
+    private function extractProjectClientName(array $lead): string
+    {
+        // 1) Prefer explicit custom fields when CRM stores customer/project title there.
+        foreach ((array) ($lead['custom_fields_values'] ?? []) as $field) {
+            $fieldName = mb_strtolower(trim((string) ($field['field_name'] ?? '')));
+            $fieldCode = mb_strtolower(trim((string) ($field['field_code'] ?? '')));
+
+            $isClientNameField = in_array($fieldName, [
+                'контактна особа',
+                'клієнт',
+                'клиент',
+                'замовник',
+                'customer',
+                'customer name',
+                'client name',
+                'project name',
+                'назва проекту',
+            ], true) || in_array($fieldCode, [
+                'contact_name',
+                'client_name',
+                'customer_name',
+                'project_name',
+            ], true);
+
+            if (!$isClientNameField) {
+                continue;
+            }
+
+            foreach ((array) ($field['values'] ?? []) as $valueRow) {
+                $value = trim((string) ($valueRow['value'] ?? ''));
+                if ($value !== '') {
+                    return $value;
+                }
+            }
+        }
+
+        // 2) Fallback to first linked contact name.
+        $contactName = trim((string) (
+            Arr::get($lead, '_embedded.contacts.0.name')
+            ?? Arr::get($lead, '_embedded.contacts.0.first_name')
+            ?? ''
+        ));
+        if ($contactName !== '') {
+            return $contactName;
+        }
+
+        // 3) Fallback to deal title.
+        return trim((string) ($lead['name'] ?? ''));
     }
 
     private function isWonStatus(array $lead): bool
