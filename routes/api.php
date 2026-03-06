@@ -5,6 +5,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\EntryReceiptController;
 use Illuminate\Support\Facades\Storage;
 use App\Http\Controllers\DeliveryController;
@@ -18,6 +20,43 @@ use App\Http\Controllers\AmoWebhookController;
 
 Route::get('/ping', fn () => response()->json(['ok' => true]));
 Route::post('/amocrm/webhook', AmoWebhookController::class);
+
+Route::post('/automation/amocrm-sync', function (Request $request) {
+    $expectedToken = (string) config('services.automation.token');
+    $providedToken = (string) $request->header('X-AUTO-TOKEN', '');
+
+    if ($expectedToken === '' || !hash_equals($expectedToken, $providedToken)) {
+        return response()->json(['ok' => false, 'error' => 'Unauthorized'], 403);
+    }
+
+    try {
+        Artisan::call('amocrm:sync-deals');
+        $dealsOutput = trim((string) Artisan::output());
+
+        Artisan::call('amocrm:sync-complectation-projects');
+        $complectationOutput = trim((string) Artisan::output());
+
+        Log::info('Automation amoCRM sync completed', [
+            'deals_output' => $dealsOutput,
+            'complectation_output' => $complectationOutput,
+        ]);
+
+        return response()->json([
+            'ok' => true,
+            'deals' => $dealsOutput,
+            'complectation' => $complectationOutput,
+        ]);
+    } catch (\Throwable $e) {
+        Log::error('Automation amoCRM sync failed', [
+            'error' => $e->getMessage(),
+        ]);
+
+        return response()->json([
+            'ok' => false,
+            'error' => $e->getMessage(),
+        ], 500);
+    }
+});
 
 Route::get('/telegram/projects', function (Request $request) {
     if ($request->header('X-AUTO-TOKEN') !== config('services.automation.token')) {
