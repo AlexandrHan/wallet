@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Підбір BMS батарей для інверторів</title>
+  <style>
+    :root {
+      --bg: #0b0d10;
+      --panel: rgba(28, 32, 45, 0.72);
+      --stroke: rgba(255, 255, 255, 0.1);
+      --text: #e9eef6;
+      --muted: #9aa6bc;
+      --blue: #4c7dff;
+      --green: #66f2a8;
+      --red: #ff6b6b;
+      --shadow: 0 26px 52px rgba(0, 0, 0, 0.5);
+      --radius-xl: 22px;
+      --radius-lg: 16px;
+      color-scheme: dark;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(1400px 700px at 20% -20%, #1b2450 0%, transparent 60%),
+        radial-gradient(1200px 600px at 90% 10%, #0f3a2a 0%, transparent 55%),
+        linear-gradient(180deg, #0b0d10 0%, #07080c 100%);
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .app {
+      width: min(920px, 100%);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.03)),
+        var(--panel);
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(20px) saturate(150%);
+      -webkit-backdrop-filter: blur(20px) saturate(150%);
+      overflow: hidden;
+      animation: fadeIn 0.45s ease;
+    }
+
+    .header {
+      padding: 28px 28px 20px;
+      background: linear-gradient(120deg, rgba(76, 125, 255, 0.12) 0%, rgba(102, 242, 168, 0.06) 55%, rgba(255, 255, 255, 0.03) 100%);
+      border-bottom: 1px solid var(--stroke);
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: clamp(24px, 3vw, 32px);
+      letter-spacing: 0.2px;
+      text-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+    }
+
+    .header p {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .content {
+      padding: 26px;
+      display: grid;
+      gap: 18px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .field {
+      display: grid;
+      gap: 8px;
+    }
+
+    label {
+      font-weight: 700;
+      font-size: 14px;
+      color: #d3dbee;
+    }
+
+    select,
+    input[type="number"] {
+      width: 100%;
+      border: 1px solid var(--stroke);
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text);
+      border-radius: var(--radius-lg);
+      padding: 12px 14px;
+      font-size: 15px;
+      outline: none;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+
+    select:disabled,
+    input[type="number"]:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    select option {
+      background: #0b0d10;
+      color: #e9eef6;
+    }
+
+    select:focus,
+    input[type="number"]:focus {
+      border-color: rgba(76, 125, 255, 0.9);
+      box-shadow: 0 0 0 3px rgba(76, 125, 255, 0.2);
+    }
+
+    .invalid {
+      border-color: var(--red) !important;
+      box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.18) !important;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 14px;
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--stroke);
+      padding: 12px 14px;
+      border-radius: var(--radius-lg);
+    }
+
+    .meta strong {
+      color: var(--text);
+      font-weight: 700;
+    }
+
+    .error {
+      min-height: 20px;
+      font-size: 14px;
+      color: var(--red);
+      font-weight: 600;
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      background: rgba(84, 192, 134, 0.75);
+      color: #07110b;
+      font-weight: 700;
+      font-size: 15px;
+      border-radius: 999px;
+      padding: 12px 18px;
+      cursor: pointer;
+      transition: transform 0.15s ease, background 0.2s ease, box-shadow 0.2s ease;
+      box-shadow: 0 10px 24px rgba(38, 160, 99, 0.4);
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      background: rgba(102, 242, 168, 0.9);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    .result {
+      background: rgba(102, 242, 168, 0.12);
+      border: 1px solid rgba(102, 242, 168, 0.35);
+      color: #c8f9dc;
+      border-radius: var(--radius-lg);
+      padding: 14px 16px;
+      font-size: 15px;
+      display: none;
+    }
+
+    .result strong {
+      color: #ffffff;
+    }
+
+    @media (max-width: 860px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .header,
+      .content {
+        padding: 18px;
+      }
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="header">
+      <h1>Підбір акумуляторів (BMS) для інверторів</h1>
+      <p>Оберіть інвертор, сумісний акумулятор і допустиму кількість батарей.</p>
+    </header>
+
+    <section class="content">
+      <div class="grid">
+        <div class="field">
+          <label for="inverter">1️⃣ Вибір інвертора</label>
+          <select id="inverter">
+            <option value="">Оберіть інвертор...</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="battery">2️⃣ Вибір акумулятора</label>
+          <select id="battery" disabled>
+            <option value="">Спочатку виберіть інвертор...</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="quantity">3️⃣ Кількість батарей</label>
+          <input id="quantity" type="number" min="1" step="1" placeholder="Введіть кількість" disabled />
+        </div>
+      </div>
+
+      <div class="meta" id="limitsMeta">
+        <span>Мінімальна кількість: <strong id="minCount">—</strong></span>
+        <span>Максимальна кількість: <strong id="maxCount">—</strong></span>
+      </div>
+
+      <div id="error" class="error" aria-live="polite"></div>
+
+      <div class="actions">
+        <button id="calculateBtn" type="button">Розрахувати</button>
+      </div>
+
+      <div class="result" id="result"></div>
+    </section>
+  </main>
+
+  <script>
+    const inverterCompatibility = {
+      "X1 HYBRID G4": {
+        "T58 V2": { min: 1, max: 3 },
+        "T58 V3": { min: 1, max: 3 },
+        "HR25": { min: 2, max: 8 },
+        "HR36": { min: 2, max: 8 },
+        "HS25": { min: 2, max: 8 }
+      },
+      "X3 HYBRID G4": {
+        "T58 V2": { min: 2, max: 4 },
+        "T58 V3": { min: 2, max: 4 },
+        "HR25": { min: 4, max: 13 },
+        "HR36": { min: 3, max: 13 },
+        "HS36": { min: 3, max: 13 },
+        "HS510": { min: 3, max: 13 }
+      },
+      "X1 AC": {
+        "T58 V2": { min: 1, max: 3 },
+        "T58 V3": { min: 1, max: 3 },
+        "T30": { min: 2, max: 8 }
+      },
+      "X3 ULTRA": {
+        "T58 V2": { min: 2, max: 8 },
+        "T30": { min: 2, max: 8 },
+        "HR25": { min: 3, max: 26 },
+        "HR36": { min: 3, max: 26 },
+        "HS25": { min: 3, max: 26 },
+        "HS36": { min: 3, max: 26 },
+        "HS51": { min: 3, max: 26 },
+        "HS510": { min: 3, max: 26 }
+      },
+      "X3 AELIO": {
+        "HS51": { min: 3, max: 26 },
+        "HR140": { min: 7, max: 28 },
+        "HR76": { min: 5, max: 28 }
+      },
+      "X3 IES": {
+        "HS50E": { min: 2, max: 6 }
+      },
+      "X1 IES": {
+        "HS50E": { min: 1, max: 4 }
+      },
+      "X3 HYBRID G4 PRO": {
+        "T58 V2": { min: 2, max: 8 },
+        "T58 V3": { min: 2, max: 12 },
+        "T30": { min: 2, max: 8 },
+        "HS25": { min: 3, max: 26 },
+        "HS36": { min: 3, max: 26 },
+        "HS51": { min: 3, max: 26 },
+        "HS510": { min: 3, max: 26 },
+        "HS50E": { min: 2, max: 12 }
+      },
+      "X1 VAST": {
+        "T58 V2": { min: 1, max: 3 },
+        "T58 V3": { min: 1, max: 3 },
+        "T30": { min: 2, max: 8 },
+        "HS25": { min: 2, max: 16 },
+        "HS36": { min: 2, max: 16 },
+        "HS51": { min: 2, max: 16 },
+        "HS510": { min: 2, max: 16 },
+        "HS50E": { min: 1, max: 8 }
+      }
+    };
+
+    const inverterSelect = document.getElementById("inverter");
+    const batterySelect = document.getElementById("battery");
+    const quantityInput = document.getElementById("quantity");
+    const minCount = document.getElementById("minCount");
+    const maxCount = document.getElementById("maxCount");
+    const errorEl = document.getElementById("error");
+    const resultEl = document.getElementById("result");
+    const calculateBtn = document.getElementById("calculateBtn");
+
+    function fillInverters() {
+      Object.keys(inverterCompatibility).forEach((inverterName) => {
+        const option = document.createElement("option");
+        option.value = inverterName;
+        option.textContent = inverterName;
+        inverterSelect.appendChild(option);
+      });
+    }
+
+    function resetBatteryStep() {
+      batterySelect.innerHTML = '<option value="">Спочатку виберіть інвертор...</option>';
+      batterySelect.value = "";
+      batterySelect.disabled = true;
+      resetQuantityStep();
+    }
+
+    function resetQuantityStep() {
+      quantityInput.value = "";
+      quantityInput.disabled = true;
+      quantityInput.classList.remove("invalid");
+      quantityInput.removeAttribute("min");
+      quantityInput.removeAttribute("max");
+      minCount.textContent = "—";
+      maxCount.textContent = "—";
+      clearError();
+      hideResult();
+    }
+
+    function showError(message) {
+      errorEl.textContent = message;
+    }
+
+    function clearError() {
+      errorEl.textContent = "";
+    }
+
+    function hideResult() {
+      resultEl.style.display = "none";
+      resultEl.innerHTML = "";
+    }
+
+    function validateQuantity() {
+      const inverter = inverterSelect.value;
+      const battery = batterySelect.value;
+      const value = Number(quantityInput.value);
+
+      if (!inverter || !battery || !quantityInput.value) {
+        quantityInput.classList.remove("invalid");
+        clearError();
+        return false;
+      }
+
+      const limits = inverterCompatibility[inverter][battery];
+      const isValid = Number.isInteger(value) && value >= limits.min && value <= limits.max;
+
+      if (!isValid) {
+        quantityInput.classList.add("invalid");
+        showError("Неприпустима кількість батарей для цього інвертора");
+      } else {
+        quantityInput.classList.remove("invalid");
+        clearError();
+      }
+
+      return isValid;
+    }
+
+    inverterSelect.addEventListener("change", () => {
+      const selectedInverter = inverterSelect.value;
+      resetBatteryStep();
+
+      if (!selectedInverter) {
+        return;
+      }
+
+      const batteries = Object.keys(inverterCompatibility[selectedInverter]);
+      batterySelect.innerHTML = '<option value="">Оберіть акумулятор...</option>';
+
+      batteries.forEach((batteryName) => {
+        const option = document.createElement("option");
+        option.value = batteryName;
+        option.textContent = batteryName;
+        batterySelect.appendChild(option);
+      });
+
+      batterySelect.disabled = false;
+    });
+
+    batterySelect.addEventListener("change", () => {
+      const inverter = inverterSelect.value;
+      const battery = batterySelect.value;
+
+      resetQuantityStep();
+
+      if (!inverter || !battery) {
+        return;
+      }
+
+      const limits = inverterCompatibility[inverter][battery];
+      minCount.textContent = String(limits.min);
+      maxCount.textContent = String(limits.max);
+      quantityInput.disabled = false;
+      quantityInput.min = String(limits.min);
+      quantityInput.max = String(limits.max);
+    });
+
+    quantityInput.addEventListener("input", () => {
+      validateQuantity();
+      hideResult();
+    });
+
+    calculateBtn.addEventListener("click", () => {
+      const inverter = inverterSelect.value;
+      const battery = batterySelect.value;
+      const quantity = quantityInput.value;
+
+      hideResult();
+
+      if (!inverter) {
+        showError("Оберіть інвертор");
+        inverterSelect.focus();
+        return;
+      }
+
+      if (!battery) {
+        showError("Оберіть акумулятор");
+        batterySelect.focus();
+        return;
+      }
+
+      if (!quantity) {
+        showError("Введіть кількість батарей");
+        quantityInput.focus();
+        return;
+      }
+
+      if (!validateQuantity()) {
+        quantityInput.focus();
+        return;
+      }
+
+      clearError();
+      resultEl.style.display = "block";
+      resultEl.innerHTML = `
+        <strong>Результат:</strong><br>
+        Інвертор: <strong>${inverter}</strong><br>
+        Батарея: <strong>${battery}</strong><br>
+        Кількість: <strong>${quantity}</strong>
+      `;
+    });
+
+    fillInverters();
+  </script>
+</body>
+</html>
