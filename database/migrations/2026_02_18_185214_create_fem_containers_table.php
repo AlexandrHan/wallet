@@ -11,25 +11,24 @@ return new class extends Migration
      */
     public function up(): void
     {
-        if (!Schema::hasTable('fem_container_payments')) {
-            Schema::create('fem_container_payments', function (Blueprint $table) {
+        if (!Schema::hasTable('fem_containers')) {
+            Schema::create('fem_containers', function (Blueprint $table) {
                 $table->id();
-                $table->unsignedBigInteger('fem_container_id');
-                $table->date('paid_at')->nullable();
-                $table->decimal('amount', 12, 2)->default(0);
+                $table->date('date')->nullable();           // дата контейнера/продажу
+                $table->string('name');                     // назва панелей
+                $table->decimal('amount', 12, 2)->default(0); // сума контейнера ($)
                 $table->unsignedBigInteger('created_by')->nullable();
                 $table->timestamps();
-
-                $table->foreign('fem_container_id')->references('id')->on('fem_containers')->onDelete('cascade');
             });
         }
     }
+
 
     /**
      * Reverse the migrations.
      */
     public function down(): void
     {
-        Schema::dropIfExists('fem_container_payments');
+        Schema::dropIfExists('fem_containers');
     }
 };
