@@ -1,0 +1,544 @@
+/* ===============================
+   STOCK PAGE (SunFix Warehouse)
+   =============================== */
+.wrap{
+  max-width:980px;
+  margin:0 auto;
+  padding:18px;
+}
+   
+.stock-wrap {
+    width: 100%;
+    max-width: 100%;
+    padding-left: 0;
+    padding-right: 0;
+    margin-bottom: 6rem;
+}
+
+.breadcrumb-inner{
+    display: flex;
+    justify-content: space-around;
+}
+
+.breadcrumb{
+    display: flex;
+    justify-content: space-around;
+}
+
+/* секції як в wallet */
+.stock-card {
+    margin-left: 0;
+    margin-right: 0;
+    border-radius: 18px;
+}
+
+/* відступи між блоками */
+.stock-card + .stock-card {
+    margin-top: 12px;
+}
+
+.stock-form input,
+.stock-form select {
+    width: 100%;
+    height: 44px;
+    padding: 0 12px;
+
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+
+    color: #fff;
+    font-size: 15px;
+}
+
+/* мобілка — один під одним */
+@media (max-width: 768px) {
+    .stock-form {
+        flex-direction: column;
+    }
+
+    .stock-form button {
+        width: 100%;
+    }
+}
+
+
+.btn-trash{
+    border: none;
+    background-color: transparent;
+}
+
+/* заголовки */
+.stock-title {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 12px;
+}
+
+/* блок товару */
+.stock-item {
+    background: rgba(255,255,255,0.05);
+    border-radius: 16px;
+    padding: 14px;
+    margin-top: 10px;
+}
+
+/* назва товару */
+.stock-item-name {
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+/* ряд параметрів */
+.stock-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 14px;
+    color: rgba(255,255,255,0.7);
+}
+
+/* кнопки */
+.stock-actions {
+    margin-top: 12px;
+}
+
+/* ===== iOS style delivery list ===== */
+
+.delivery-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.delivery-row {
+    padding: 14px 4px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.delivery-row:last-child {
+    border-bottom: none;
+}
+
+.list-item{
+    padding: 14px 4px;
+    border-bottom: 3px solid rgba(255, 255, 255, 0.06);
+}
+
+.list-item:last-child {
+    border-bottom: none;
+}
+
+.delivery-list {
+    margin-top: 8px;
+    border-radius: 14px;
+    overflow: hidden;
+}
+
+
+.delivery-row-top {
+    font-weight: 600;
+    font-size: 15px;
+    margin-bottom: 8px;
+}
+
+.delivery-row-start{
+    text-align: center;
+    color: rgba(102, 242, 167, 0.53);
+}
+.delivery-row-bottom {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    opacity: .85;
+}
+
+.delivery-row-bottom .label {
+    display: block;
+    font-size: 11px;
+    opacity: .6;
+}
+
+.delivery-row-bottom .value {
+    font-weight: 600;
+}
+
+.btn-input{
+    width: 45%;
+}
+
+.stock-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.stock-row-top {
+    width: 100%;
+}
+
+.stock-row-bottom {
+    display: flex;
+    gap: 10px;
+}
+
+.stock-row-bottom input {
+    flex: 1;
+}
+
+/* мобілка */
+@media (max-width: 768px) {
+
+    .stock-row-bottom {
+        flex-direction: row;
+    }
+
+    .stock-row-bottom .btn {
+        white-space: nowrap;
+    }
+}
+
+.btn-input{
+    min-width: 32%;
+}
+
+.select-action{
+    margin-top:6px;
+    padding:10px;
+    text-align:center;
+    border:1px dashed rgba(255,255,255,.15);
+    border-radius:10px;
+    cursor:pointer;
+    opacity:.8;
+}
+
+.select-action:hover{
+    opacity:1;
+}
+
+/* Центруємо лейбл + цифру в “клітинках” */
+.delivery-row-bottom .kv{
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+}
+
+.delivery-row-bottom .kv .label{
+  width: 100%;
+  text-align: center;
+}
+
+.delivery-row-bottom .kv .value{
+  width: 100%;
+  text-align: center;
+}
+
+.modal{
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,.55);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    z-index:2000;
+}
+
+.modal-card{
+    width:320px;
+    background:rgba(28,32,45,.95);
+    border-radius:18px;
+    padding:18px;
+    backdrop-filter: blur(20px);
+}
+
+.modal-title{
+    font-weight:700;
+    text-align:center;
+}
+
+.modal-actions{
+    display:flex;
+    gap:10px;
+    margin-top:14px;
+}
+.stock-cat-summary{
+  list-style: none;
+  cursor: pointer;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  color: #66f2a8;
+  padding: 6px 2px;
+  font-weight: 800;
+}
+
+.stock-cat-summary::-webkit-details-marker{ display:none; }
+
+.stock-cat-left{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.stock-cat-title{
+  font-size: 16px;
+  color: #ffffff;
+}
+
+.stock-cat-right{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  opacity: .9;
+  font-weight: 700;
+}
+
+.chev{
+  display:inline-block;
+  transform: rotate(0deg);
+  transition: transform .15s ease;
+  font-weight: 900;
+  color: #fff;
+}
+
+.stock-cat[open] .chev{
+  transform: rotate(90deg);
+}
+
+.stock-cat-body{
+  margin-top: 12px;
+}
+
+.ps{
+    color: #fff;
+}
+
+/* ============================
+   FEM DEBT CARD
+============================ */
+
+#femDebtCard summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 6px 0;
+}
+
+#femDebtCard summary::-webkit-details-marker {
+  display: none;
+}
+
+/* шапка таблиці */
+.fem-table-header {
+  display: flex;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 13px;
+  opacity: .7;
+  padding: 8px 6px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+
+/* рядок */
+.fem-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 6px;
+  border-bottom: 1px solid rgba(255,255,255,.05);
+}
+
+.fem-row:last-child {
+  border-bottom: none;
+}
+
+/* поля */
+.fem-row input {
+  height: 36px;
+  font-size: 14px;
+  padding: 0 8px;
+}
+
+/* колонки */
+.fem-col-date   { width: 18%; }
+.fem-col-name   { width: 32%; }
+.fem-col-amount { width: 15%; }
+.fem-col-pay    { width: 15%; }
+.fem-col-balance{
+  width: 20%;
+  text-align: right;
+  font-weight: 700;
+}
+
+/* баланс */
+.fem-balance-positive {
+  color: #66f2a8;
+}
+
+.fem-balance-zero {
+  color: #aaa;
+}
+
+/* кнопка додавання */
+.fem-add-btn {
+  margin-top: 10px;
+  width: 100%;
+  opacity: .85;
+}
+
+.fem-add-btn:hover {
+  opacity: 1;
+}
+
+/* прибрати маркер (трикутник/крапку) у summary для details */
+details > summary::-webkit-details-marker { display: none; }
+details > summary::marker { content: ""; }
+
+
+/* =========================================
+   DEBT HERO (SG Holding style)
+========================================= */
+
+/* прибираємо маркер details глобально */
+details > summary::-webkit-details-marker { display:none; }
+details > summary::marker { content:""; }
+
+/* HERO summary */
+#debtChartsCard .debt-hero{
+  list-style:none;
+  cursor:pointer;
+  padding: 18px 18px 16px;
+  border-radius: 22px;
+
+  /* glass */
+  background: radial-gradient(120% 180% at 50% 0%,
+    rgba(102,242,168,.22) 0%,
+    rgba(255,255,255,.08) 35%,
+    rgba(255,255,255,.05) 70%,
+    rgba(255,255,255,.04) 100%
+  );
+
+  border: 1px solid rgba(255,255,255,.10);
+  box-shadow:
+    0 18px 48px rgba(0,0,0,.42),
+    inset 0 1px 0 rgba(255,255,255,.12);
+  backdrop-filter: blur(18px);
+}
+
+#debtChartsCard .debt-hero-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+#debtChartsCard .debt-hero-title{
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: .2px;
+  opacity: .95;
+}
+
+#debtChartsCard .debt-hero-pill{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 13px;
+  color: #0b0d10;
+  background: rgba(102,242,168,.95);
+  box-shadow: 0 6px 16px rgba(0,0,0,.25);
+}
+
+#debtChartsCard .debt-hero-total{
+  margin-top: 14px;
+  text-align:center;
+  font-size: 40px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  opacity: .95;
+}
+
+#debtChartsCard .debt-hero-grid{
+  margin-top: 14px;
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+#debtChartsCard .debt-mini{
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(0,0,0,.14);
+  border: 1px solid rgba(255,255,255,.08);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+}
+
+#debtChartsCard .debt-mini-top{
+  font-size: 14px;
+  font-weight: 800;
+  opacity: .90;
+}
+
+#debtChartsCard .debt-mini-val{
+  margin-top: 6px;
+  font-size: 20px;
+  font-weight: 900;
+  opacity: .95;
+}
+
+#debtChartsCard .debt-hero-hint{
+  margin-top: 12px;
+  text-align:center;
+  font-size: 13px;
+  opacity: .68;
+}
+
+/* BODY padding */
+#debtChartsCard .debt-hero-body{
+  margin-top: 12px;
+}
+
+/* зробити сам card charts красивішим під glass */
+#debtChartsCard .debt-hero-body .card{
+  border-radius: 20px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.04);
+  box-shadow: 0 14px 34px rgba(0,0,0,.35);
+}
+
+/* бари: трохи “wallet-like” */
+#debtChartsCard #barsTotal > div,
+#debtChartsCard #barsInverterCats > div,
+#debtChartsCard #barsFemBrands > div{
+  border-bottom: 1px solid rgba(255,255,255,.07) !important;
+}
+
+/* мобілка */
+@media (max-width: 768px){
+  #debtChartsCard .debt-hero-total{ font-size: 34px; }
+  #debtChartsCard .debt-hero-grid{ grid-template-columns: 1fr; }
+}
+
+.debt-mini.active,
+#debtChartsDetails .btn.active{
+  border: 1px solid rgba(102,242,168,.55);
+  box-shadow: 0 0 0 1px rgba(102,242,168,.25) inset;
+}
+
+.debt-mini{
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 14px;
+}
+
+.avatar-image{
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  object-fit: cover;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.336);
+}

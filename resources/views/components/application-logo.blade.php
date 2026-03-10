@@ -1,0 +1,9 @@
+<img
+  src="/img/logo.png"
+  alt="SolarGlass"
+  style="
+    height:40px;
+    width:auto;
+    display:block;
+  "
+>

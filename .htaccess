@@ -1,0 +1,21 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # iOS PWA icon (ОБОВʼЯЗКОВО)
+    RewriteRule ^apple-touch-icon\.png$ public/apple-touch-icon.png [L]
+
+    # статика з public
+    RewriteRule ^build/(.*)$ public/build/$1 [L]
+    RewriteRule ^storage/(.*)$ public/storage/$1 [L]
+    RewriteRule ^images/(.*)$ public/images/$1 [L]
+    RewriteRule ^img/(.*)$ public/img/$1 [L]
+    RewriteRule ^assets/(.*)$ public/assets/$1 [L]
+
+    # якщо фізичний файл або папка існує
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+
+    # все інше → Laravel
+    RewriteRule ^ index.php [L]
+</IfModule>
+

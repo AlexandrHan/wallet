@@ -1,0 +1,474 @@
+/* ---------- TOP avatar placeholder ---------- */
+.tg-top-avatar{
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  background: rgba(255, 60, 60, .75);
+  border: 1px solid rgba(255,255,255,.14);
+  box-shadow: 0 10px 30px rgba(0,0,0,.25);
+}
+
+.avatar-placeholder{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tg-top-avatar-mobile{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tg-fab.tg-top-menu-trigger{
+  display: none;
+}
+
+
+/* щоб на десктопі не було "стрибака" через появу скролбару */
+html{ scrollbar-gutter: stable; }
+@media (min-width:900px){
+  body{ overflow-y: scroll; }
+}
+
+
+/* ---------- BOTTOM NAV ---------- */
+.tg-bottom-nav{
+  position: fixed;
+
+  left: 50%;
+  bottom: 0;
+
+  width: min(980px, calc(100% - 24px));
+  transform: translateX(-50%);
+
+  z-index: 9999;
+
+  padding: 10px 12px calc(env(safe-area-inset-bottom) - 15px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  pointer-events: none;
+}
+
+
+.tg-bottom-nav > *{ pointer-events: auto; }
+
+
+.tg-bottom-nav > *{ pointer-events: auto; }
+
+.tg-bottom-left{
+  flex: 1;
+  display: flex;
+  gap: 6px;
+  padding: 3px 3px;
+  border-radius: 999px;
+    /* border був двічі: залишаю фінальний (нижній) як у тебе */
+  border:1px solid var(--stroke);
+
+  /* прозора база під "скло" */
+  background: rgba(31, 30, 30, 0);
+
+  /* glass */
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+
+  border: 1px solid rgba(255,255,255,.12);
+
+  /* легкий об’єм */
+  box-shadow:
+    inset 0 1px 1px rgba(255,255,255,.12),
+    0 4px 14px rgba(0,0,0,.25);
+}
+
+.tg-tab{
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 1;
+  text-decoration: none;
+  color: rgba(233,238,246,.92);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 6px;
+  border-radius: 99px;
+  border: none;
+  background: transparent;
+  font-weight: 800;
+  font-size: 12px;
+  opacity: .92;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.tg-tab span{ font-size: 11px; font-weight: 800; opacity: .9; }
+
+.tg-tab.is-active{
+  background: rgba(84, 192, 134, 0.93);
+  color: #000;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.336);
+  opacity: 1;
+  
+}
+
+.tg-tab--static{
+  opacity: .58;
+  cursor: default;
+}
+
+/* ---------- FAB (правий кружочок) ---------- */
+.tg-fab-wrap{
+  position: relative;
+}
+
+.tg-fab{
+  width: 53px;
+  height: 53px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 0;
+  border-radius: 999px;
+  color: rgba(233,238,246,.95);
+  font-size: 22px;
+  font-weight: 900;
+  text-decoration: none;
+  cursor: pointer;
+     /* border був двічі: залишаю фінальний (нижній) як у тебе */
+  border:1px solid var(--stroke);
+
+  /* прозора база під "скло" */
+  background: rgba(31, 30, 30, 0);
+
+  /* glass */
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+
+  border: 1px solid rgba(255,255,255,.12);
+
+  /* легкий об’єм */
+  box-shadow:
+    inset 0 1px 1px rgba(255,255,255,.12),
+    0 4px 14px rgba(0,0,0,.25);
+}
+
+.tg-fab-ico{
+  font-size: 18px;
+  line-height: 1;
+}
+
+.tg-fab-label{
+  font-size: 8px;
+  line-height: 1.1;
+  font-weight: 800;
+  color: rgba(233,238,246,.95);
+}
+
+.tg-fab-menu{
+  position: absolute;
+  right: 0;
+  bottom: 70px;
+  width: 240px;
+  padding: 8px;
+  border-radius: 18px;
+  background: rgba(28,32,45,.92);
+  border: 1px solid rgba(255,255,255,.10);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  box-shadow: 0 18px 50px rgba(0,0,0,.45);
+}
+
+.tg-fab-menu.hidden{ display:none; }
+
+.tg-fab-item{
+  width: 100%;
+  display: block;
+  text-decoration: none;
+  color: rgba(233,238,246,.95);
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-weight: 800;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.06);
+  margin-bottom: 8px;
+  text-align: left;
+}
+
+.tg-fab-item:last-child{ margin-bottom: 0; }
+
+.tg-fab-item.danger{
+  background: rgba(255,107,107,.18);
+  border: 1px solid rgba(255,107,107,.28);
+}
+
+@media (min-width: 900px){
+  .tg-bottom-nav{
+    display: none;
+  }
+
+  .tg-top-avatar-mobile{
+    display: none;
+  }
+
+  .tg-fab.tg-top-menu-trigger{
+    display: inline-flex;
+  }
+}
+
+
+/* =========================
+   FULLSCREEN OWNER MENU
+   ========================= */
+.tg-menu{
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: none;
+  background: rgba(0, 0, 0, 0.712);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(10px);
+  padding: max(14px, env(safe-area-inset-top)) 14px max(14px, env(safe-area-inset-bottom));
+}
+
+/* відкриття через hash */
+.tg-menu:target{ display: block; }
+
+.tg-menu__top{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding: 10px 10px 14px;
+}
+
+.tg-menu__title{
+  font-weight: 900;
+  font-size: 18px;
+  letter-spacing: .2px;
+}
+
+.tg-menu__close{
+  width: 44px;
+  height: 44px;
+  display:grid;
+  place-items:center;
+  border-radius: 14px;
+  text-decoration:none;
+  color: inherit;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.08);
+}
+
+.tg-menu__content{
+  overflow: auto;
+  max-height: calc(100vh - 140px);
+  padding: 0 6px;
+}
+
+.tg-menu__bottom{
+  padding: 12px 6px 0;
+}
+
+/* items */
+.tg-menu__item{
+  width: 100%;
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  padding: 12px 12px;
+  border-radius: 16px;
+  text-decoration:none;
+  color: inherit;
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.07);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.tg-menu__item:active{
+  transform: scale(.99);
+}
+
+.tg-menu__item.danger{
+  background: rgba(255, 107, 107, .10);
+  border-color: rgba(255, 107, 107, .25);
+}
+
+/* =========================
+   ACCORDION (details/summary)
+   ========================= */
+.tg-acc{
+  margin: 10px 0;
+  border-radius: 18px;
+  background: rgba(255,255,255,.03);
+  border: 1px solid rgba(255,255,255,.06);
+  overflow: hidden;
+}
+
+.tg-acc__title{
+  list-style: none;
+  padding: 14px 14px;
+  font-weight: 900;
+  cursor: pointer;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  user-select: none;
+}
+
+.tg-acc__title::-webkit-details-marker{ display:none; }
+
+.tg-acc__title::after{
+  content: "▾";
+  opacity: .7;
+  font-size: 14px;
+  transform: rotate(0deg);
+  transition: transform .16s ease;
+}
+
+.tg-acc[open] .tg-acc__title::after{
+  transform: rotate(180deg);
+}
+
+.tg-acc__body{
+  padding: 0 12px 12px;
+  display:grid;
+  gap: 10px;
+}
+
+.tg-acc--nested{
+  margin: 0;
+  border-radius: 16px;
+  background: rgba(255,255,255,.02);
+}
+
+.tg-acc--nested .tg-acc__title{
+  padding: 12px 12px;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.tg-acc--nested .tg-acc__body{
+  padding: 0 10px 10px;
+}
+
+/* щоб кнопки всередині виглядали як лінки */
+.tg-acc__body button.tg-menu__item{
+  appearance: none;
+  border: 1px solid rgba(255,255,255,.07);
+}
+
+/* tg-fab має бути "box", тоді width/height застосуються */
+.tg-fab{
+  display: grid;              /* або inline-flex */
+  place-items: center;
+
+  width: 53px;
+  height: 53px;
+
+  border-radius: 999px;       /* коло */
+  text-decoration: none;
+
+  background: rgba(31, 30, 30, 0);
+  backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid rgba(255,255,255,.10);
+  box-shadow: 0 10px 30px rgba(0,0,0,.35);
+
+  font-size: 30px;
+  font-weight: 900;
+  line-height: 1;             /* щоб символ не "плив" */
+  color: #e9eef6;
+}
+
+/* якщо десь було padding — прибери, бо воно ламає геометрію */
+.tg-fab{ padding: 0 !important; }
+
+@media (min-width: 900px){
+  .tg-menu{
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  .tg-menu:target{
+    display: flex;
+  }
+
+  .tg-menu__top,
+  .tg-menu__content,
+  .tg-menu__bottom{
+    width: min(560px, calc(100vw - 48px));
+    margin: 0 auto;
+    background:
+      linear-gradient(to bottom, rgba(255,255,255,.08), rgba(255,255,255,.02)),
+      rgba(12, 14, 18, .92);
+    border-left: 1px solid rgba(255,255,255,.12);
+    border-right: 1px solid rgba(255,255,255,.12);
+    box-shadow:
+      0 30px 80px rgba(0,0,0,.45),
+      inset 0 1px 0 rgba(255,255,255,.08);
+  }
+
+  .tg-menu__top{
+    border-top: 1px solid rgba(255,255,255,.12);
+    border-bottom: 1px solid rgba(255,255,255,.08);
+    border-radius: 22px 22px 0 0;
+    padding: 16px 18px 14px;
+  }
+
+  .tg-menu__content{
+    max-height: min(60vh, 680px);
+    padding: 16px 18px;
+    overflow: auto;
+  }
+
+  .tg-menu__bottom{
+    border-top: 1px solid rgba(255,255,255,.08);
+    border-bottom: 1px solid rgba(255,255,255,.12);
+    border-radius: 0 0 22px 22px;
+    padding: 14px 18px 18px;
+  }
+
+  .tg-menu__item{
+    min-height: 50px;
+  }
+
+  .tg-acc{
+    margin: 0 0 12px;
+    background: rgba(255,255,255,.04);
+  }
+
+  .tg-acc:last-child{
+    margin-bottom: 0;
+  }
+}
+
+/* щоб wrapper не стискав */
+.tg-fab-wrap{
+  display: grid;
+  place-items: center;
+}
+
+.tg-fab{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:52px;
+  height:52px;
+  border-radius:999px;
+  padding:0;
+  line-height:1;
+}
+
+.tg-fab-ico{
+  display:block;
+  line-height:1;
+  transform: translateY(-3px); /* підкрути: -2..+2px */
+}
