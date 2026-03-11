@@ -18,7 +18,8 @@ if (AUTH_USER.role !== 'accountant' && !AUTH_ACTOR) {
     alert('Не задано actor для користувача...');
 }
 
-  document.getElementById('actorTag').textContent = AUTH_ACTOR;
+  const _actorTagEl = document.getElementById('actorTag');
+  if (_actorTagEl) _actorTagEl.textContent = AUTH_ACTOR;
 
   const state = {
     actor: AUTH_ACTOR,
@@ -207,7 +208,7 @@ function checkOnline() {
   const sheetComment = document.getElementById('sheetComment');
   const sheetConfirm = document.getElementById('sheetConfirm');
   // закриття по кліку на бекдроп
-  sheetEntry.querySelector('.sheet-backdrop').onclick = closeEntrySheet;
+  sheetEntry?.querySelector('.sheet-backdrop')?.addEventListener('click', closeEntrySheet);
 
   // кнопка "Зберегти" в модалці операції
     sheetConfirm.onclick = async () => {
@@ -493,6 +494,10 @@ async function loadWallets() {
     state.selectedWalletId = walletId;
 
     const res = await fetch(`/api/wallets/${walletId}/entries`);
+    if (!res.ok) {
+      console.error('loadEntries failed', res.status);
+      return;
+    }
     const data = await res.json();
 
     state.selectedWallet = data.wallet;
@@ -905,7 +910,7 @@ function renderCategoryStats() {
 
       elCatList.insertAdjacentHTML('beforeend', `
         <div class="cat-row">
-          <div class="cat-name">${cat}</div>
+          <div class="cat-name">${escapeHtml(cat)}</div>
           <div class="cat-bar"><div style="width:${pct}%"></div></div>
           <div class="cat-pct">${pct}%</div>
         </div>
@@ -1292,7 +1297,7 @@ async function submitEntry(entry_type, amount, comment){
     return true;
   }
 
-  sheetWallet.querySelector('.sheet-backdrop').onclick = closeWalletSheet;
+  sheetWallet?.querySelector('.sheet-backdrop')?.addEventListener('click', closeWalletSheet);
   walletConfirm.onclick = async () => {
     const name = (walletName.value || '').trim();
     const currency = walletCurrency.value;

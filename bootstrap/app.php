@@ -12,6 +12,8 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        $middleware->trustProxies(at: '*');
+
         $middleware->alias([
             'only.owner'       => \App\Http\Middleware\OnlyOwner::class,
             'only.bank.roles'  => \App\Http\Middleware\OnlyBankRoles::class,

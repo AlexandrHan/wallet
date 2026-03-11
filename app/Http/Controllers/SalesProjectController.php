@@ -8,7 +8,6 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use App\Models\SalesProject;
 use App\Models\CashTransfer;
-use App\Services\AmoCrmService;
 
 class SalesProjectController extends Controller
 {
@@ -298,22 +297,19 @@ class SalesProjectController extends Controller
 
     public function index(Request $request)
     {
-        $amoMapByProjectId = Schema::hasTable('amocrm_deal_map')
-            ? DB::table('amocrm_deal_map')
-                ->select('wallet_project_id', 'amo_deal_id')
-                ->get()
-                ->keyBy('wallet_project_id')
-            : collect();
         $amoComplectationByProjectId = Schema::hasTable('amo_complectation_projects')
             ? DB::table('amo_complectation_projects')
-                ->select('wallet_project_id', 'responsible_name')
+                ->select('wallet_project_id', 'responsible_name', 'status_id')
                 ->whereNotNull('wallet_project_id')
                 ->get()
                 ->keyBy('wallet_project_id')
             : collect();
 
-        $amoResponsibleCache = [];
-        $amoCrmService = app(AmoCrmService::class);
+        // Exact AmoCRM stage IDs that appear in the finance view.
+        $financeStageIds = array_filter(
+            (array) config('services.amocrm.finance_stage_ids', []),
+            fn ($id) => is_numeric($id) && (int) $id > 0
+        );
 
         $userNames = DB::table('users')
             ->select('id', 'name', 'email', 'actor')
@@ -348,13 +344,29 @@ class SalesProjectController extends Controller
             $projectsQuery->where('source_layer', 'projects');
         }
 
-        $projects = $projectsQuery->orderByDesc('id')->get()->map(function ($project) {
+        // Apply amoCRM stage filtering at the query level for finance, if configured and we have at least
+        // one complectation record. This prevents loading the full project list and then filtering in PHP.
+        if ($layer === 'finance' && !empty($financeStageIds) && $amoComplectationByProjectId->isNotEmpty()) {
+            $projectsQuery
+                ->join('amo_complectation_projects', 'amo_complectation_projects.wallet_project_id', '=', 'sales_projects.id')
+                ->whereIn('amo_complectation_projects.status_id', $financeStageIds)
+                ->select('sales_projects.*');
+        }
 
-            $transfers = CashTransfer::where('project_id', $project->id)
-                ->orderByDesc('id')
-                ->get();
+        $projects = $projectsQuery->orderByDesc('sales_projects.id')->get();
 
-            $paid = 0.0;
+        $projectIds = $projects->pluck('id')->all();
+
+        $transfersByProjectId = CashTransfer::whereIn('project_id', $projectIds)
+            ->orderByDesc('id')
+            ->get()
+            ->groupBy('project_id');
+
+        $projects = $projects->map(function ($project) use ($userNames, $amoComplectationByProjectId, $transfersByProjectId) {
+
+            $transfers = $transfersByProjectId->get($project->id, collect());
+
+            $advanceTotal = 0.0;
             $pending = 0.0;
             $projectCurrency = (string)$project->currency;
 
@@ -372,14 +384,23 @@ class SalesProjectController extends Controller
                 }
 
                 if ($t->status === 'accepted') {
-                    $paid += $projectAmount;
+                    $advanceTotal += $projectAmount;
                 } elseif ($t->status === 'pending') {
                     $pending += $projectAmount;
                 }
             }
 
-            $paid = round($paid, 2);
+            $advanceTotal = round($advanceTotal, 2);
             $pending = round($pending, 2);
+
+            $paid = $advanceTotal;
+            $totalAmt = (float) $project->total_amount;
+            $advanceAmt = Schema::hasColumn('sales_projects', 'advance_amount')
+                ? (float) ($project->advance_amount ?? 0)
+                : 0.0;
+            $remaining = max(0, $totalAmt - $paid);
+            $isPaid = ($totalAmt > 0 && $paid >= $totalAmt)
+                   || ($totalAmt > 0 && $advanceAmt >= $totalAmt);
 
             $pendingTargetOwner = $transfers
                 ->where('status', 'pending')
@@ -419,9 +440,11 @@ class SalesProjectController extends Controller
                 'created_by' => (int) $project->created_by,
                 'lead_manager_user_id' => $project->lead_manager_user_id ? (int) $project->lead_manager_user_id : null,
                 'total_amount' => (float)$project->total_amount,
+                'advance_amount' => $advanceAmt,
                 'paid_amount' => $paid,
                 'pending_amount' => $pending,
-                'remaining_amount' => (float)$project->total_amount - $paid,
+                'remaining_amount' => $remaining,
+                'is_paid' => $isPaid,
                 'currency' => $project->currency,
                 'is_retail' => Schema::hasColumn('sales_projects', 'is_retail')
                     ? (bool)$project->is_retail
@@ -510,7 +533,7 @@ class SalesProjectController extends Controller
                     ];
                 })->values(),
             ];
-        })->map(function ($project) use ($userNames, $amoMapByProjectId, $amoComplectationByProjectId, &$amoResponsibleCache, $amoCrmService) {
+        })->map(function ($project) use ($userNames, $amoComplectationByProjectId) {
             $managerId = (int) ($project['lead_manager_user_id'] ?? 0);
             if ($managerId <= 0) {
                 $managerId = (int) ($project['created_by'] ?? 0);
@@ -519,39 +542,6 @@ class SalesProjectController extends Controller
             $managerName = $userNames->get($managerId);
 
             $projectId = (int) ($project['id'] ?? 0);
-            $amoMap = $amoMapByProjectId->get($projectId);
-
-            if ($amoMap) {
-                $amoDealId = (int) ($amoMap->amo_deal_id ?? 0);
-                if (!array_key_exists($amoDealId, $amoResponsibleCache)) {
-                    $responsibleName = null;
-                    try {
-                        $lead = $amoCrmService->getLeadById($amoDealId);
-                        if ($lead) {
-                            $responsibleName = trim((string) (
-                                data_get($lead, '_embedded.users.0.name')
-                                ?? ''
-                            ));
-
-                            if ($responsibleName === '') {
-                                $responsibleId = (int) ($lead['responsible_user_id'] ?? 0);
-                                $amoUser = $amoCrmService->getUserById($responsibleId);
-                                $responsibleName = trim((string) ($amoUser['name'] ?? ''));
-                            }
-                        }
-                    } catch (\Throwable $e) {
-                        // AMO not configured or unavailable — skip responsible lookup
-                    }
-
-                    $amoResponsibleCache[$amoDealId] = $responsibleName ?: null;
-                }
-
-                $amoResponsibleName = $amoResponsibleCache[$amoDealId] ?? null;
-                if (!empty($amoResponsibleName)) {
-                    $managerName = $amoResponsibleName;
-                }
-            }
-
             $amoComplectation = $amoComplectationByProjectId->get($projectId);
             $amoComplectationManager = trim((string) ($amoComplectation->responsible_name ?? ''));
             if ($amoComplectationManager !== '') {

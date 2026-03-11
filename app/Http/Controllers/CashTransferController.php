@@ -33,28 +33,29 @@ class CashTransferController extends Controller
     }
     public function accept($id)
     {
-        return DB::transaction(function () use ($id) {
-            $transfer = CashTransfer::find($id);
+        $transfer = CashTransfer::find($id);
 
-            if (!$transfer) {
-                return response()->json(['error' => 'Not found'], 404);
+        if (!$transfer) {
+            return response()->json(['error' => 'Not found'], 404);
+        }
+
+        if ($transfer->status !== 'pending') {
+            return response()->json(['error' => 'Already processed'], 422);
+        }
+
+        $user = auth()->user();
+
+        // 🟢 Якщо це аванс проекту
+        if ($transfer->project_id) {
+
+            if ($user->role !== 'owner') {
+                return response()->json(['error' => 'Forbidden'], 403);
+            }
+            if ($transfer->target_owner && $transfer->target_owner !== $user->actor) {
+                return response()->json(['error' => 'Forbidden'], 403);
             }
 
-            if ($transfer->status !== 'pending') {
-                return response()->json(['error' => 'Already processed'], 422);
-            }
-
-            $user = auth()->user();
-
-            // 🟢 Якщо це аванс проекту
-            if ($transfer->project_id) {
-
-                if ($user->role !== 'owner') {
-                    return response()->json(['error' => 'Forbidden'], 403);
-                }
-                if ($transfer->target_owner && $transfer->target_owner !== $user->actor) {
-                    return response()->json(['error' => 'Forbidden'], 403);
-                }
+            DB::transaction(function () use ($transfer) {
 
                 // 1️⃣ Знаходимо кеш власника по валюті
                 $wallet = DB::table('wallets')
@@ -117,17 +118,21 @@ class CashTransferController extends Controller
                     'to_wallet_id' => $wallet->id,
                     'accepted_at' => now(),
                 ]);
+            });
 
-                return response()->json(['success' => true]);
-            }
+            return response()->json(['success' => true]);
+        }
 
-            // 🔵 Звичайний cash transfer (стара логіка)
+        // 🔵 Звичайний cash transfer (стара логіка)
 
-            $wallet = DB::table('wallets')->where('id', $transfer->to_wallet_id)->first();
+        $wallet = DB::table('wallets')->where('id', $transfer->to_wallet_id)->first();
 
-            if (!$wallet || $wallet->owner !== $user->actor) {
-                return response()->json(['error' => 'Forbidden'], 403);
-            }
+        if (!$wallet || $wallet->owner !== $user->actor) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
+        DB::transaction(function () use ($transfer) {
+            
 
             DB::table('entries')->insert([
                 'wallet_id'    => $transfer->from_wallet_id,
@@ -153,56 +158,54 @@ class CashTransferController extends Controller
                 'status' => 'accepted',
                 'accepted_at' => now(),
             ]);
-
-            return response()->json(['success' => true]);
         });
+
+        return response()->json(['success' => true]);
     }
     public function sendProjectMoney(Request $request)
     {
-        return DB::transaction(function () use ($request) {
-            $data = $request->validate([
-                'project_id' => 'required|integer',
-                'target' => 'required|in:hlushchenko,kolisnyk',
-                'amount' => 'required|numeric|min:0.01'
-            ]);
+        $data = $request->validate([
+            'project_id' => 'required|integer',
+            'target' => 'required|in:hlushchenko,kolisnyk',
+            'amount' => 'required|numeric|min:0.01'
+        ]);
 
-            $project = \App\Models\SalesProject::find($data['project_id']);
-            if (!$project) {
-                return response()->json(['error' => 'Project not found'], 404);
-            }
+        $project = \App\Models\SalesProject::find($data['project_id']);
+        if (!$project) {
+            return response()->json(['error' => 'Project not found'], 404);
+        }
 
-            $currency = $project->currency;
+        $currency = $project->currency;
 
-            // 1️⃣ Знаходимо кеш власника
-            $fromWallet = DB::table('wallets')
-                ->where('owner', auth()->user()->actor)
-                ->where('currency', $currency)
-                ->first();
+        // 1️⃣ Знаходимо кеш власника
+        $fromWallet = DB::table('wallets')
+            ->where('owner', auth()->user()->actor)
+            ->where('currency', $currency)
+            ->first();
 
-            // 2️⃣ Знаходимо кеш отримувача
-            $toWallet = DB::table('wallets')
-                ->where('owner', $data['target'])
-                ->where('currency', $currency)
-                ->first();
+        // 2️⃣ Знаходимо кеш отримувача
+        $toWallet = DB::table('wallets')
+            ->where('owner', $data['target'])
+            ->where('currency', $currency)
+            ->first();
 
-            if (!$fromWallet || !$toWallet) {
-                return response()->json(['error' => 'Wallet not found'], 422);
-            }
+        if (!$fromWallet || !$toWallet) {
+            return response()->json(['error' => 'Wallet not found'], 422);
+        }
 
-            $transfer = CashTransfer::create([
-                'from_wallet_id' => $fromWallet->id,
-                'to_wallet_id' => $toWallet->id,
-                'amount' => $data['amount'],
-                'currency' => $currency,
-                'status' => 'pending',
-                'created_by' => auth()->id(),
-            ]);
+        $transfer = CashTransfer::create([
+            'from_wallet_id' => $fromWallet->id,
+            'to_wallet_id' => $toWallet->id,
+            'amount' => $data['amount'],
+            'currency' => $currency,
+            'status' => 'pending',
+            'created_by' => auth()->id(),
+        ]);
 
-            return response()->json([
-                'success' => true,
-                'transfer' => $transfer
-            ]);
-        });
+        return response()->json([
+            'success' => true,
+            'transfer' => $transfer
+        ]);
     }
 
     public function update(Request $request, $id)

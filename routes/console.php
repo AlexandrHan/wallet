@@ -19,9 +19,9 @@ Schedule::call(function () {
 })->everyMinute();
 
 Schedule::command('amocrm:sync-deals')
-    ->everyFiveMinutes()
+    ->everyThirtyMinutes()
     ->withoutOverlapping();
 
 Schedule::command('amocrm:sync-complectation-projects')
-    ->everyFiveMinutes()
+    ->everyThirtyMinutes()
     ->withoutOverlapping();

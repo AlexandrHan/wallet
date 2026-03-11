@@ -9,21 +9,19 @@ return new class extends Migration
     /**
      * Run the migrations.
      */
-    public function up(): void
-    {
-        if (!Schema::hasTable('fem_container_payments')) {
-            Schema::create('fem_container_payments', function (Blueprint $table) {
-                $table->id();
-                $table->unsignedBigInteger('fem_container_id');
-                $table->date('paid_at')->nullable();
-                $table->decimal('amount', 12, 2)->default(0);
-                $table->unsignedBigInteger('created_by')->nullable();
-                $table->timestamps();
+public function up(): void
+{
+    Schema::create('fem_container_payments', function (Blueprint $table) {
+        $table->id();
+        $table->unsignedBigInteger('fem_container_id');
+        $table->date('paid_at')->nullable();
+        $table->decimal('amount', 12, 2)->default(0);
+        $table->unsignedBigInteger('created_by')->nullable();
+        $table->timestamps();
 
-                $table->foreign('fem_container_id')->references('id')->on('fem_containers')->onDelete('cascade');
-            });
-        }
-    }
+        $table->foreign('fem_container_id')->references('id')->on('fem_containers')->onDelete('cascade');
+    });
+}
 
     /**
      * Reverse the migrations.

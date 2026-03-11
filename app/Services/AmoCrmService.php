@@ -101,38 +101,52 @@ class AmoCrmService
 
     public function fetchDeals(int $page = 1, int $limit = 250): array
     {
-        $importStatusId = (int) config('services.amocrm.won_status_id');
+        $statusIds = config('services.amocrm.project_status_ids', []);
 
-        $response = $this->apiRequest('GET', '/leads', [
-            'query' => [
-                'page' => $page,
-                'limit' => $limit,
-                'with' => 'contacts,users',
-                'filter[statuses][0][status_id]' => $importStatusId,
-            ],
-        ]);
+        $query = [
+            'page' => $page,
+            'limit' => $limit,
+            'with' => 'contacts,users',
+        ];
 
-        $json = $response->json();
+        foreach (array_values($statusIds) as $i => $statusId) {
+            $query['filter[statuses][' . $i . '][pipeline_id]'] = 4071382;
+            $query['filter[statuses][' . $i . '][status_id]'] = $statusId;
+        }
 
-        return Arr::get($json, '_embedded.leads', []);
+        $response = $this->apiRequest('GET', '/leads', ['query' => $query]);
+
+        return Arr::get($response->json(), '_embedded.leads', []);
     }
 
     public function fetchComplectationDeals(int $page = 1, int $limit = 250): array
     {
-        $statusId = (int) config('services.amocrm.complectation_status_id', 69586234);
+        $financeStageIds = $this->financeStageIds();
 
-        $response = $this->apiRequest('GET', '/leads', [
-            'query' => [
-                'page' => $page,
-                'limit' => $limit,
-                'with' => 'contacts,users',
-                'filter[statuses][0][status_id]' => $statusId,
-            ],
-        ]);
+        $query = [
+            'page' => $page,
+            'limit' => $limit,
+            'with' => 'contacts,users',
+        ];
 
-        $json = $response->json();
+        foreach (array_values($financeStageIds) as $i => $statusId) {
+            $query['filter[statuses][' . $i . '][pipeline_id]'] = 4071382;
+            $query['filter[statuses][' . $i . '][status_id]'] = $statusId;
+        }
 
-        return Arr::get($json, '_embedded.leads', []);
+        $response = $this->apiRequest('GET', '/leads', ['query' => $query]);
+
+        return Arr::get($response->json(), '_embedded.leads', []);
+    }
+
+    private function financeStageIds(): array
+    {
+        $ids = array_filter(
+            (array) config('services.amocrm.finance_stage_ids', []),
+            fn ($id) => is_numeric($id) && (int) $id > 0
+        );
+
+        return array_values(array_unique(array_map('intval', $ids)));
     }
 
     public function getLeadById(int $leadId): ?array
@@ -238,15 +252,8 @@ class AmoCrmService
     {
         $created = 0;
         $updated = 0;
-        $importStatusId = (int) config('services.amocrm.won_status_id');
 
         foreach ($deals as $deal) {
-            $statusId = (int) ($deal['status_id'] ?? 0);
-
-            if ($statusId !== $importStatusId) {
-                continue;
-            }
-
             $existingMap = AmoCrmDealMap::query()
                 ->where('amo_deal_id', (int) ($deal['id'] ?? 0))
                 ->exists();
@@ -272,7 +279,7 @@ class AmoCrmService
 
     public function syncComplectationDeals(array $deals): array
     {
-        $statusId = (int) config('services.amocrm.complectation_status_id', 69586234);
+        $financeStageIds = $this->financeStageIds();
         $created = 0;
         $updated = 0;
 
@@ -289,7 +296,8 @@ class AmoCrmService
                 $lead = $fullLead;
             }
 
-            if ((int) ($lead['status_id'] ?? 0) !== $statusId) {
+            $dealStatusId = (int) ($lead['status_id'] ?? 0);
+            if (!in_array($dealStatusId, $financeStageIds, true)) {
                 continue;
             }
 
@@ -314,7 +322,7 @@ class AmoCrmService
                 $responsibleName = trim((string) ($amoUser['name'] ?? ''));
             }
 
-            DB::transaction(function () use ($amoDealId, $clientName, $lead, $totalAmount, $projectPayload, $responsibleUserId, $responsibleName, $statusId, &$created, &$updated) {
+            DB::transaction(function () use ($amoDealId, $clientName, $lead, $totalAmount, $projectPayload, $responsibleUserId, $responsibleName, $dealStatusId, &$created, &$updated) {
                 $row = AmoComplectationProject::query()
                     ->where('amo_deal_id', $amoDealId)
                     ->lockForUpdate()
@@ -325,7 +333,8 @@ class AmoCrmService
                 if ($walletProjectId > 0) {
                     $project = SalesProject::query()
                         ->where('id', $walletProjectId)
-                        ->where('source_layer', 'projects')
+                        ->whereIn('source_layer', ['finance', 'projects'])
+                        ->orWhere(fn ($q) => $q->where('id', $walletProjectId)->whereNull('source_layer'))
                         ->first();
                 }
 
@@ -337,7 +346,7 @@ class AmoCrmService
                         'remaining_amount' => round($totalAmount, 2),
                         'currency' => $currency,
                         'created_by' => $this->systemUserId(),
-                        'source_layer' => 'projects',
+                        'source_layer' => 'finance',
                     ], $projectPayload));
 
                     $created++;
@@ -355,7 +364,7 @@ class AmoCrmService
                     'total_amount' => round($totalAmount, 2),
                     'responsible_user_id' => $responsibleUserId ?: null,
                     'responsible_name' => $responsibleName !== '' ? mb_substr($responsibleName, 0, 255) : null,
-                    'status_id' => $statusId,
+                    'status_id' => $dealStatusId,
                     'raw_payload' => $lead,
                 ];
 
@@ -417,6 +426,15 @@ class AmoCrmService
         if ($this->hasSalesProjectColumn('has_green_tariff') && $hasGreenTariffRaw !== null) {
             $payload['has_green_tariff'] = $this->normalizeBooleanLikeValue($hasGreenTariffRaw);
         }
+
+        $advanceRaw = $this->extractLeadFieldValue($lead, ['Аванс', 'Завдаток', 'Аванс/Завдаток', 'advance', 'Advance', 'First payment', 'Перший платіж']);
+        if ($this->hasSalesProjectColumn('advance_amount') && $advanceRaw !== null) {
+            $advanceNum = (float) preg_replace('/[^\d.]/', '', (string) $advanceRaw);
+            if ($advanceNum > 0) {
+                $payload['advance_amount'] = round($advanceNum, 2);
+            }
+        }
+
         return $payload;
     }
 
@@ -473,9 +491,9 @@ class AmoCrmService
                 $totalAmount = $project ? (float) $project->total_amount : 0.01;
             }
 
-            $projectCreateStatusId = (int) config('services.amocrm.won_status_id');
+            $projectStatusIds = config('services.amocrm.project_status_ids', []);
             $leadStatusId = (int) ($lead['status_id'] ?? 0);
-            $isProjectCreateStage = $leadStatusId > 0 && $leadStatusId === $projectCreateStatusId;
+            $isProjectCreateStage = $leadStatusId > 0 && in_array($leadStatusId, $projectStatusIds, true);
 
             if (!$project && !$isProjectCreateStage) {
                 return null;
@@ -490,7 +508,7 @@ class AmoCrmService
                     'remaining_amount' => round($totalAmount, 2),
                     'currency' => $currency,
                     'created_by' => $this->systemUserId(),
-                    'source_layer' => 'finance',
+                    'source_layer' => 'projects',
                 ]);
 
                 // New amoCRM-created project must start with no advances/transfers.
@@ -517,6 +535,7 @@ class AmoCrmService
             $project->update([
                 'client_name' => mb_substr($clientName, 0, 255),
                 'total_amount' => round($totalAmount, 2),
+                'source_layer' => $isProjectCreateStage ? 'projects' : 'finance',
             ]);
 
             return $project->fresh();
@@ -869,6 +888,14 @@ class AmoCrmService
             if (($result['ok'] ?? false) === true) {
                 return AmoCrmToken::query()->latest('id')->firstOrFail();
             }
+
+            throw new \RuntimeException(
+                'amoCRM authorization_code exchange failed (HTTP '
+                . ($result['status'] ?? '?')
+                . '): '
+                . ($result['body'] ?? 'unknown error')
+                . ' — the code may be expired or already used.'
+            );
         }
 
         throw new \RuntimeException('amoCRM token not found and AMO_* bootstrap credentials are missing.');

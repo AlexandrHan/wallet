@@ -146,6 +146,10 @@ document.addEventListener('DOMContentLoaded', function () {
       return Number.isFinite(n) ? n : 0;
     };
     const isPaidProject = (p) => {
+      if (p.is_paid !== undefined && p.is_paid !== null) {
+        return Boolean(p.is_paid);
+      }
+
       const total = toNum(p.total_amount);
       const paid = toNum(p.paid_amount);
       const remaining = toNum(p.remaining_amount);
@@ -407,8 +411,11 @@ document.addEventListener('DOMContentLoaded', function () {
       }
 
       paidCard.querySelector('.paid-projects-search')?.addEventListener('input', function () {
+        const sel = [this.selectionStart, this.selectionEnd];
         localStorage.setItem(SEARCH_PAID_KEY, this.value || '');
         renderProjects(projects || []);
+        const el = container.querySelector('.paid-projects-search');
+        if (el) { el.focus(); el.setSelectionRange(sel[0], sel[1]); }
       });
 
       paidCard.querySelector('.paid-projects-toggle')?.addEventListener('click', function () {
@@ -449,8 +456,11 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     activeCard.querySelector('.active-projects-search')?.addEventListener('input', function () {
+      const sel = [this.selectionStart, this.selectionEnd];
       localStorage.setItem(SEARCH_ACTIVE_KEY, this.value || '');
       renderProjects(projects || []);
+      const el = container.querySelector('.active-projects-search');
+      if (el) { el.focus(); el.setSelectionRange(sel[0], sel[1]); }
     });
 
     activeCard.querySelector('.active-projects-toggle')?.addEventListener('click', function () {

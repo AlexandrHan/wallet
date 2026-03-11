@@ -27,11 +27,6 @@ class OnlyReclamations
             return $next($request);
         }
 
-        // For API requests, return JSON 403 so frontend can handle it instead of receiving an HTML redirect.
-        if ($request->is('api/*') || $request->expectsJson()) {
-            return response()->json(['message' => 'Forbidden'], 403);
-        }
-
         // все інше: ведемо в рекламації
         return redirect()->route('reclamations.index');
     }

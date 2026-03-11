@@ -122,7 +122,30 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
     Route::prefix('api')->group(function () {
 
         // create cash wallet
-        Route::post('/wallets', [WalletController::class, 'store']);
+        Route::post('/wallets', function (Request $request) {
+
+            $data = $request->validate([
+                'name' => 'required|string',
+                'currency' => 'required|in:UAH,USD,EUR',
+            ]);
+
+            $owner = auth()->user()->actor;
+
+            $id = DB::table('wallets')->insertGetId([
+                'name' => $data['name'],
+                'currency' => $data['currency'],
+                'type' => 'cash',
+                'owner' => $owner,
+                'is_active' => 1,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            return response()->json([
+                'id' => $id,
+                'owner' => $owner,
+            ]);
+        });
 
         
 
@@ -597,7 +620,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
 
         Route::get('/bank/accounts-sggroup', function () {
 
-            $response = Http::withToken(config('services.ukrgasbank_sggroup.token'))
+            $response = Http::withToken(env('UKRGASBANK_SGGROUP_TOKEN'))
                 ->get('https://my.ukrgasbank.com/api/v3/accounts');
 
             if (!$response->ok()) {
@@ -699,7 +722,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         // Monobank accounts
         Route::get('/bank/accounts-monobank', function () {
 
-            $token = config('services.monobank.token');
+            $token = env('MONOBANK_TOKEN');
             if (!$token) return response()->json([]);
 
             $res = Http::withHeaders([
@@ -757,7 +780,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
             $iban = $request->query('iban');
             if (!$iban) return response()->json([], 400);
 
-            $response = Http::withToken(config('services.ukrgasbank_sggroup.token'))
+            $response = Http::withToken(env('UKRGASBANK_SGGROUP_TOKEN'))
                 ->get('https://my.ukrgasbank.com/api/v1/ugb/external/transaction-history');
 
             if (!$response->ok()) return response()->json([], 500);
@@ -893,7 +916,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
             $accountId = $request->query('id');
             if (!$accountId) return response()->json([]);
 
-            $token = config('services.monobank.token');
+            $token = env('MONOBANK_TOKEN');
 
             $from = now()->subDays(30)->timestamp;
             $to   = now()->timestamp;
@@ -947,7 +970,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
     | Debug routes (краще захистити додатково, але лишаю як є)
     |--------------------------------------------------------------------------
     */
-    Route::prefix('debug')->middleware(['auth', 'only.owner'])->group(function () {
+    Route::prefix('debug')->group(function () {
 
         Route::get('/ukrgasbank', function () {
 
@@ -1363,5 +1386,55 @@ Route::middleware(['auth', 'only.owner'])
     });
 
 
+
+// TEMPORARY: AMO OAuth setup route — delete after tokens are stored
+Route::middleware(['auth', 'only.owner'])->group(function () {
+    Route::get('/amocrm/setup', function (\App\Services\AmoCrmService $amo) {
+        $code = request('code', '');
+
+        if ($code !== '') {
+            $result = $amo->exchangeAuthorizationCode($code);
+            if ($result['ok'] ?? false) {
+                return '<h2 style="color:green">✅ Токени збережено! AMO підключено.</h2>'
+                    . '<p>Тепер запустіть: <code>php artisan amocrm:sync-deals</code></p>'
+                    . '<p><a href="/amocrm/setup">← Назад</a></p>';
+            }
+            return '<h2 style="color:red">❌ Помилка: ' . e($result['body'] ?? 'невідома') . '</h2>'
+                . '<p>Код вже використано або протух. <a href="/amocrm/setup">Спробувати ще раз</a></p>';
+        }
+
+        $clientId = config('services.amocrm.client_id');
+        $redirectUri = config('services.amocrm.redirect_uri');
+        $amoUrl = 'https://www.amocrm.ru/oauth?client_id=' . $clientId
+            . '&state=setup&mode=post_message';
+
+        $tokenCount = DB::table('amocrm_tokens')->count();
+
+        return '<h2>AMO OAuth Setup</h2>'
+            . '<p>Токенів у DB: <b>' . $tokenCount . '</b></p>'
+            . '<p>redirect_uri: <code>' . e($redirectUri) . '</code></p>'
+            . '<hr>'
+            . '<p><b>Крок 1:</b> Зайдіть в amoCRM → Налаштування → Інтеграції → ваша інтеграція → натисніть "Дозволити доступ"</p>'
+            . '<p><b>Крок 2:</b> Вас перенаправить на <code>' . e($redirectUri) . '?code=XXXX</code> — можливо 404, але код буде в URL</p>'
+            . '<p><b>Крок 3:</b> Скопіюйте код з URL і вставте сюди:</p>'
+            . '<form method="GET">'
+            . '<input name="code" placeholder="Вставте code= значення з URL" style="width:600px;padding:8px" required>'
+            . '<button type="submit" style="padding:8px 16px;margin-left:8px">Підключити</button>'
+            . '</form>';
+    })->name('amocrm.setup');
+
+    Route::get('/amocrm/callback', function (\App\Services\AmoCrmService $amo) {
+        $code = request('code', '');
+        if ($code === '') {
+            return redirect('/amocrm/setup')->with('error', 'Код відсутній');
+        }
+        $result = $amo->exchangeAuthorizationCode($code);
+        if ($result['ok'] ?? false) {
+            return '<h2 style="color:green">✅ Токени збережено! AMO підключено.</h2>';
+        }
+        return '<h2 style="color:red">❌ ' . e($result['body'] ?? 'Помилка') . '</h2>'
+            . '<p><a href="/amocrm/setup">← Назад</a></p>';
+    })->name('amocrm.callback');
+});
 
 require __DIR__ . '/auth.php';
