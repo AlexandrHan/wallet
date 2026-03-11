@@ -122,30 +122,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
     Route::prefix('api')->group(function () {
 
         // create cash wallet
-        Route::post('/wallets', function (Request $request) {
-
-            $data = $request->validate([
-                'name' => 'required|string',
-                'currency' => 'required|in:UAH,USD,EUR',
-            ]);
-
-            $owner = auth()->user()->actor;
-
-            $id = DB::table('wallets')->insertGetId([
-                'name' => $data['name'],
-                'currency' => $data['currency'],
-                'type' => 'cash',
-                'owner' => $owner,
-                'is_active' => 1,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-
-            return response()->json([
-                'id' => $id,
-                'owner' => $owner,
-            ]);
-        });
+        Route::post('/wallets', [WalletController::class, 'store']);
 
         
 
@@ -620,7 +597,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
 
         Route::get('/bank/accounts-sggroup', function () {
 
-            $response = Http::withToken(env('UKRGASBANK_SGGROUP_TOKEN'))
+            $response = Http::withToken(config('services.ukrgasbank_sggroup.token'))
                 ->get('https://my.ukrgasbank.com/api/v3/accounts');
 
             if (!$response->ok()) {
@@ -722,7 +699,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         // Monobank accounts
         Route::get('/bank/accounts-monobank', function () {
 
-            $token = env('MONOBANK_TOKEN');
+            $token = config('services.monobank.token');
             if (!$token) return response()->json([]);
 
             $res = Http::withHeaders([
@@ -780,7 +757,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
             $iban = $request->query('iban');
             if (!$iban) return response()->json([], 400);
 
-            $response = Http::withToken(env('UKRGASBANK_SGGROUP_TOKEN'))
+            $response = Http::withToken(config('services.ukrgasbank_sggroup.token'))
                 ->get('https://my.ukrgasbank.com/api/v1/ugb/external/transaction-history');
 
             if (!$response->ok()) return response()->json([], 500);
@@ -916,7 +893,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
             $accountId = $request->query('id');
             if (!$accountId) return response()->json([]);
 
-            $token = env('MONOBANK_TOKEN');
+            $token = config('services.monobank.token');
 
             $from = now()->subDays(30)->timestamp;
             $to   = now()->timestamp;
@@ -970,7 +947,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
     | Debug routes (краще захистити додатково, але лишаю як є)
     |--------------------------------------------------------------------------
     */
-    Route::prefix('debug')->group(function () {
+    Route::prefix('debug')->middleware(['auth', 'only.owner'])->group(function () {
 
         Route::get('/ukrgasbank', function () {
 

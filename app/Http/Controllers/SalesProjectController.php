@@ -525,18 +525,22 @@ class SalesProjectController extends Controller
                 $amoDealId = (int) ($amoMap->amo_deal_id ?? 0);
                 if (!array_key_exists($amoDealId, $amoResponsibleCache)) {
                     $responsibleName = null;
-                    $lead = $amoCrmService->getLeadById($amoDealId);
-                    if ($lead) {
-                        $responsibleName = trim((string) (
-                            data_get($lead, '_embedded.users.0.name')
-                            ?? ''
-                        ));
+                    try {
+                        $lead = $amoCrmService->getLeadById($amoDealId);
+                        if ($lead) {
+                            $responsibleName = trim((string) (
+                                data_get($lead, '_embedded.users.0.name')
+                                ?? ''
+                            ));
 
-                        if ($responsibleName === '') {
-                            $responsibleId = (int) ($lead['responsible_user_id'] ?? 0);
-                            $amoUser = $amoCrmService->getUserById($responsibleId);
-                            $responsibleName = trim((string) ($amoUser['name'] ?? ''));
+                            if ($responsibleName === '') {
+                                $responsibleId = (int) ($lead['responsible_user_id'] ?? 0);
+                                $amoUser = $amoCrmService->getUserById($responsibleId);
+                                $responsibleName = trim((string) ($amoUser['name'] ?? ''));
+                            }
                         }
+                    } catch (\Throwable $e) {
+                        // AMO not configured or unavailable — skip responsible lookup
                     }
 
                     $amoResponsibleCache[$amoDealId] = $responsibleName ?: null;

@@ -27,13 +27,22 @@ return [
         'token' => env('UKRGASBANK_TOKEN'),
         'base_url' => 'https://my.ukrgasbank.com',
     ],
-        'ukrgasbank_solarglass' => [
+
+    'ukrgasbank_sggroup' => [
+        'token' => env('UKRGASBANK_SGGROUP_TOKEN'),
+    ],
+
+    'ukrgasbank_solarglass' => [
         'token' => env('UKRGASBANK_SOLARGLASS_TOKEN'),
     ],
 
 
     'privatbank' => [
         'token' => env('PRIVATBANK_TOKEN'),
+    ],
+
+    'monobank' => [
+        'token' => env('MONOBANK_TOKEN'),
     ],
 
     'fx_agent' => [
@@ -89,6 +98,7 @@ return [
         'authorization_code' => env('AMO_AUTHORIZATION_CODE'),
         'project_status_id' => (int) env('AMO_PROJECT_STATUS_ID', 29352208),
         'won_status_id' => (int) env('AMO_WON_STATUS_ID', 142),
+        'webhook_secret' => env('AMO_WEBHOOK_SECRET'),
     ],
 
 ];

@@ -126,6 +126,7 @@ document.addEventListener('DOMContentLoaded', function () {
   };
   const POLL_MS = 4000;
   let isProjectsLoading = false;
+  let pendingRefresh = false;
   let projectsPollTimer = null;
 
   function renderProjects(projects) {
@@ -197,7 +198,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const activeProjects = allActiveProjects.filter(p => matchesQuery(p, activeQuery));
     const paidProjects = allPaidProjects.filter(p => matchesQuery(p, paidQuery));
 
-    function buildProjectCard(p) {
+    function buildProjectCard(p, { isPaidSection = false } = {}) {
       const card = document.createElement('div');
       card.className = 'card';
       card.style.marginTop = '15px';
@@ -367,7 +368,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
       });
 
-      if (openId && Number(p.id) === openId) {
+      if (!isPaidSection && openId && Number(p.id) === openId) {
         const details = card.querySelector('.project-details');
         if (details) details.style.display = 'block';
       }
@@ -376,7 +377,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     if (allPaidProjects.length > 0) {
-      const shouldOpenPaid = isPaidOpen || !!paidProjects.find(p => Number(p.id) === openId) || !!paidQuery;
+      const shouldOpenPaid = isPaidOpen || !!paidQuery;
 
       const paidCard = document.createElement('div');
       paidCard.className = 'card';
@@ -400,7 +401,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
       const paidDetails = paidCard.querySelector('.paid-projects-list');
       if (paidProjects.length > 0) {
-        paidProjects.forEach(p => paidDetails.appendChild(buildProjectCard(p)));
+        paidProjects.forEach(p => paidDetails.appendChild(buildProjectCard(p, { isPaidSection: true })));
       } else {
         paidDetails.innerHTML = `<div style="opacity:.75; text-align:center;">Нічого не знайдено</div>`;
       }
@@ -464,8 +465,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function loadProjects(opts = {}) {
     const { silent = false } = opts;
-    if (isProjectsLoading) return;
+    if (isProjectsLoading) {
+      pendingRefresh = true;
+      return;
+    }
     isProjectsLoading = true;
+    pendingRefresh = false;
 
     return fetch('/api/sales-projects?layer=finance')
       .then(r => r.json())
@@ -477,6 +482,10 @@ document.addEventListener('DOMContentLoaded', function () {
       })
       .finally(() => {
         isProjectsLoading = false;
+        if (pendingRefresh) {
+          pendingRefresh = false;
+          loadProjects({ silent: false });
+        }
       });
   }
 
