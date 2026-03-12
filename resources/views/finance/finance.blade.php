@@ -133,6 +133,13 @@ document.addEventListener('DOMContentLoaded', function () {
     const container = document.getElementById('projectsContainer');
     if (!container) return;
 
+    // Зберігаємо фокус і курсор перед ренедером
+    const focusedEl = document.activeElement;
+    const focusedClass = focusedEl?.classList.contains('paid-projects-search') ? 'paid-projects-search'
+                       : focusedEl?.classList.contains('active-projects-search') ? 'active-projects-search'
+                       : null;
+    const focusSel = focusedClass ? [focusedEl.selectionStart, focusedEl.selectionEnd] : null;
+
     const openId = getOpenProject();
     const isPaidOpen = localStorage.getItem(OPEN_PAID_KEY) === '1';
     const isActiveOpen = localStorage.getItem(OPEN_ACTIVE_KEY) === '1';
@@ -411,11 +418,8 @@ document.addEventListener('DOMContentLoaded', function () {
       }
 
       paidCard.querySelector('.paid-projects-search')?.addEventListener('input', function () {
-        const sel = [this.selectionStart, this.selectionEnd];
         localStorage.setItem(SEARCH_PAID_KEY, this.value || '');
         renderProjects(projects || []);
-        const el = container.querySelector('.paid-projects-search');
-        if (el) { el.focus(); el.setSelectionRange(sel[0], sel[1]); }
       });
 
       paidCard.querySelector('.paid-projects-toggle')?.addEventListener('click', function () {
@@ -456,11 +460,8 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     activeCard.querySelector('.active-projects-search')?.addEventListener('input', function () {
-      const sel = [this.selectionStart, this.selectionEnd];
       localStorage.setItem(SEARCH_ACTIVE_KEY, this.value || '');
       renderProjects(projects || []);
-      const el = container.querySelector('.active-projects-search');
-      if (el) { el.focus(); el.setSelectionRange(sel[0], sel[1]); }
     });
 
     activeCard.querySelector('.active-projects-toggle')?.addEventListener('click', function () {
@@ -471,6 +472,15 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     container.appendChild(activeCard);
+
+    // Відновлюємо фокус після ренедеру (поллінг або пошук)
+    if (focusedClass) {
+      const el = container.querySelector('.' + focusedClass);
+      if (el) {
+        el.focus();
+        if (focusSel) el.setSelectionRange(focusSel[0], focusSel[1]);
+      }
+    }
   }
 
   function loadProjects(opts = {}) {

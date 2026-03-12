@@ -70,6 +70,8 @@
       </div>
     </details>
 
+    <a class="tg-menu__item" style="margin-bottom: 14px;" href="/equipment-orders">🛒 Замовлення обладнання</a>
+
     <details class="tg-acc">
       <summary class="tg-acc__title">📦 Sun Fix</summary>
       <div class="tg-acc__body">

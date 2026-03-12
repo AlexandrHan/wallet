@@ -1297,6 +1297,75 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         return view('projects.project');
     });
 
+    Route::middleware(['auth', 'only.owner'])->get('/equipment-orders', function () {
+        return view('projects.equipment-orders');
+    });
+
+    Route::middleware(['auth', 'only.owner'])->get('/api/equipment-orders', function () {
+        $kompl = 69586234;
+
+        $projects = \Illuminate\Support\Facades\DB::table('sales_projects as sp')
+            ->join('amocrm_deal_map as adm', 'adm.wallet_project_id', '=', 'sp.id')
+            ->where('adm.amo_status_id', $kompl)
+            ->where('sp.status', '!=', 'completed')
+            ->select([
+                'sp.id',
+                'sp.client_name',
+                'sp.inverter',
+                'sp.bms',
+                'sp.battery_name',
+                'sp.battery_qty',
+                'sp.panel_name',
+                'sp.panel_qty',
+                'sp.total_amount',
+                'sp.currency',
+            ])
+            ->orderBy('sp.client_name')
+            ->get();
+
+        // Зведення по обладнанню (кількість однакових позицій)
+        $inverterSummary = [];
+        $bmsSummary = [];
+        $batterySummary = [];
+        $panelSummary = [];
+
+        foreach ($projects as $p) {
+            if (!empty($p->inverter)) {
+                $key = trim($p->inverter);
+                $inverterSummary[$key] = ($inverterSummary[$key] ?? 0) + 1;
+            }
+            if (!empty($p->bms)) {
+                $key = trim($p->bms);
+                $bmsSummary[$key] = ($bmsSummary[$key] ?? 0) + 1;
+            }
+            if (!empty($p->battery_name)) {
+                $key = trim($p->battery_name);
+                $qty = max(1, (int)($p->battery_qty ?? 1));
+                $batterySummary[$key] = ($batterySummary[$key] ?? 0) + $qty;
+            }
+            if (!empty($p->panel_name)) {
+                $key = trim($p->panel_name);
+                $qty = max(1, (int)($p->panel_qty ?? 1));
+                $panelSummary[$key] = ($panelSummary[$key] ?? 0) + $qty;
+            }
+        }
+
+        arsort($inverterSummary);
+        arsort($bmsSummary);
+        arsort($batterySummary);
+        arsort($panelSummary);
+
+        return response()->json([
+            'projects' => $projects->values(),
+            'summary' => [
+                'inverter' => $inverterSummary,
+                'bms' => $bmsSummary,
+                'battery' => $batterySummary,
+                'panels' => $panelSummary,
+            ],
+        ]);
+    });
+
     Route::get('/projects/service-repair', function () {
         $user = auth()->user();
 

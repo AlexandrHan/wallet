@@ -22,11 +22,15 @@ class SalesProjectController extends Controller
             'panel_work_start_date' => ['section' => 'Планування', 'label' => 'Дата початку монтажу ФЕМ'],
             'panel_work_days' => ['section' => 'Планування', 'label' => 'Тривалість монтажу ФЕМ (днів)'],
             'inverter' => ['section' => 'Обладнання', 'label' => 'Інвертор'],
+            'delivered_inverter' => ['section' => 'Обладнання', 'label' => 'Інвертор доставлено'],
             'bms' => ['section' => 'Обладнання', 'label' => 'BMS'],
+            'delivered_bms' => ['section' => 'Обладнання', 'label' => 'BMS доставлено'],
             'battery_name' => ['section' => 'Обладнання', 'label' => 'АКБ'],
             'battery_qty' => ['section' => 'Обладнання', 'label' => 'Кількість АКБ'],
+            'delivered_battery' => ['section' => 'Обладнання', 'label' => 'АКБ доставлено'],
             'panel_name' => ['section' => 'Обладнання', 'label' => 'ФЕМ'],
             'panel_qty' => ['section' => 'Обладнання', 'label' => 'Кількість ФЕМ'],
+            'delivered_panels' => ['section' => 'Обладнання', 'label' => 'ФЕМ доставлено'],
             'electrician' => ['section' => 'Персонал', 'label' => 'Електрик'],
             'installation_team' => ['section' => 'Персонал', 'label' => 'Монтажна бригада'],
             'extra_works' => ['section' => 'Персонал', 'label' => 'Доп. роботи'],
@@ -61,11 +65,15 @@ class SalesProjectController extends Controller
                 'panel_work_start_date' => ['section' => 'Планування', 'label' => 'Дата початку монтажу ФЕМ'],
                 'panel_work_days' => ['section' => 'Планування', 'label' => 'Тривалість монтажу ФЕМ (днів)'],
                 'inverter' => ['section' => 'Обладнання', 'label' => 'Інвертор'],
+                'delivered_inverter' => ['section' => 'Обладнання', 'label' => 'Інвертор доставлено'],
                 'bms' => ['section' => 'Обладнання', 'label' => 'BMS'],
+                'delivered_bms' => ['section' => 'Обладнання', 'label' => 'BMS доставлено'],
                 'battery_name' => ['section' => 'Обладнання', 'label' => 'АКБ'],
                 'battery_qty' => ['section' => 'Обладнання', 'label' => 'Кількість АКБ'],
+                'delivered_battery' => ['section' => 'Обладнання', 'label' => 'АКБ доставлено'],
                 'panel_name' => ['section' => 'Обладнання', 'label' => 'ФЕМ'],
                 'panel_qty' => ['section' => 'Обладнання', 'label' => 'Кількість ФЕМ'],
+                'delivered_panels' => ['section' => 'Обладнання', 'label' => 'ФЕМ доставлено'],
                 'electrician' => ['section' => 'Персонал', 'label' => 'Електрик'],
                 'installation_team' => ['section' => 'Персонал', 'label' => 'Монтажна бригада'],
                 'extra_works' => ['section' => 'Персонал', 'label' => 'Доп. роботи'],
@@ -362,7 +370,14 @@ class SalesProjectController extends Controller
             ->get()
             ->groupBy('project_id');
 
-        $projects = $projects->map(function ($project) use ($userNames, $amoComplectationByProjectId, $transfersByProjectId) {
+        // For projects layer: load amo_status_id from deal map
+        $amoStatusByProjectId = ($layer === 'projects' && Schema::hasTable('amocrm_deal_map'))
+            ? DB::table('amocrm_deal_map')
+                ->whereIn('wallet_project_id', $projectIds)
+                ->pluck('amo_status_id', 'wallet_project_id')
+            : collect();
+
+        $projects = $projects->map(function ($project) use ($userNames, $amoComplectationByProjectId, $transfersByProjectId, $amoStatusByProjectId) {
 
             $transfers = $transfersByProjectId->get($project->id, collect());
 
@@ -450,6 +465,7 @@ class SalesProjectController extends Controller
                     ? (bool)$project->is_retail
                     : false,
                 'status' => $project->status,
+                'amo_stage_id' => $amoStatusByProjectId->get($project->id) ? (int) $amoStatusByProjectId->get($project->id) : null,
                 'telegram_group_link' => $project->telegram_group_link,
                 'geo_location_link' => $project->geo_location_link,
                 'phone_number' => Schema::hasColumn('sales_projects', 'phone_number')
@@ -465,11 +481,15 @@ class SalesProjectController extends Controller
                     ? $project->panel_work_days
                     : 1,
                 'inverter' => $project->inverter,
+                'delivered_inverter' => Schema::hasColumn('sales_projects', 'delivered_inverter') ? $project->delivered_inverter : null,
                 'bms' => $project->bms,
+                'delivered_bms' => Schema::hasColumn('sales_projects', 'delivered_bms') ? $project->delivered_bms : null,
                 'battery_name' => $project->battery_name,
                 'battery_qty' => $project->battery_qty,
+                'delivered_battery' => Schema::hasColumn('sales_projects', 'delivered_battery') ? $project->delivered_battery : null,
                 'panel_name' => $project->panel_name,
                 'panel_qty' => $project->panel_qty,
+                'delivered_panels' => Schema::hasColumn('sales_projects', 'delivered_panels') ? $project->delivered_panels : null,
                 'electrician' => $project->electrician,
                 'electric_schedule_dates' => $electricScheduleDates,
                 'electrician_note' => Schema::hasColumn('sales_projects', 'electrician_note')
@@ -807,11 +827,15 @@ class SalesProjectController extends Controller
             'panel_work_start_date' => 'nullable|date',
             'panel_work_days' => 'nullable|integer|min:1|max:365',
             'inverter' => 'nullable|string|max:255',
+            'delivered_inverter' => 'nullable|string|max:255',
             'bms' => 'nullable|string|max:255',
+            'delivered_bms' => 'nullable|string|max:255',
             'battery_name' => 'nullable|string|max:255',
             'battery_qty' => 'nullable|integer|min:0|max:1000000',
+            'delivered_battery' => 'nullable|string|max:255',
             'panel_name' => 'nullable|string|max:255',
             'panel_qty' => 'nullable|integer|min:0|max:1000000',
+            'delivered_panels' => 'nullable|string|max:255',
             'electrician' => 'nullable|string|max:255',
             'installation_team' => 'nullable|string|max:255',
             'extra_works' => 'nullable|string|max:1000',

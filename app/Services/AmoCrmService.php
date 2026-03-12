@@ -354,7 +354,7 @@ class AmoCrmService
                     $project->update(array_merge([
                         'client_name' => mb_substr($clientName, 0, 255),
                         'total_amount' => round($totalAmount, 2),
-                    ], $projectPayload));
+                    ], $this->applyAppWinsFilter($projectPayload, $project)));
                     $updated++;
                 }
                 $payload = [
@@ -393,7 +393,8 @@ class AmoCrmService
         $bms = $this->extractLeadFieldValue($lead, ['BMS', 'БМС']);
         $battery = $this->extractLeadFieldValue($lead, ['АКБ', 'Акумулятор', 'Батарея', 'Battery'], [1200259]);
         $panels = $this->extractLeadFieldValue($lead, ['Панелі', 'Панели', 'ФЕМ', 'Сонячні панелі'], [1200253]);
-        $hasGreenTariffRaw = $this->extractLeadFieldValue($lead, ['Зелений тариф', 'Зеленый тариф', 'Green tariff']);
+        // "Мета встановлення" (field_id=1208547): значення "ЗТ", "ЗТ + резерв", "Зелений тариф" тощо
+        $metaRaw = $this->extractLeadFieldValue($lead, ['Мета встановлення', 'Зелений тариф', 'Зеленый тариф', 'Green tariff'], [1208547]);
         $phone = $this->extractLeadPhone($lead);
 
         if ($this->hasSalesProjectColumn('phone_number') && $phone !== null) {
@@ -402,8 +403,14 @@ class AmoCrmService
         if ($this->hasSalesProjectColumn('inverter') && $inverter !== null) {
             $payload['inverter'] = mb_substr($inverter, 0, 255);
         }
+        if ($this->hasSalesProjectColumn('delivered_inverter') && $inverter !== null) {
+            $payload['delivered_inverter'] = mb_substr($inverter, 0, 255);
+        }
         if ($this->hasSalesProjectColumn('bms') && $bms !== null) {
             $payload['bms'] = mb_substr($bms, 0, 255);
+        }
+        if ($this->hasSalesProjectColumn('delivered_bms') && $bms !== null) {
+            $payload['delivered_bms'] = mb_substr($bms, 0, 255);
         }
         if ($this->hasSalesProjectColumn('battery_name') && $battery !== null) {
             $payload['battery_name'] = mb_substr($battery, 0, 255);
@@ -414,6 +421,9 @@ class AmoCrmService
                 $payload['battery_qty'] = $batteryQty;
             }
         }
+        if ($this->hasSalesProjectColumn('delivered_battery') && $battery !== null) {
+            $payload['delivered_battery'] = mb_substr($battery, 0, 255);
+        }
         if ($this->hasSalesProjectColumn('panel_name') && $panels !== null) {
             $payload['panel_name'] = mb_substr($panels, 0, 255);
         }
@@ -423,8 +433,15 @@ class AmoCrmService
                 $payload['panel_qty'] = $panelQty;
             }
         }
-        if ($this->hasSalesProjectColumn('has_green_tariff') && $hasGreenTariffRaw !== null) {
-            $payload['has_green_tariff'] = $this->normalizeBooleanLikeValue($hasGreenTariffRaw);
+        if ($this->hasSalesProjectColumn('delivered_panels') && $panels !== null) {
+            $payload['delivered_panels'] = mb_substr($panels, 0, 255);
+        }
+        if ($this->hasSalesProjectColumn('has_green_tariff') && $metaRaw !== null) {
+            $metaLower = mb_strtolower(trim($metaRaw));
+            $payload['has_green_tariff'] = str_contains($metaLower, 'зт')
+                || str_contains($metaLower, 'зелений')
+                || str_contains($metaLower, 'зеленый')
+                || str_contains($metaLower, 'green tariff');
         }
 
         $advanceRaw = $this->extractLeadFieldValue($lead, ['Аванс', 'Завдаток', 'Аванс/Завдаток', 'advance', 'Advance', 'First payment', 'Перший платіж']);
@@ -435,7 +452,27 @@ class AmoCrmService
             }
         }
 
+        $telegram = $this->extractLeadFieldValue($lead, ['Telegram', 'Телеграм', 'TG', 'Telegram чат', 'Telegram group'], [1216000]);
+        if ($this->hasSalesProjectColumn('telegram_group_link') && $telegram !== null) {
+            $payload['telegram_group_link'] = mb_substr($telegram, 0, 512);
+        }
+
         return $payload;
+    }
+
+    /**
+     * Remove delivered_* fields from a tech-fields payload when the project already has
+     * those fields filled in. "App wins" rule: foreman data takes priority over AmoCRM.
+     */
+    private function applyAppWinsFilter(array $techFields, SalesProject $project): array
+    {
+        $deliveredFields = ['delivered_inverter', 'delivered_battery', 'delivered_bms', 'delivered_panels'];
+        foreach ($deliveredFields as $field) {
+            if (isset($techFields[$field]) && trim((string) ($project->{$field} ?? '')) !== '') {
+                unset($techFields[$field]);
+            }
+        }
+        return $techFields;
     }
 
     public function extractWebhookEvents(array $payload): array
@@ -499,17 +536,19 @@ class AmoCrmService
                 return null;
             }
 
+            $techFields = $this->extractComplectationProjectFields($lead);
+
             if (!$project) {
                 $currency = $this->extractCurrency($lead, 'USD');
 
-                $project = SalesProject::query()->create([
+                $project = SalesProject::query()->create(array_merge([
                     'client_name' => mb_substr($clientName, 0, 255),
                     'total_amount' => round($totalAmount, 2),
                     'remaining_amount' => round($totalAmount, 2),
                     'currency' => $currency,
                     'created_by' => $this->systemUserId(),
                     'source_layer' => 'projects',
-                ]);
+                ], $techFields));
 
                 // New amoCRM-created project must start with no advances/transfers.
                 // This also protects against SQLite id reuse inheriting old transfers.
@@ -520,11 +559,13 @@ class AmoCrmService
                 if ($map) {
                     $map->update([
                         'wallet_project_id' => $project->id,
+                        'amo_status_id' => $leadStatusId ?: null,
                     ]);
                 } else {
                     AmoCrmDealMap::query()->create([
                         'amo_deal_id' => $amoDealId,
                         'wallet_project_id' => $project->id,
+                        'amo_status_id' => $leadStatusId ?: null,
                         'created_at' => now(),
                     ]);
                 }
@@ -532,11 +573,15 @@ class AmoCrmService
                 return $project;
             }
 
-            $project->update([
+            $project->update(array_merge([
                 'client_name' => mb_substr($clientName, 0, 255),
                 'total_amount' => round($totalAmount, 2),
                 'source_layer' => $isProjectCreateStage ? 'projects' : 'finance',
-            ]);
+            ], $this->applyAppWinsFilter($techFields, $project)));
+
+            if ($map && $leadStatusId > 0) {
+                $map->update(['amo_status_id' => $leadStatusId]);
+            }
 
             return $project->fresh();
         }, 3);

@@ -15,12 +15,14 @@ class AmoCrmDealMap extends Model
     protected $fillable = [
         'amo_deal_id',
         'wallet_project_id',
+        'amo_status_id',
         'created_at',
     ];
 
     protected $casts = [
         'amo_deal_id' => 'integer',
         'wallet_project_id' => 'integer',
+        'amo_status_id' => 'integer',
         'created_at' => 'datetime',
     ];
 }

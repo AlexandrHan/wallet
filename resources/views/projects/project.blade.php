@@ -13,6 +13,10 @@
     </div>
   </div>
 
+  <div style="padding:0 0 10px;">
+    <input type="search" id="projectsSearch" class="btn" placeholder="🔍 Пошук по імені клієнта..." style="width:100%; box-sizing:border-box;">
+  </div>
+
   <div id="constructionProjectsContainer"></div>
 
 </main>
@@ -344,6 +348,23 @@ async function loadConstructionProjects() {
   });
   container.innerHTML = '';
 
+  // Кнопка Згорнути/Розкрити всі групи
+  const toggleAllBtn = document.createElement('button');
+  toggleAllBtn.type = 'button';
+  toggleAllBtn.className = 'btn';
+  toggleAllBtn.style.cssText = 'margin-bottom:12px; width:100%;';
+  toggleAllBtn.textContent = 'Згорнути всі';
+  toggleAllBtn.dataset.allOpen = '1';
+  toggleAllBtn.addEventListener('click', function () {
+    const isOpen = this.dataset.allOpen === '1';
+    container.querySelectorAll('.project-stage-body').forEach(body => {
+      body.style.display = isOpen ? 'none' : '';
+    });
+    this.dataset.allOpen = isOpen ? '0' : '1';
+    this.textContent = isOpen ? 'Розкрити всі' : 'Згорнути всі';
+  });
+  container.appendChild(toggleAllBtn);
+
   const activeProjects = sortedProjects.filter(p => p.status !== 'completed');
   const completedProjects = sortedProjects.filter(p => p.status === 'completed');
 
@@ -479,6 +500,28 @@ async function loadConstructionProjects() {
               <div class="project-two-col-row">
                 <input class="btn project-two-col-row-main" data-field="panel_name" value="${esc(p.panel_name)}" placeholder="Назва ФЕМ">
                 <input type="number" class="btn project-two-col-row-side" data-field="panel_qty" value="${p.panel_qty ?? ''}" placeholder="0">
+              </div>
+            </div>
+
+            <hr class="project-divider" style="margin:14px 0 10px;">
+
+            <div class="project-subsection">
+              <button type="button" class="project-section-toggle project-subsection-toggle">
+                <span>📦 Доставлено на об'єкт</span>
+                <span class="project-section-caret">▸</span>
+              </button>
+              <div class="project-subsection-body" style="display:none; padding-top:10px;">
+                <div class="project-field-label" style="font-size:11px; opacity:.65; margin-bottom:6px;">
+                  Ці поля синхронізуються з amoCRM. Якщо заповнені вручну — amoCRM їх не перезаписує.
+                </div>
+                <div class="project-field-label">Інвертор</div>
+                <input class="btn project-input-full" data-field="delivered_inverter" value="${esc(p.delivered_inverter)}" placeholder="Інвертор на об'єкті">
+                <div class="project-field-label">BMS</div>
+                <input class="btn project-input-full" data-field="delivered_bms" value="${esc(p.delivered_bms)}" placeholder="BMS на об'єкті">
+                <div class="project-field-label">АКБ</div>
+                <input class="btn project-input-full" data-field="delivered_battery" value="${esc(p.delivered_battery)}" placeholder="АКБ на об'єкті">
+                <div class="project-field-label">ФЕМ</div>
+                <input class="btn project-input-full" data-field="delivered_panels" value="${esc(p.delivered_panels)}" placeholder="ФЕМ на об'єкті">
               </div>
             </div>
           </div>
@@ -618,38 +661,110 @@ async function loadConstructionProjects() {
     return card;
   }
 
+  // Групи по AmoCRM-етапах (пізніші етапи вгорі)
+  const AMO_STAGES = [
+    { id: 69593834, name: 'Здача проекту замовнику' },
+    { id: 69593830, name: 'Електрична частина' },
+    { id: 69593826, name: 'Монтаж сонячних панелей' },
+    { id: 69593822, name: 'Заплановане будівництво' },
+    { id: 38556550, name: 'Очікування доставки' },
+    { id: 69586234, name: 'Комплектація' },
+    { id: 38556547, name: 'Частично оплатив' },
+  ];
+
+  // Групуємо активні проекти по stage_id
+  const stageMap = new Map();
+  AMO_STAGES.forEach(s => stageMap.set(s.id, []));
+  const noStageProjects = [];
+
+  activeProjects.forEach(p => {
+    const stageId = p.amo_stage_id;
+    if (stageId && stageMap.has(stageId)) {
+      stageMap.get(stageId).push(p);
+    } else {
+      noStageProjects.push(p);
+    }
+  });
+
+  // Рендеримо групи в порядку воронки
+  AMO_STAGES.forEach(stage => {
+    const stageProjects = stageMap.get(stage.id);
+    if (!stageProjects || stageProjects.length === 0) return;
+
+    const groupWrap = document.createElement('div');
+    groupWrap.className = 'card project-stage-group';
+    groupWrap.style.marginTop = '15px';
+    groupWrap.innerHTML = `
+      <div class="project-stage-header" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer; font-weight:700;">
+        <div>${esc(stage.name)}</div>
+        <div style="opacity:.7;">${stageProjects.length}</div>
+      </div>
+      <div class="project-stage-body" style="margin-top:10px;"></div>
+    `;
+
+    const stageBody = groupWrap.querySelector('.project-stage-body');
+    stageProjects.forEach(p => stageBody.appendChild(buildProjectCard(p)));
+
+    groupWrap.querySelector('.project-stage-header')?.addEventListener('click', function () {
+      const body = groupWrap.querySelector('.project-stage-body');
+      body.style.display = body.style.display === 'none' ? '' : 'none';
+    });
+
+    container.appendChild(groupWrap);
+  });
+
+  // Проекти без stage (створені вручну або без прив'язки)
+  noStageProjects.forEach(p => container.appendChild(buildProjectCard(p)));
+
+  // Завершені — колапсований блок внизу
   if (completedProjects.length > 0) {
     const completedWrap = document.createElement('div');
     completedWrap.className = 'card project-card';
+    completedWrap.style.marginTop = '15px';
     completedWrap.innerHTML = `
-      <div class="completed-projects-toggle">
+      <div class="completed-projects-toggle" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
         <div style="font-weight:800;">✅ Завершені проекти</div>
         <div style="opacity:.7;">${completedProjects.length}</div>
       </div>
-      <div class="completed-projects-body"></div>
+      <div class="completed-projects-body" style="display:none;"></div>
     `;
 
     const completedBody = completedWrap.querySelector('.completed-projects-body');
-    completedProjects.forEach(p => {
-      completedBody.appendChild(buildProjectCard(p));
-    });
+    completedProjects.forEach(p => completedBody.appendChild(buildProjectCard(p)));
 
     completedWrap.querySelector('.completed-projects-toggle')?.addEventListener('click', function () {
       const body = completedWrap.querySelector('.completed-projects-body');
-      const isHidden = window.getComputedStyle(body).display === 'none';
-      body.style.display = isHidden ? 'block' : 'none';
+      body.style.display = body.style.display === 'none' ? 'block' : 'none';
     });
 
     container.appendChild(completedWrap);
   }
-
-  activeProjects.forEach(p => {
-    container.appendChild(buildProjectCard(p));
-  });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   loadConstructionProjects().catch(() => alert('Не вдалося завантажити проекти'));
+
+  document.getElementById('projectsSearch')?.addEventListener('input', function () {
+    const q = this.value.trim().toLowerCase();
+    const container = document.getElementById('constructionProjectsContainer');
+    if (!container) return;
+
+    container.querySelectorAll('.project-card').forEach(card => {
+      const name = card.querySelector('[data-project-preview="client"]')?.textContent?.toLowerCase() || '';
+      card.style.display = (!q || name.includes(q)) ? '' : 'none';
+    });
+
+    // показуємо/ховаємо групи залежно від того чи є в них видимі картки
+    container.querySelectorAll('.project-stage-group').forEach(group => {
+      const hasVisible = Array.from(group.querySelectorAll('.project-card'))
+        .some(c => c.style.display !== 'none');
+      group.style.display = hasVisible ? '' : 'none';
+      if (hasVisible && q) {
+        const stageBody = group.querySelector('.project-stage-body');
+        if (stageBody) stageBody.style.display = '';
+      }
+    });
+  });
 });
 
 document.addEventListener('click', async function(e){
@@ -660,6 +775,18 @@ document.addEventListener('click', async function(e){
     const sections = Array.from(body?.querySelectorAll('.project-section') || []);
     const shouldOpen = sections.some(section => !section.classList.contains('is-open'));
     setAllProjectSections(body, shouldOpen);
+    return;
+  }
+
+  const subsectionBtn = target ? target.closest('.project-subsection-toggle') : null;
+  if (subsectionBtn) {
+    const subsectionBody = subsectionBtn.closest('.project-subsection')?.querySelector('.project-subsection-body');
+    if (subsectionBody) {
+      const isHidden = subsectionBody.style.display === 'none';
+      subsectionBody.style.display = isHidden ? '' : 'none';
+      const caret = subsectionBtn.querySelector('.project-section-caret');
+      if (caret) caret.textContent = isHidden ? '▾' : '▸';
+    }
     return;
   }
 
