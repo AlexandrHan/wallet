@@ -82,6 +82,8 @@
       </div>
     </details>
 
+    <a class="tg-menu__item" style="margin-bottom: 14px;" href="/solar-glass">☀️ Solar Glass</a>
+
     <details class="tg-acc">
       <summary class="tg-acc__title">🏗 Технічний відділ</summary>
       <div class="tg-acc__body">

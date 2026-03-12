@@ -47,6 +47,9 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
     // Wallet page (як у тебе)
     Route::get('/wallet', [WalletController::class, 'index'])->name('wallet.index');
 
+    // Solar Glass stock page
+    Route::view('/solar-glass', 'solar-glass')->name('solar-glass');
+
 
     /*
     |--------------------------------------------------------------------------
