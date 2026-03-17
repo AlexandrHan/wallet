@@ -15,6 +15,16 @@ class CashTransfer extends Model
         'exchange_rate',
         'usd_amount',
         'status',
-        'created_by'
+        'created_by',
+        'transfer_type',
+        'employee_user_id',
+        'comment',
+        'cancelled_at',
+        'cancelled_by',
+    ];
+
+    protected $casts = [
+        'accepted_at'  => 'datetime',
+        'cancelled_at' => 'datetime',
     ];
 }

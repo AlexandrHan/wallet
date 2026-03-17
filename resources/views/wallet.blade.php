@@ -142,7 +142,23 @@
 
       <button type="button" class="btn primary right" id="addIncome">+ Дохід</button>
       <button type="button" class="btn danger" id="addExpense">+ Витрата</button>
+      @if(auth()->user()->role === 'owner')
+      <button type="button" class="btn" id="btnEmployeeTransfer" style="display:none;">💸 Передати</button>
+      @endif
     </div>
+
+    {{-- Pending employee transfers banner (for non-owners) --}}
+    @if(auth()->user()->role !== 'owner')
+    <div id="etPendingBanner" style="display:none; margin-top:10px;"></div>
+    @endif
+
+    {{-- Employee transfer history (for owners) --}}
+    @if(auth()->user()->role === 'owner')
+    <div id="etHistorySection" style="display:none; margin-top:12px;">
+      <div style="font-size:.8rem; color:var(--muted); margin-bottom:6px; padding:0 2px;">Передачі співробітникам</div>
+      <div id="etHistoryList"></div>
+    </div>
+    @endif
 
 <!--**************************** кнопка виклику статистики ************************************************-->
     <button id="toggleStats" class="btn" style="margin:2rem auto;display:block; width:100%;">
@@ -330,9 +346,35 @@
 <audio id="sndLeave" src="/sounds/leave.mp3" preload="auto"></audio>
 <audio id="sndMoneta" src="/sounds/moneta.mp3" preload="auto"></audio>
 
+<!-- Modal: Передача коштів співробітнику -->
+<div id="etModal" class="sheet hidden">
+  <div class="sheet-backdrop" id="etModalBackdrop"></div>
+  <div class="sheet-panel">
+    <div class="sheet-handle"></div>
+    <h3 style="margin-top:0;">💸 Передати кошти</h3>
+
+    <label class="muted" style="font-size:.8rem;">Співробітник</label>
+    <select id="etEmployeeSelect" style="margin-bottom:12px;width:100%;"></select>
+
+    <label class="muted" style="font-size:.8rem;">Сума</label>
+    <input type="number" id="etAmount" step="0.01" min="0.01" placeholder="0.00"
+           style="margin-bottom:12px;width:100%;box-sizing:border-box;">
+
+    <label class="muted" style="font-size:.8rem;">Коментар (необов'язково)</label>
+    <input type="text" id="etComment" maxlength="500" placeholder="Коментар…"
+           style="margin-bottom:20px;width:100%;box-sizing:border-box;">
+
+    <div class="row">
+      <button class="btn" id="etCancel">Скасувати</button>
+      <button class="btn primary right" id="etSubmit">Передати</button>
+    </div>
+  </div>
+</div>
+
 <script>
   window.AUTH_USER = @json(auth()->user());
 </script>
+<script src="/js/employee-transfer.js?v={{ filemtime(public_path('js/employee-transfer.js')) }}" defer></script>
 
 
 

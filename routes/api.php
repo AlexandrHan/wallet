@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Storage;
 use App\Http\Controllers\DeliveryController;
 use App\Http\Controllers\AmoWebhookController;
 use App\Http\Controllers\AI\AIChatController;
+use App\Http\Controllers\EmployeeTransferController;
 
 
 
@@ -1531,6 +1532,16 @@ Route::middleware('auth')->post('/supplier-cash/{id}/received', function ($id) {
 });
 
 Route::delete('/deliveries/items/{id}', [DeliveryController::class, 'deleteItem']);
+
+// ─── Employee Cash Transfers (Owner → Employee) ────────────────
+Route::middleware(['web', 'auth'])->group(function () {
+    Route::post('/employee-transfers', [EmployeeTransferController::class, 'store']);
+    Route::get('/employee-transfers/pending', [EmployeeTransferController::class, 'pending']);
+    Route::get('/employee-transfers/history', [EmployeeTransferController::class, 'history']);
+    Route::post('/employee-transfers/{id}/accept', [EmployeeTransferController::class, 'accept']);
+    Route::post('/employee-transfers/{id}/decline', [EmployeeTransferController::class, 'decline']);
+    Route::post('/employee-transfers/{id}/cancel', [EmployeeTransferController::class, 'cancel']);
+});
 
 
 // ─── AI Financial Assistant ────────────────────────────────────
