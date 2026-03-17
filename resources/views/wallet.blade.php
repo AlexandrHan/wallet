@@ -142,23 +142,18 @@
 
       <button type="button" class="btn primary right" id="addIncome">+ Дохід</button>
       <button type="button" class="btn danger" id="addExpense">+ Витрата</button>
-      @if(auth()->user()->role === 'owner')
-      <button type="button" class="btn" id="btnEmployeeTransfer" style="display:none;">💸 Передати</button>
-      @endif
     </div>
+    @if(auth()->user()->role === 'owner')
+    <div style="margin-top:8px;">
+      <button type="button" class="btn" id="btnEmployeeTransfer" style="display:none;width:100%;">💸 Передати кошти співробітнику</button>
+    </div>
+    @endif
 
     {{-- Pending employee transfers banner (for non-owners) --}}
     @if(auth()->user()->role !== 'owner')
     <div id="etPendingBanner" style="display:none; margin-top:10px;"></div>
     @endif
 
-    {{-- Employee transfer history (for owners) --}}
-    @if(auth()->user()->role === 'owner')
-    <div id="etHistorySection" style="display:none; margin-top:12px;">
-      <div style="font-size:.8rem; color:var(--muted); margin-bottom:6px; padding:0 2px;">Передачі співробітникам</div>
-      <div id="etHistoryList"></div>
-    </div>
-    @endif
 
 <!--**************************** кнопка виклику статистики ************************************************-->
     <button id="toggleStats" class="btn" style="margin:2rem auto;display:block; width:100%;">
@@ -345,6 +340,14 @@
 
 <audio id="sndLeave" src="/sounds/leave.mp3" preload="auto"></audio>
 <audio id="sndMoneta" src="/sounds/moneta.mp3" preload="auto"></audio>
+
+<!-- Long press action menu -->
+<div id="lpOverlay" class="longpress-overlay"></div>
+<div id="lpMenu" class="longpress-menu">
+  <div class="lp-info" id="lpInfo"></div>
+  <div class="lp-amount" id="lpAmount"></div>
+  <div id="lpButtons"></div>
+</div>
 
 <!-- Modal: Передача коштів співробітнику -->
 <div id="etModal" class="sheet hidden">

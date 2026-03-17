@@ -1090,8 +1090,9 @@ Route::get('/wallets/{walletId}/entries', function (int $walletId) {
                 'created_by' => $e->created_by,
 
                 // ✅ ДОДАЛИ
-                'receipt_path' => $e->receipt_path,
-                'receipt_url'  => $e->receipt_path ? Storage::disk('public')->url($e->receipt_path) : null,
+                'receipt_path'     => $e->receipt_path,
+                'receipt_url'      => $e->receipt_path ? Storage::disk('public')->url($e->receipt_path) : null,
+                'cash_transfer_id' => isset($e->cash_transfer_id) ? (int)$e->cash_transfer_id : null,
             ];
 
         });

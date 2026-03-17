@@ -630,28 +630,27 @@ const CURRENCY_SYMBOLS = {
   function renderEntries(){
     elEntries.innerHTML = '';
 
-    state.entries.forEach(e => {
+    const lockedWalletNames = new Set([
+      'КЕШ НТВ (UAH)',
+      'КЕШ НТВ (USD)',
+      'КЕШ НТВ (EUR)',
+    ]);
+    const isLockedNtvCash =
+      state.selectedWallet?.type !== 'bank' &&
+      lockedWalletNames.has(String(state.selectedWallet?.name || ''));
 
+    state.entries.forEach(e => {
       const signed = Number(e.signed_amount || 0);
       const cls = signed >= 0 ? 'pos' : 'neg';
       const sign = signed >= 0 ? '+' : '';
 
-      const lockedWalletNames = new Set([
-        'КЕШ НТВ (UAH)',
-        'КЕШ НТВ (USD)',
-        'КЕШ НТВ (EUR)',
-      ]);
+      const editable =
+        isToday(e.posting_date) &&
+        canWriteWallet(state.selectedWallet.owner) &&
+        !isLockedNtvCash &&
+        !e.cash_transfer_id;
 
-      const isLockedNtvCash =
-        state.selectedWallet?.type !== 'bank' && // тільки cash
-        lockedWalletNames.has(String(state.selectedWallet?.name || ''));
-
-    const editable =
-      isToday(e.posting_date) &&
-      canWriteWallet(state.selectedWallet.owner) &&
-      !isLockedNtvCash;
-
-      const isActive = state.activeEntryId === e.id;
+      const isTransfer = !!e.cash_transfer_id;
 
       const d = new Date(e.posting_date);
       const dateHtml = `
@@ -660,13 +659,31 @@ const CURRENCY_SYMBOLS = {
       `;
 
       const tr = document.createElement('tr');
-      tr.className = `entry-row ${isActive ? 'active' : ''}`;
+      tr.className = 'entry-row';
 
-      tr.onclick = (ev) => {
-        ev.stopPropagation();
-        state.activeEntryId = (state.activeEntryId === e.id) ? null : e.id;
-        renderEntries();
-      };
+      // Long press support
+      let lpTimer = null;
+      let lpFired = false;
+
+      function startLp(ev) {
+        lpFired = false;
+        lpTimer = setTimeout(() => {
+          lpFired = true;
+          vibrate(30);
+          showEntryActions(e, editable, isTransfer);
+        }, 500);
+      }
+      function cancelLp() { clearTimeout(lpTimer); }
+
+      tr.addEventListener('touchstart', startLp, { passive: true });
+      tr.addEventListener('touchmove',  cancelLp, { passive: true });
+      tr.addEventListener('touchend', (ev) => {
+        cancelLp();
+        if (lpFired) ev.preventDefault();
+      });
+      tr.addEventListener('mousedown', startLp);
+      tr.addEventListener('mouseup',   cancelLp);
+      tr.addEventListener('mouseleave', cancelLp);
 
       tr.innerHTML = `
         <td class="muted date-cell">
@@ -675,18 +692,12 @@ const CURRENCY_SYMBOLS = {
 
         <td class="entry-comment">
           ${renderComment(e.comment)}
+          ${isTransfer ? '<span class="transfer-badge">💸</span>' : ''}
 
           ${e.receipt_url ? `
             <button class="receipt-btn" onclick="openReceipt('${e.receipt_url}'); event.stopPropagation()">
               📎
             </button>
-        ` : ''}
-
-          ${editable ? `
-            <div class="entry-actions">
-              <button onclick="editEntry(${e.id}); event.stopPropagation()">✏️</button>
-              <button onclick="deleteEntry(${e.id}); event.stopPropagation()">🗑</button>
-            </div>
           ` : ''}
         </td>
 
@@ -700,6 +711,8 @@ const CURRENCY_SYMBOLS = {
 
       elEntries.appendChild(tr);
     });
+
+    window.onEntriesRendered?.();
   }
 
 
@@ -2511,27 +2524,75 @@ async function editEntry(id){
 
 
 
-document.addEventListener('click', (e) => {
-  if (state.activeEntryId === null) return;
+// Long press menu — show / hide
+const _lpOverlay = document.getElementById('lpOverlay');
+const _lpMenu    = document.getElementById('lpMenu');
+const _lpInfo    = document.getElementById('lpInfo');
+const _lpAmount  = document.getElementById('lpAmount');
+const _lpButtons = document.getElementById('lpButtons');
 
-  const target = e.target instanceof Element ? e.target : null;
-  if (!target) return;
+function showEntryActions(entry, editable, isTransfer) {
+  const signed = Number(entry.signed_amount || 0);
+  const sym    = CURRENCY_SYMBOLS[state.selectedWallet?.currency] ?? '';
+  const sign   = signed >= 0 ? '+' : '';
+  const IS_OWNER = AUTH_USER.role === 'owner';
 
-  // Не чіпаємо навігацію, меню, модалки й інші інтерактивні елементи:
-  // інакше перед переходом запускається дорогий renderEntries().
-  if (target.closest(
-    '.tg-bottom-nav, .tg-menu, .tg-top-menu-trigger, .tg-fab, header a, header button, ' +
-    '.btn, .sheet, .modal, a[href], button, input, select, textarea, .receipt-btn, .entry-actions'
-  )) {
+  _lpInfo.textContent   = (entry.comment || '').replace(/^\[.+?\]\s*/, '') || '—';
+  _lpAmount.textContent = sign + fmt(Math.abs(signed)) + ' ' + sym;
+
+  _lpButtons.innerHTML = '';
+
+  if (isTransfer && IS_OWNER && isToday(entry.posting_date)) {
+    const btn = document.createElement('button');
+    btn.className = 'lp-cancel-transfer';
+    btn.textContent = '↩ Скасувати передачу';
+    btn.onclick = async () => {
+      hideEntryActions();
+      if (!confirm('Скасувати передачу коштів?')) return;
+      const res = await fetch(`/api/employee-transfers/${entry.cash_transfer_id}/cancel`, {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': CSRF, 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (!res.ok) { alert(data.error ?? 'Помилка'); return; }
+      await loadEntries(state.selectedWalletId);
+      await loadWallets();
+    };
+    _lpButtons.appendChild(btn);
+  } else if (editable && !isTransfer) {
+    const btnEdit = document.createElement('button');
+    btnEdit.className = 'lp-edit';
+    btnEdit.textContent = '✏️ Редагувати';
+    btnEdit.onclick = () => { hideEntryActions(); editEntry(entry.id); };
+
+    const btnDel = document.createElement('button');
+    btnDel.className = 'lp-delete';
+    btnDel.textContent = '🗑 Видалити';
+    btnDel.onclick = () => { hideEntryActions(); deleteEntry(entry.id); };
+
+    _lpButtons.appendChild(btnEdit);
+    _lpButtons.appendChild(btnDel);
+  } else {
+    // nothing actionable — don't show menu
     return;
   }
 
-  const opsView = document.getElementById('opsView');
-  if (!opsView || opsView.style.display === 'none' || !opsView.contains(target)) return;
+  const btnClose = document.createElement('button');
+  btnClose.className = 'lp-close';
+  btnClose.textContent = 'Закрити';
+  btnClose.onclick = hideEntryActions;
+  _lpButtons.appendChild(btnClose);
 
-  state.activeEntryId = null;
-  renderEntries();
-});
+  _lpOverlay.classList.add('show');
+  _lpMenu.classList.add('show');
+}
+
+function hideEntryActions() {
+  _lpOverlay.classList.remove('show');
+  _lpMenu.classList.remove('show');
+}
+
+_lpOverlay.addEventListener('click', hideEntryActions);
 
 
 
@@ -3026,6 +3087,16 @@ window.openStaffWallet = async function(walletId){
   closeStaffCash();
   await loadEntries(walletId);
 }
+
+// Exposed for employee-transfer.js: reload entries after accepting a transfer
+window.reloadCurrentWallet = async function() {
+  if (state.selectedWalletId) {
+    await loadEntries(state.selectedWalletId);
+    await loadWallets();
+  }
+};
+
+window.getSelectedWalletId = () => state.selectedWalletId;
 
 
 document.addEventListener('click', (e) => {

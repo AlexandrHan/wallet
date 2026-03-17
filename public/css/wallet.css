@@ -781,7 +781,7 @@ img{ display:block; max-height:48px; }
 
 
 /* ================== ENTRY ROW ACTIONS ================== */
-.entry-row{ cursor: pointer; }
+.entry-row{ cursor: default; user-select: none; }
 
 .entry-actions{
   margin-top:4px;
@@ -1685,4 +1685,79 @@ body.modal-open{
   margin-top: 8px;
   object-fit: cover;
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.336);
+}
+
+/* ================== LONG PRESS ACTION MENU ================== */
+.longpress-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.4);
+  z-index: 999;
+  opacity: 0;
+  transition: opacity .2s;
+  pointer-events: none;
+}
+.longpress-overlay.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.longpress-menu {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 12px 16px calc(env(safe-area-inset-bottom, 0px) + 12px);
+  background: rgba(28,32,45,.96);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border-top: 1px solid var(--stroke);
+  border-radius: 18px 18px 0 0;
+  z-index: 1000;
+  transform: translateY(100%);
+  transition: transform .25s ease;
+}
+.longpress-menu.show { transform: translateY(0); }
+
+.longpress-menu .lp-info {
+  text-align: center;
+  margin-bottom: 6px;
+  font-size: .8rem;
+  color: var(--muted);
+}
+.longpress-menu .lp-amount {
+  font-size: 1.15rem;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 16px;
+}
+.longpress-menu button {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  margin-bottom: 8px;
+  border: none;
+  border-radius: 12px;
+  font-size: .95rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: rgba(255,255,255,.06);
+  color: var(--text);
+  transition: background .15s, transform .1s;
+}
+.longpress-menu button:active { transform: scale(0.97); background: rgba(255,255,255,.12); }
+.longpress-menu button.lp-edit   { color: #4c7dff; }
+.longpress-menu button.lp-delete { color: #ff6b6b; }
+.longpress-menu button.lp-cancel-transfer { color: #f59e0b; }
+.longpress-menu button.lp-close  { background: transparent; color: var(--muted); margin-bottom: 0; }
+
+.transfer-badge {
+  display: inline-block;
+  font-size: 10px;
+  color: #4c7dff;
+  margin-left: 4px;
+  vertical-align: middle;
+  opacity: .85;
 }

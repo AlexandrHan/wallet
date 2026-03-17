@@ -18,8 +18,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnCancel        = document.getElementById('etCancel');
   const btnSubmit        = document.getElementById('etSubmit');
   const pendingBanner    = document.getElementById('etPendingBanner');
-  const historySection   = document.getElementById('etHistorySection');
-  const historyList      = document.getElementById('etHistoryList');
 
   // ── Helpers ──────────────────────────────────────────────────
   async function apiFetch(url, opts = {}) {
@@ -36,14 +34,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function todayStr() {
     return new Date().toISOString().slice(0, 10);
-  }
-
-  function statusLabel(status) {
-    return { pending: 'Очікує', accepted: 'Підтверджено', declined: 'Відхилено', cancelled: 'Скасовано' }[status] ?? status;
-  }
-
-  function statusColor(status) {
-    return { pending: '#f59e0b', accepted: '#22c55e', declined: '#ef4444', cancelled: '#6b7280' }[status] ?? '#6b7280';
   }
 
   // ── Modal open/close ─────────────────────────────────────────
@@ -102,8 +92,6 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!res.ok) { alert(data.error ?? 'Помилка'); return; }
 
       closeModal();
-      // Refresh history
-      if (IS_OWNER) loadOwnerHistory();
     } catch (e) {
       alert('Помилка мережі');
     } finally {
@@ -142,9 +130,124 @@ document.addEventListener('DOMContentLoaded', () => {
     return AUTH?.actor ?? null;
   }
 
+  // ── Owner: pending transfers — polling + virtual rows in entries table ──
+  let _pollTimer      = null;
+  let _pendingIds     = new Set();
+  let _pendingList    = [];   // full transfer objects for current wallet
+  const elEntries = document.getElementById('entries');
+
+  // Inject pending-transfer rows at the top of the entries tbody
+  function injectPendingRows() {
+    if (!elEntries || !IS_OWNER) return;
+    // Remove previously injected rows
+    elEntries.querySelectorAll('.et-pending-row').forEach(r => r.remove());
+
+    const walletId = typeof window.getSelectedWalletId === 'function'
+      ? window.getSelectedWalletId() : null;
+
+    const toShow = walletId
+      ? _pendingList.filter(t => t.from_wallet_id === walletId)
+      : _pendingList;
+
+    if (!toShow.length) return;
+
+    // Prepend rows (newest first)
+    [...toShow].reverse().forEach(t => {
+      const tr = document.createElement('tr');
+      tr.className = 'entry-row et-pending-row';
+      tr.style.cssText = 'opacity:.75;';
+
+      const today = new Date();
+      const dd = String(today.getDate()).padStart(2, '0');
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const yyyy = today.getFullYear();
+
+      const name = escHtml(t.employee_owner ?? t.employee_wallet_name ?? '—');
+      const comment = t.comment ? ' · ' + escHtml(t.comment) : '';
+
+      tr.innerHTML = `
+        <td class="muted date-cell">
+          ${dd}.${mm}
+          <div style="font-size:11px;opacity:.6">${yyyy}р</div>
+        </td>
+        <td class="entry-comment">
+          ${name}${comment}
+          <span class="transfer-badge">⏳ очікує підтвердження</span>
+        </td>
+        <td class="amount-cell neg">
+          -${fmtAmount(t.amount, t.currency)}
+        </td>
+      `;
+
+      elEntries.prepend(tr);
+    });
+  }
+
+  function fmtAmount(amount, currency) {
+    const sym = { UAH: '₴', USD: '$', EUR: '€' }[currency] ?? currency;
+    return Number(amount).toLocaleString('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      + ' ' + sym;
+  }
+
+  // Re-inject after wallet.js re-renders the entries tbody
+  window.onEntriesRendered = () => { if (IS_OWNER) injectPendingRows(); };
+
+  async function fetchAndInjectPending() {
+    const res = await apiFetch('/api/employee-transfers/pending');
+    if (!res.ok) return;
+    _pendingList = await res.json();
+    _pendingIds  = new Set(_pendingList.map(t => t.id));
+    injectPendingRows();
+  }
+
+  async function pollOwnerPending() {
+    const res = await apiFetch('/api/employee-transfers/pending');
+    if (!res.ok) return;
+    const transfers = await res.json();
+    const currentIds = new Set(transfers.map(t => t.id));
+
+    // If any previously-tracked pending transfer is gone → employee responded
+    let changed = false;
+    _pendingIds.forEach(id => { if (!currentIds.has(id)) changed = true; });
+
+    _pendingList = transfers;
+    _pendingIds  = currentIds;
+    injectPendingRows();
+
+    if (changed && typeof window.reloadCurrentWallet === 'function') {
+      await window.reloadCurrentWallet();
+    }
+  }
+
+  function startOwnerPoll() {
+    stopOwnerPoll();
+    fetchAndInjectPending();
+    _pollTimer = setInterval(pollOwnerPending, 10_000);
+  }
+
+  function stopOwnerPoll() {
+    if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+    _pendingList = [];
+    _pendingIds  = new Set();
+    if (elEntries) elEntries.querySelectorAll('.et-pending-row').forEach(r => r.remove());
+  }
+
+  // ── Employee polling ──────────────────────────────────────────
+  let _empPollTimer = null;
+
+  function startEmployeePoll() {
+    stopEmployeePoll();
+    loadPendingForEmployee();
+    _empPollTimer = setInterval(loadPendingForEmployee, 10_000);
+  }
+
+  function stopEmployeePoll() {
+    if (_empPollTimer) { clearInterval(_empPollTimer); _empPollTimer = null; }
+  }
+
   function onWalletOpened() {
     if (!IS_OWNER) {
-      loadPendingForEmployee();
+      startEmployeePoll();
       return;
     }
     // For owners: show "Transfer" button only on cash wallets they own
@@ -152,71 +255,18 @@ document.addEventListener('DOMContentLoaded', () => {
     if (currency && btnTransfer) {
       btnTransfer.style.display = '';
       loadStaffWallets(currency);
-      loadOwnerHistory();
     }
+    startOwnerPoll();
   }
 
   function onWalletClosed() {
     if (btnTransfer) btnTransfer.style.display = 'none';
-    if (historySection) historySection.style.display = 'none';
     if (pendingBanner) pendingBanner.style.display = 'none';
+    stopOwnerPoll();
+    stopEmployeePoll();
   }
 
   btnTransfer?.addEventListener('click', openModal);
-
-  // ── Owner: history ─────────────────────────────────────────────
-  async function loadOwnerHistory() {
-    if (!historyList || !historySection) return;
-
-    const res = await apiFetch('/api/employee-transfers/history');
-    if (!res.ok) return;
-    const transfers = await res.json();
-
-    if (!transfers.length) {
-      historySection.style.display = 'none';
-      return;
-    }
-
-    historySection.style.display = '';
-    historyList.innerHTML = '';
-
-    transfers.forEach(t => {
-      const isToday = (t.created_at ?? '').slice(0, 10) === todayStr();
-      const canCancel = t.status === 'accepted' && isToday;
-
-      const el = document.createElement('div');
-      el.className = 'card';
-      el.style.cssText = 'padding:10px 12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; gap:8px;';
-      el.innerHTML = `
-        <div style="flex:1; min-width:0;">
-          <div style="font-size:.85rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-            ${escHtml(t.employee_owner ?? t.employee_wallet_name ?? '—')}
-          </div>
-          <div style="font-size:.75rem; color:var(--muted);">
-            ${(t.created_at ?? '').slice(0, 16).replace('T', ' ')}
-            ${t.comment ? '· ' + escHtml(t.comment) : ''}
-          </div>
-        </div>
-        <div style="text-align:right; white-space:nowrap;">
-          <div style="font-weight:700;">${fmt(t.amount, t.currency)}</div>
-          <div style="font-size:.75rem; color:${statusColor(t.status)};">${statusLabel(t.status)}</div>
-        </div>
-        ${canCancel ? `<button class="btn danger et-cancel-btn" data-id="${t.id}" style="flex-shrink:0;">Скасувати</button>` : ''}
-      `;
-      historyList.appendChild(el);
-    });
-
-    historyList.querySelectorAll('.et-cancel-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        if (!confirm('Скасувати передачу коштів?')) return;
-        btn.disabled = true;
-        const res = await apiFetch(`/api/employee-transfers/${btn.dataset.id}/cancel`, { method: 'POST' });
-        const data = await res.json();
-        if (!res.ok) { alert(data.error ?? 'Помилка'); btn.disabled = false; return; }
-        loadOwnerHistory();
-      });
-    });
-  }
 
   // ── Employee: pending banner ───────────────────────────────────
   async function loadPendingForEmployee() {
@@ -290,6 +340,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ── Check pending on initial load (for employees) ─────────────
   if (!IS_OWNER) {
-    loadPendingForEmployee();
+    startEmployeePoll();
   }
 });
