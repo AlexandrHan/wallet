@@ -77,12 +77,20 @@
       <div class="tg-acc__body">
         <a class="tg-menu__item" href="/stock">📦 Склад</a>
         <a class="tg-menu__item" href="/deliveries">🚚 Поставки</a>
+        <a class="tg-menu__item" href="/equipment-orders">🛒 Замовлення обладнання</a>
         <a class="tg-menu__item" href="/stock/sales-reports">📊 Історія звітів складу</a>
         <a class="tg-menu__item" href="/stock/supplier-cash">💸 Борги</a>
       </div>
     </details>
 
     <a class="tg-menu__item" style="margin-bottom: 14px;" href="/solar-glass">☀️ Solar Glass</a>
+
+    <details class="tg-acc">
+      <summary class="tg-acc__title">⚙️ Налаштування</summary>
+      <div class="tg-acc__body">
+        <a class="tg-menu__item" href="/norm-rules">🔧 Нормалізація обладнання</a>
+      </div>
+    </details>
 
     <details class="tg-acc">
       <summary class="tg-acc__title">🏗 Технічний відділ</summary>
@@ -99,6 +107,14 @@
       <div class="tg-acc__body">
         <a class="tg-menu__item" href="/salary">💰 Нарахування зарплатні</a>
         <a class="tg-menu__item" href="/salary/settings">⚙️ Налаштування зарплатні</a>
+      </div>
+    </details>
+
+    <details class="tg-acc">
+      <summary class="tg-acc__title">📊 Аналітика</summary>
+      <div class="tg-acc__body">
+        <a class="tg-menu__item" href="/analytics">📊 Огляд</a>
+        <a class="tg-menu__item" href="/ai">🤖 AI Аналітик</a>
       </div>
     </details>
 

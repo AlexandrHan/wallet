@@ -13,15 +13,15 @@
 }
 
 .tg-project-owner-fab {
-  width: 53px;
-  height: 53px;
+  width: 64px;
+  height: 64px;
   display: inline-flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 2px;
   text-decoration: none;
-  flex: 0 0 53px;
+  flex: 0 0 64px;
 }
 
 .tg-project-owner-fab__icon {

@@ -11,10 +11,6 @@ return new class extends Migration
      */
 public function up(): void
 {
-    if (Schema::hasTable('fem_containers')) {
-        return;
-    }
-
     Schema::create('fem_containers', function (Blueprint $table) {
         $table->id();
         $table->date('date')->nullable();           // дата контейнера/продажу

@@ -11,7 +11,7 @@ use App\Http\Controllers\EntryReceiptController;
 use Illuminate\Support\Facades\Storage;
 use App\Http\Controllers\DeliveryController;
 use App\Http\Controllers\AmoWebhookController;
-use App\Http\Controllers\SolarGlassApiController;
+use App\Http\Controllers\AI\AIChatController;
 
 
 
@@ -21,8 +21,6 @@ use App\Http\Controllers\SolarGlassApiController;
 
 Route::get('/ping', fn () => response()->json(['ok' => true]));
 Route::post('/amocrm/webhook', AmoWebhookController::class);
-
-Route::post('/solarglass', [SolarGlassApiController::class, 'jsonRpc']);
 
 Route::post('/automation/amocrm-sync', function (Request $request) {
     $expectedToken = (string) config('services.automation.token');
@@ -1533,3 +1531,6 @@ Route::middleware('auth')->post('/supplier-cash/{id}/received', function ($id) {
 });
 
 Route::delete('/deliveries/items/{id}', [DeliveryController::class, 'deleteItem']);
+
+
+// ─── AI Financial Assistant ────────────────────────────────────

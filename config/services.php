@@ -75,9 +75,29 @@ return [
         ],
     ],
 
+    'zippy' => [
+        'base_url'    => env('ZIPPY_BASE_URL', ''),
+        'api_key'     => env('ZIPPY_API_KEY', ''),        // статичний Bearer token (якщо є)
+        'auth_path'   => env('ZIPPY_AUTH_PATH', ''),      // шлях для отримання JWT (напр. api/common)
+        'login'       => env('ZIPPY_API_LOGIN', ''),
+        'password'    => env('ZIPPY_API_PASSWORD', ''),
+        'stock_path'  => env('ZIPPY_STOCK_PATH', 'api/stock'),
+        'stock_method'=> env('ZIPPY_STOCK_METHOD', 'get'),// метод JSON-RPC для отримання товарів
+        'timeout'     => (int) env('ZIPPY_TIMEOUT', 30),
+    ],
+
     'automation' => [
         'url' => env('AUTOMATION_URL', ''),
         'token' => env('AUTOMATION_TOKEN'),
+    ],
+
+    'openclaw' => [
+        'url'     => env('OPENCLAW_URL', 'http://localhost:9000'),
+        'timeout' => (int) env('OPENCLAW_TIMEOUT', 60),
+    ],
+
+    'anthropic' => [
+        'key' => env('ANTHROPIC_API_KEY', ''),
     ],
 
     'amocrm' => [

@@ -352,12 +352,11 @@ class SalesProjectController extends Controller
             $projectsQuery->where('source_layer', 'projects');
         }
 
-        // Apply amoCRM stage filtering at the query level for finance, if configured and we have at least
-        // one complectation record. This prevents loading the full project list and then filtering in PHP.
-        if ($layer === 'finance' && !empty($financeStageIds) && $amoComplectationByProjectId->isNotEmpty()) {
+        // Join amo_complectation_projects for finance layer to restrict to AMO-tracked projects,
+        // but do NOT filter by stage — projects must stay visible after moving to any AMO stage.
+        if ($layer === 'finance' && $amoComplectationByProjectId->isNotEmpty()) {
             $projectsQuery
                 ->join('amo_complectation_projects', 'amo_complectation_projects.wallet_project_id', '=', 'sales_projects.id')
-                ->whereIn('amo_complectation_projects.status_id', $financeStageIds)
                 ->select('sales_projects.*');
         }
 

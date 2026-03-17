@@ -252,10 +252,12 @@ class AmoCrmService
     {
         $created = 0;
         $updated = 0;
+        $syncedIds = [];
 
         foreach ($deals as $deal) {
+            $amoDealId = (int) ($deal['id'] ?? 0);
             $existingMap = AmoCrmDealMap::query()
-                ->where('amo_deal_id', (int) ($deal['id'] ?? 0))
+                ->where('amo_deal_id', $amoDealId)
                 ->exists();
 
             $project = $this->syncLead((array) $deal);
@@ -268,13 +270,70 @@ class AmoCrmService
             } else {
                 $created++;
             }
+            $syncedIds[] = $amoDealId;
         }
 
         return [
             'total' => count($deals),
             'created' => $created,
             'updated' => $updated,
+            'synced_ids' => $syncedIds,
         ];
+    }
+
+    /**
+     * Re-sync tracked deals (amocrm_deal_map) that moved out of project_status_ids.
+     * Fetches all deals modified in the last 2 hours from amoCRM (any stage) and
+     * updates those already tracked in our amocrm_deal_map table.
+     */
+    public function syncOutOfStageProjectDeals(array $alreadySyncedIds): array
+    {
+        $trackedDealIds = AmoCrmDealMap::query()
+            ->whereNotNull('wallet_project_id')
+            ->pluck('amo_deal_id')
+            ->flip();
+
+        $updated = 0;
+        $since = Carbon::now()->subHours(2)->timestamp;
+        $page = 1;
+
+        do {
+            $query = [
+                'page' => $page,
+                'limit' => 250,
+                'with' => 'contacts,users',
+                'filter[updated_at][from]' => $since,
+            ];
+
+            $response = $this->apiRequest('GET', '/leads', ['query' => $query]);
+            $leads = Arr::get($response->json(), '_embedded.leads', []);
+
+            if (empty($leads)) {
+                break;
+            }
+
+            foreach ($leads as $deal) {
+                $amoDealId = (int) ($deal['id'] ?? 0);
+
+                if (!$trackedDealIds->has($amoDealId) || in_array($amoDealId, $alreadySyncedIds, true)) {
+                    continue;
+                }
+
+                $fullLead = $this->getLeadById($amoDealId);
+                if (!is_array($fullLead) || empty($fullLead)) {
+                    continue;
+                }
+
+                $project = $this->syncLead($fullLead);
+                if ($project) {
+                    $updated++;
+                }
+            }
+
+            $page++;
+        } while (count($leads) === 250);
+
+        return ['updated' => $updated];
     }
 
     public function syncComplectationDeals(array $deals): array
@@ -282,6 +341,7 @@ class AmoCrmService
         $financeStageIds = $this->financeStageIds();
         $created = 0;
         $updated = 0;
+        $syncedIds = [];
 
         foreach ($deals as $deal) {
             $lead = (array) $deal;
@@ -301,88 +361,204 @@ class AmoCrmService
                 continue;
             }
 
-            $clientName = $this->extractProjectClientName($lead);
-            if ($clientName === '') {
-                $clientName = 'amoCRM deal #'.$amoDealId;
-            }
-
-            $totalAmount = (float) ($lead['price'] ?? 0);
-            if ($totalAmount <= 0) {
-                $totalAmount = 0.01;
-            }
-            $projectPayload = $this->extractComplectationProjectFields($lead);
-
-            $responsibleUserId = (int) ($lead['responsible_user_id'] ?? 0);
-            $responsibleName = trim((string) (
-                Arr::get($lead, '_embedded.users.0.name')
-                ?? ''
-            ));
-            if ($responsibleName === '' && $responsibleUserId > 0) {
-                $amoUser = $this->getUserById($responsibleUserId);
-                $responsibleName = trim((string) ($amoUser['name'] ?? ''));
-            }
-
-            DB::transaction(function () use ($amoDealId, $clientName, $lead, $totalAmount, $projectPayload, $responsibleUserId, $responsibleName, $dealStatusId, &$created, &$updated) {
-                $row = AmoComplectationProject::query()
-                    ->where('amo_deal_id', $amoDealId)
-                    ->lockForUpdate()
-                    ->first();
-
-                $project = null;
-                $walletProjectId = (int) ($row->wallet_project_id ?? 0);
-                if ($walletProjectId > 0) {
-                    $project = SalesProject::query()
-                        ->where('id', $walletProjectId)
-                        ->whereIn('source_layer', ['finance', 'projects'])
-                        ->orWhere(fn ($q) => $q->where('id', $walletProjectId)->whereNull('source_layer'))
-                        ->first();
-                }
-
-                if (!$project) {
-                    $currency = $this->extractCurrency($lead, 'USD');
-                    $project = SalesProject::query()->create(array_merge([
-                        'client_name' => mb_substr($clientName, 0, 255),
-                        'total_amount' => round($totalAmount, 2),
-                        'remaining_amount' => round($totalAmount, 2),
-                        'currency' => $currency,
-                        'created_by' => $this->systemUserId(),
-                        'source_layer' => 'finance',
-                    ], $projectPayload));
-
-                    $created++;
-                } else {
-                    $project->update(array_merge([
-                        'client_name' => mb_substr($clientName, 0, 255),
-                        'total_amount' => round($totalAmount, 2),
-                    ], $this->applyAppWinsFilter($projectPayload, $project)));
-                    $updated++;
-                }
-                $payload = [
-                    'wallet_project_id' => $project->id,
-                    'client_name' => mb_substr($clientName, 0, 255),
-                    'deal_name' => mb_substr(trim((string) ($lead['name'] ?? '')), 0, 255),
-                    'total_amount' => round($totalAmount, 2),
-                    'responsible_user_id' => $responsibleUserId ?: null,
-                    'responsible_name' => $responsibleName !== '' ? mb_substr($responsibleName, 0, 255) : null,
-                    'status_id' => $dealStatusId,
-                    'raw_payload' => $lead,
-                ];
-
-                if ($row) {
-                    $row->update($payload);
-                } else {
-                    AmoComplectationProject::query()->create(array_merge([
-                        'amo_deal_id' => $amoDealId,
-                    ], $payload));
-                }
-            }, 3);
+            $result = $this->upsertDeal($lead);
+            $created += $result['created'];
+            $updated += $result['updated'];
+            $syncedIds[] = $amoDealId;
         }
 
         return [
             'total' => count($deals),
             'created' => $created,
             'updated' => $updated,
+            'synced_ids' => $syncedIds,
         ];
+    }
+
+    /**
+     * Re-sync tracked deals that are no longer in the complectation stages.
+     *
+     * Two passes:
+     * 1. Recent changes: fetch all deals modified in the last 2 hours from amoCRM
+     *    (any stage) and update those already tracked in our table.
+     * 2. Stale backfill: process a small batch of tracked deals that haven't been
+     *    re-synced recently, ensuring all deals are eventually refreshed.
+     */
+    public function syncOutOfStageDeals(array $alreadySyncedIds, int $staleBatchSize = 30): array
+    {
+        $trackedDealIds = AmoComplectationProject::query()
+            ->whereNotNull('wallet_project_id')
+            ->pluck('amo_deal_id')
+            ->flip();
+
+        $updated = 0;
+        $recentlySyncedIds = $alreadySyncedIds;
+
+        // Pass 1: deals modified in amoCRM in the last 2 hours (any stage).
+        $since = Carbon::now()->subHours(2)->timestamp;
+        $page = 1;
+
+        do {
+            $query = [
+                'page' => $page,
+                'limit' => 250,
+                'with' => 'contacts,users',
+                'filter[updated_at][from]' => $since,
+            ];
+
+            $response = $this->apiRequest('GET', '/leads', ['query' => $query]);
+            $leads = Arr::get($response->json(), '_embedded.leads', []);
+
+            if (empty($leads)) {
+                break;
+            }
+
+            foreach ($leads as $deal) {
+                $amoDealId = (int) ($deal['id'] ?? 0);
+
+                if (!$trackedDealIds->has($amoDealId) || in_array($amoDealId, $alreadySyncedIds, true)) {
+                    continue;
+                }
+
+                $fullLead = $this->getLeadById($amoDealId);
+                if (!is_array($fullLead) || empty($fullLead)) {
+                    continue;
+                }
+
+                $result = $this->upsertDeal($fullLead, onlyUpdate: true);
+                $updated += $result['updated'];
+                $recentlySyncedIds[] = $amoDealId;
+            }
+
+            $page++;
+        } while (count($leads) === 250);
+
+        // Pass 2: stale backfill — oldest un-synced deals, a small batch per run.
+        $cutoff = Carbon::now()->subHours(2);
+
+        $staleRows = AmoComplectationProject::query()
+            ->whereNotIn('amo_deal_id', $recentlySyncedIds)
+            ->where('updated_at', '<', $cutoff)
+            ->whereNotNull('wallet_project_id')
+            ->orderBy('updated_at')
+            ->limit($staleBatchSize)
+            ->get();
+
+        $processedIds = [];
+
+        foreach ($staleRows as $row) {
+            $lead = $this->getLeadById((int) $row->amo_deal_id);
+            if (!is_array($lead) || empty($lead)) {
+                // Still mark as processed so it's not retried immediately.
+                $processedIds[] = (int) $row->amo_deal_id;
+                continue;
+            }
+
+            $result = $this->upsertDeal($lead, onlyUpdate: true);
+            $updated += $result['updated'];
+            $processedIds[] = (int) $row->amo_deal_id;
+        }
+
+        // Always bump updated_at on processed rows so they cycle to the back of the queue,
+        // even when amoCRM data was unchanged and Eloquent skipped the SQL update.
+        if (!empty($processedIds)) {
+            AmoComplectationProject::query()
+                ->whereIn('amo_deal_id', $processedIds)
+                ->update(['updated_at' => Carbon::now()]);
+        }
+
+        return ['updated' => $updated];
+    }
+
+    private function upsertDeal(array $lead, bool $onlyUpdate = false): array
+    {
+        $amoDealId = (int) ($lead['id'] ?? 0);
+        $created = 0;
+        $updated = 0;
+
+        $clientName = $this->extractProjectClientName($lead);
+        if ($clientName === '') {
+            $clientName = 'amoCRM deal #'.$amoDealId;
+        }
+
+        $totalAmount = (float) ($lead['price'] ?? 0);
+        if ($totalAmount <= 0) {
+            $totalAmount = 0.01;
+        }
+        $projectPayload = $this->extractComplectationProjectFields($lead);
+
+        $responsibleUserId = (int) ($lead['responsible_user_id'] ?? 0);
+        $responsibleName = trim((string) (
+            Arr::get($lead, '_embedded.users.0.name')
+            ?? ''
+        ));
+        if ($responsibleName === '' && $responsibleUserId > 0) {
+            $amoUser = $this->getUserById($responsibleUserId);
+            $responsibleName = trim((string) ($amoUser['name'] ?? ''));
+        }
+
+        $dealStatusId = (int) ($lead['status_id'] ?? 0);
+
+        DB::transaction(function () use ($amoDealId, $clientName, $lead, $totalAmount, $projectPayload, $responsibleUserId, $responsibleName, $dealStatusId, $onlyUpdate, &$created, &$updated) {
+            $row = AmoComplectationProject::query()
+                ->where('amo_deal_id', $amoDealId)
+                ->lockForUpdate()
+                ->first();
+
+            $project = null;
+            $walletProjectId = (int) ($row->wallet_project_id ?? 0);
+            if ($walletProjectId > 0) {
+                $project = SalesProject::query()
+                    ->where('id', $walletProjectId)
+                    ->whereIn('source_layer', ['finance', 'projects'])
+                    ->orWhere(fn ($q) => $q->where('id', $walletProjectId)->whereNull('source_layer'))
+                    ->first();
+            }
+
+            if (!$project) {
+                if ($onlyUpdate) {
+                    return;
+                }
+                $currency = $this->extractCurrency($lead, 'USD');
+                $project = SalesProject::query()->create(array_merge([
+                    'client_name' => mb_substr($clientName, 0, 255),
+                    'total_amount' => round($totalAmount, 2),
+                    'remaining_amount' => round($totalAmount, 2),
+                    'currency' => $currency,
+                    'created_by' => $this->systemUserId(),
+                    'source_layer' => 'finance',
+                ], $projectPayload));
+
+                $created++;
+            } else {
+                $project->update(array_merge([
+                    'client_name' => mb_substr($clientName, 0, 255),
+                    'total_amount' => round($totalAmount, 2),
+                ], $this->applyAppWinsFilter($projectPayload, $project)));
+                $updated++;
+            }
+
+            $amoPayload = [
+                'wallet_project_id' => $project->id,
+                'client_name' => mb_substr($clientName, 0, 255),
+                'deal_name' => mb_substr(trim((string) ($lead['name'] ?? '')), 0, 255),
+                'total_amount' => round($totalAmount, 2),
+                'responsible_user_id' => $responsibleUserId ?: null,
+                'responsible_name' => $responsibleName !== '' ? mb_substr($responsibleName, 0, 255) : null,
+                'status_id' => $dealStatusId,
+                'raw_payload' => $lead,
+            ];
+
+            if ($row) {
+                $row->update($amoPayload);
+            } else {
+                AmoComplectationProject::query()->create(array_merge([
+                    'amo_deal_id' => $amoDealId,
+                ], $amoPayload));
+            }
+        }, 3);
+
+        return ['created' => $created, 'updated' => $updated];
     }
 
     private function extractComplectationProjectFields(array $lead): array

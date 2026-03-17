@@ -25,3 +25,7 @@ Schedule::command('amocrm:sync-deals')
 Schedule::command('amocrm:sync-complectation-projects')
     ->everyThirtyMinutes()
     ->withoutOverlapping();
+
+Schedule::command('zippy:sync-stock')
+    ->everyThirtyMinutes()
+    ->withoutOverlapping();

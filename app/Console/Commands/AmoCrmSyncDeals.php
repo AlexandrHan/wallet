@@ -20,6 +20,7 @@ class AmoCrmSyncDeals extends Command
         $totalDeals = 0;
         $created = 0;
         $updated = 0;
+        $allSyncedIds = [];
 
         try {
             do {
@@ -33,6 +34,7 @@ class AmoCrmSyncDeals extends Command
                 $totalDeals += (int) ($sync['total'] ?? 0);
                 $created += (int) ($sync['created'] ?? 0);
                 $updated += (int) ($sync['updated'] ?? 0);
+                $allSyncedIds = array_merge($allSyncedIds, $sync['synced_ids'] ?? []);
 
                 $this->info(sprintf(
                     'Page %d: total=%d created=%d updated=%d',
@@ -45,7 +47,14 @@ class AmoCrmSyncDeals extends Command
                 $page++;
             } while (count($deals) === $limit);
 
-            $this->info(sprintf('Done. Synced deals: %d (created: %d, updated: %d)', $totalDeals, $created, $updated));
+            // Second pass: update deals that moved out of project_status_ids.
+            $outOfStage = $amoCrmService->syncOutOfStageProjectDeals($allSyncedIds);
+            $updated += (int) ($outOfStage['updated'] ?? 0);
+
+            $this->info(sprintf(
+                'Done. Synced deals: %d (created: %d, updated: %d, out-of-stage: %d)',
+                $totalDeals, $created, $updated - ($outOfStage['updated'] ?? 0), (int) ($outOfStage['updated'] ?? 0)
+            ));
 
             return self::SUCCESS;
         } catch (\Throwable $e) {

@@ -8,10 +8,8 @@
 <main class="projects-main">
 
   <div class="projects-title-card">
-    <div class="projects-title">
-      📦 Замовлення обладнання
-    </div>
-    <div style="font-size:12px; opacity:.6; margin-top:2px;">Клієнти на етапі Комплектація</div>
+    <div class="projects-title">📦 Замовлення обладнання</div>
+    <div style="font-size:12px; opacity:.6; margin-top:2px;">Склад vs активні проекти</div>
   </div>
 
   <div id="equipmentOrdersContainer">
@@ -20,6 +18,89 @@
 
 </main>
 
+<style>
+/* collapsible */
+.eo-toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+  color: inherit;
+}
+.eo-caret { font-size: 12px; opacity: .5; transition: transform .2s; flex-shrink: 0; }
+
+/* equipment table */
+.eq-table {
+  width: 100%;
+  border-collapse: collapse;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-top: 12px;
+  margin-bottom: 0;
+  
+}
+tbody {background-color: transparent;}
+.eo-body{
+  background: transparent;
+}
+.eq-table tbody tr { 
+  border: none; 
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  background: transparent;
+  backdrop-filter: none;
+}
+.eq-table thead { display: table-header-group !important; }
+.eq-table thead th {
+  padding: 0 8px 7px;
+  font-size: 11px;
+  font-weight: 600;
+  opacity: .45;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  text-align: right;
+  white-space: nowrap;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+.eq-table thead th:first-child { text-align: left; }
+
+.eq-table tbody tr:last-child { border-bottom: none; }
+
+.eq-table td {
+  padding: 8px 8px;
+  text-align: right;
+  vertical-align: middle;
+  background: transparent;
+}
+.eq-table td:first-child { text-align: left; font-weight: 500; padding-right: 16px; }
+.eq-shortage { color: #f76; font-weight: 700; }
+.eq-remaining { color: #4d9; font-weight: 600; }
+.eq-zero { opacity: .25; }
+.eq-totals td {
+  font-weight: 700;
+  border-top: 1px solid rgba(255,255,255,0.12) !important;
+  border-bottom: none !important;
+  padding-top: 10px;
+}
+
+/* section divider inside card */
+.eq-section-label {
+  font-size: 12px;
+  font-weight: 700;
+  opacity: .5;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  margin: 18px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255,255,255,0.07);
+}
+.eq-section-label:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+</style>
+
 <script>
 function esc(v) {
   return String(v ?? '')
@@ -27,96 +108,170 @@ function esc(v) {
     .replace(/"/g,'&quot;').replace(/'/g,'&#039;');
 }
 
+function makeCollapsible(card, titleHtml, bodyHtml, openByDefault) {
+  card.innerHTML = `
+    <button type="button" class="eo-toggle">
+      <span>${titleHtml}</span>
+      <span class="eo-caret">${openByDefault ? '▾' : '▸'}</span>
+    </button>
+    <div class="eo-body" style="display:${openByDefault ? '' : 'none'}; margin-top:14px;">${bodyHtml}</div>
+  `;
+  card.querySelector('.eo-toggle').addEventListener('click', function () {
+    const body  = card.querySelector('.eo-body');
+    const caret = card.querySelector('.eo-caret');
+    const open  = body.style.display === 'none';
+    body.style.display = open ? '' : 'none';
+    caret.textContent  = open ? '▾' : '▸';
+  });
+}
+
+/* Build Назва | На складі | В проектах | Не вистачає | Залишок */
+function buildTable(rows) {
+  if (!rows.length) return '<div style="opacity:.4;font-size:13px;padding:8px 0;">Немає даних</div>';
+
+  const totStock     = rows.reduce((s, r) => s + r.stock,     0);
+  const totProjects  = rows.reduce((s, r) => s + r.projects,  0);
+  const totShortage  = rows.reduce((s, r) => s + r.shortage,  0);
+  const totRemaining = rows.reduce((s, r) => s + r.remaining, 0);
+
+  let html = `
+    <table class="eq-table">
+      <thead><tr>
+        <th>Назва</th>
+        <th>На складі</th>
+        <th>В проектах</th>
+        <th>Не вистачає</th>
+        <th>Залишок</th>
+      </tr></thead>
+      <tbody>`;
+
+  rows.forEach(r => {
+    const stockCell     = r.stock     === 0 ? `<td class="eq-zero">—</td>` : `<td>${r.stock}</td>`;
+    const projectsCell  = r.projects  === 0 ? `<td class="eq-zero">—</td>` : `<td>${r.projects}</td>`;
+    const shortageCell  = r.shortage  > 0   ? `<td class="eq-shortage">${r.shortage}</td>` : `<td class="eq-zero">—</td>`;
+    const remainingCell = r.remaining > 0   ? `<td class="eq-remaining">${r.remaining}</td>` : `<td class="eq-zero">—</td>`;
+    html += `<tr>
+      <td>${esc(r.name)}</td>
+      ${stockCell}${projectsCell}${shortageCell}${remainingCell}
+    </tr>`;
+  });
+
+  html += '</tbody></table>';
+  return html;
+}
+
+/* Simple list: name → qty */
+function buildList(map) {
+  const entries = Object.entries(map);
+  if (!entries.length) return '<div style="opacity:.4;font-size:13px;padding:8px 0;">Немає даних</div>';
+  return entries.map(([name, qty]) => `
+    <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06);font-size:13px;">
+      <span style="opacity:.85;">${esc(name)}</span>
+      <span style="font-weight:600;white-space:nowrap;margin-left:12px;">${qty} шт.</span>
+    </div>`).join('');
+}
+
 async function loadEquipmentOrders() {
   const container = document.getElementById('equipmentOrdersContainer');
   if (!container) return;
 
   const r = await fetch('/api/equipment-orders');
-  if (!r.ok) { container.innerHTML = '<div style="padding:20px;color:red;">Помилка завантаження</div>'; return; }
-  const data = await r.json();
-
-  const { projects, summary } = data;
-  container.innerHTML = '';
-
-  // ── ЗВЕДЕННЯ ──────────────────────────────────────────────
-  const summaryCard = document.createElement('div');
-  summaryCard.className = 'card';
-  summaryCard.style.marginBottom = '16px';
-
-  const hasSummary = Object.keys(summary.inverter).length
-    || Object.keys(summary.bms).length
-    || Object.keys(summary.battery).length
-    || Object.keys(summary.panels).length;
-
-  function summaryBlock(title, map) {
-    if (!Object.keys(map).length) return '';
-    const rows = Object.entries(map)
-      .map(([name, qty]) => `
-        <div style="display:flex; justify-content:space-between; padding:5px 0; border-bottom:1px solid var(--border,#e5e7eb);">
-          <div>${esc(name)}</div>
-          <div style="font-weight:700; white-space:nowrap; margin-left:12px;">${qty} шт.</div>
-        </div>`)
-      .join('');
-    return `
-      <div style="margin-bottom:14px;">
-        <div style="font-weight:700; font-size:13px; opacity:.65; margin-bottom:6px; text-transform:uppercase; letter-spacing:.04em;">${esc(title)}</div>
-        ${rows}
-      </div>`;
-  }
-
-  summaryCard.innerHTML = `
-    <div style="font-weight:800; font-size:15px; margin-bottom:14px;">📊 Зведення по обладнанню</div>
-    ${hasSummary ? `
-      ${summaryBlock('Інвертори', summary.inverter)}
-      ${summaryBlock('BMS', summary.bms)}
-      ${summaryBlock('АКБ', summary.battery)}
-      ${summaryBlock('ФЕМ (панелі)', summary.panels)}
-    ` : '<div style="opacity:.5;">Обладнання не вказано</div>'}
-  `;
-  container.appendChild(summaryCard);
-
-  // ── СПИСОК КЛІЄНТІВ ───────────────────────────────────────
-  const listCard = document.createElement('div');
-  listCard.className = 'card';
-
-  if (!projects.length) {
-    listCard.innerHTML = '<div style="opacity:.5; padding:10px;">Немає клієнтів на етапі Комплектація</div>';
-    container.appendChild(listCard);
+  if (!r.ok) {
+    container.innerHTML = '<div style="padding:20px;color:#f76;">Помилка завантаження</div>';
     return;
   }
+  const { projects, summary, shortage, tables } = await r.json();
+  container.innerHTML = '';
 
-  const header = document.createElement('div');
-  header.style.cssText = 'font-weight:800; font-size:15px; margin-bottom:14px;';
-  header.textContent = `👥 Клієнти (${projects.length})`;
-  listCard.appendChild(header);
+  function makeCard(titleHtml, body, open = false) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.marginBottom = '16px';
+    makeCollapsible(card, titleHtml, body, open);
+    container.appendChild(card);
+  }
 
-  projects.forEach(p => {
-    const row = document.createElement('div');
-    row.style.cssText = 'padding:12px 0; border-bottom:1px solid var(--border,#e5e7eb);';
+  // ── ☀️ ФОТОМОДУЛІ ────────────────────────────────────────
+  if (tables.panels.length) {
+    makeCard(
+      '<span style="font-weight:800;font-size:15px;">☀️ Фотомодулі</span>',
+      buildTable(tables.panels)
+    );
+  }
 
-    const equipment = [];
-    if (p.inverter)     equipment.push(`<span style="opacity:.55;">Інвертор:</span> ${esc(p.inverter)}`);
-    if (p.bms)          equipment.push(`<span style="opacity:.55;">BMS:</span> ${esc(p.bms)}`);
-    if (p.battery_name) equipment.push(`<span style="opacity:.55;">АКБ:</span> ${esc(p.battery_name)}${p.battery_qty ? ` × ${p.battery_qty}` : ''}`);
-    if (p.panel_name)   equipment.push(`<span style="opacity:.55;">ФЕМ:</span> ${esc(p.panel_name)}${p.panel_qty ? ` × ${p.panel_qty}` : ''}`);
+  // ── ⚡ АКБ ────────────────────────────────────────────────
+  if (tables.batteries.length) {
+    makeCard(
+      '<span style="font-weight:800;font-size:15px;">⚡ АКБ</span>',
+      buildTable(tables.batteries)
+    );
+  }
 
-    row.innerHTML = `
-      <div style="font-weight:700; margin-bottom:5px;">${esc(p.client_name)}</div>
-      ${equipment.length
-        ? equipment.map(e => `<div style="font-size:13px; margin-bottom:3px;">${e}</div>`).join('')
-        : '<div style="font-size:12px; opacity:.4;">Обладнання не вказано</div>'
-      }
-    `;
-    listCard.appendChild(row);
-  });
+  // ── 🔌 ІНВЕРТОРИ ─────────────────────────────────────────
+  if (tables.inverters.length) {
+    makeCard(
+      '<span style="font-weight:800;font-size:15px;">🔌 Інвертори</span>',
+      buildTable(tables.inverters)
+    );
+  }
 
-  container.appendChild(listCard);
+  // ── 👥 КЛІЄНТИ НА КОМПЛЕКТАЦІЇ ───────────────────────────
+  {
+    let body = '';
+    if (!projects.length) {
+      body = '<div style="opacity:.5;padding:4px 0;">Немає клієнтів на етапі Комплектація</div>';
+    } else {
+      projects.forEach(p => {
+        const eq = [];
+        if (p.inverter)     eq.push(`<span style="opacity:.5;">Інвертор:</span> ${esc(p.inverter)}`);
+        if (p.bms)          eq.push(`<span style="opacity:.5;">BMS:</span> ${esc(p.bms)}`);
+        if (p.battery_name) eq.push(`<span style="opacity:.5;">АКБ:</span> ${esc(p.battery_name)}${p.battery_qty ? ` × ${p.battery_qty}` : ''}`);
+        if (p.panel_name)   eq.push(`<span style="opacity:.5;">ФЕМ:</span> ${esc(p.panel_name)}${p.panel_qty ? ` × ${p.panel_qty}` : ''}`);
+        body += `
+          <div style="padding:11px 0;border-bottom:1px solid rgba(255,255,255,0.07);">
+            <div style="font-weight:700;margin-bottom:4px;">${esc(p.client_name)}</div>
+            ${eq.length
+              ? eq.map(e => `<div style="font-size:13px;margin-bottom:2px;">${e}</div>`).join('')
+              : '<div style="font-size:12px;opacity:.35;">Обладнання не вказано</div>'
+            }
+          </div>`;
+      });
+    }
+    makeCard(
+      `<span style="font-weight:800;font-size:15px;">👥 Клієнти на комплектації (${projects.length})</span>`,
+      body
+    );
+  }
+
+  // ── 📊 ЗВЕДЕННЯ ──────────────────────────────────────────
+  {
+    const hasSummary = Object.keys(summary.inverter).length
+      || Object.keys(summary.bms).length
+      || Object.keys(summary.battery).length
+      || Object.keys(summary.panels).length;
+
+    const body = hasSummary
+      ? [['Інвертори', summary.inverter], ['BMS', summary.bms], ['АКБ', summary.battery], ['ФЕМ (панелі)', summary.panels]]
+          .map(([title, map]) => !Object.keys(map).length ? '' : `
+            <div style="margin-bottom:14px;">
+              <div style="font-weight:700;font-size:13px;opacity:.55;margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em;">${esc(title)}</div>
+              ${buildList(map)}
+            </div>`).join('')
+      : '<div style="opacity:.5;">Обладнання не вказано</div>';
+
+    const card = document.createElement('div');
+    card.className = 'card';
+    makeCollapsible(card,
+      '<span style="font-weight:800;font-size:15px;">📊 Зведення по обладнанню (комплектація)</span>',
+      body, false);
+    container.appendChild(card);
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   loadEquipmentOrders().catch(() => {
     const c = document.getElementById('equipmentOrdersContainer');
-    if (c) c.innerHTML = '<div style="padding:20px;color:red;">Помилка завантаження</div>';
+    if (c) c.innerHTML = '<div style="padding:20px;color:#f76;">Помилка завантаження</div>';
   });
 });
 </script>
