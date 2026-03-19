@@ -448,6 +448,15 @@ class SalesProjectController extends Controller
                 ->values()
                 ->all();
 
+            $installerScheduleEntries = $scheduleEntries
+                ->where('assignment_field', 'installation_team')
+                ->map(fn ($e) => [
+                    'date'        => $e->work_date,
+                    'description' => $e->work_description ?? null,
+                ])
+                ->values()
+                ->all();
+
             return [
                 'id' => $project->id,
                 'client_name' => $project->client_name,
@@ -499,6 +508,7 @@ class SalesProjectController extends Controller
                     : null,
                 'installation_team' => $project->installation_team,
                 'installer_schedule_dates' => $installerScheduleDates,
+                'installer_schedule_entries' => $installerScheduleEntries,
                 'installation_team_note' => Schema::hasColumn('sales_projects', 'installation_team_note')
                     ? $project->installation_team_note
                     : null,

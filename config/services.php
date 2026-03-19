@@ -91,6 +91,14 @@ return [
         'token' => env('AUTOMATION_TOKEN'),
     ],
 
+    'google_sheets' => [
+        'spreadsheet_id'      => env('GOOGLE_SHEETS_SPREADSHEET_ID', ''),
+        'service_account_path' => env(
+            'GOOGLE_SERVICE_ACCOUNT_PATH',
+            storage_path('app/private/google-service-account.json')
+        ),
+    ],
+
     'openclaw' => [
         'url'     => env('OPENCLAW_URL', 'http://localhost:9000'),
         'timeout' => (int) env('OPENCLAW_TIMEOUT', 60),

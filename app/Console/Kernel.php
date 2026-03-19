@@ -46,6 +46,11 @@ class Kernel extends ConsoleKernel
             ->everyThirtyMinutes()
             ->withoutOverlapping();
 
+        // 🟡 GOOGLE SHEETS — електрики (кожну годину)
+        $schedule->command('sheets:sync-electricians')
+            ->hourly()
+            ->withoutOverlapping();
+
     }
 
 

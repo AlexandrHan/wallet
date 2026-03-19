@@ -16,6 +16,7 @@ class ServiceRequest extends Model
         'installation_team',
         'is_urgent',
         'description',
+        'scheduled_date',
         'created_by',
         'status',
     ];

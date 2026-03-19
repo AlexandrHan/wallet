@@ -541,6 +541,7 @@ async function loadConstructionProjects() {
             <div class="project-field-label">Електрик</div>
             <select class="btn project-input-full" data-field="electrician">
               <option value="">Оберіть електрика</option>
+              <option value="Без монтажних робіт" ${'Без монтажних робіт' === String(p.electrician || '') ? 'selected' : ''}>Без монтажних робіт</option>
               ${electricianOptionsHtml}
               ${IS_OWNER ? '<option value="__add_new_electrician__">➕ Додати електрика...</option>' : ''}
               ${IS_OWNER ? '<option value="__delete_current_electrician__" hidden>🗑 Видалити вибраного...</option>' : ''}
@@ -559,6 +560,7 @@ async function loadConstructionProjects() {
             <div class="project-field-label">Монтажна бригада</div>
             <select class="btn project-input-full" data-field="installation_team">
               <option value="">Оберіть бригаду</option>
+              <option value="Без монтажних робіт" ${'Без монтажних робіт' === String(p.installation_team || '') ? 'selected' : ''}>Без монтажних робіт</option>
               ${teamOptionsHtml}
               ${IS_OWNER ? '<option value="__add_new_installation_team__">➕ Додати монтажника...</option>' : ''}
               ${IS_OWNER ? '<option value="__delete_current_installation_team__" hidden>🗑 Видалити вибраного...</option>' : ''}

@@ -32,6 +32,42 @@ document.addEventListener('DOMContentLoaded', async function () {
   const REFRESH_MS = 15000;
   const WEEKDAY_LABELS = ['Неділя', 'Понеділок', 'Вівторок', 'Середа', 'Четвер', "П'ятниця", 'Субота'];
 
+  let savedOpen = {}; // cardKey → { bodyVisible, openSectionIndexes[] }
+
+  function captureOpenState() {
+    savedOpen = {};
+    container.querySelectorAll('[data-card-key]').forEach(card => {
+      const key = card.dataset.cardKey;
+      const body = card.querySelector('.project-body');
+      if (!body || window.getComputedStyle(body).display === 'none') return;
+      const openSections = [];
+      body.querySelectorAll('.project-section').forEach((s, i) => {
+        if (s.classList.contains('is-open')) openSections.push(i);
+      });
+      savedOpen[key] = { bodyVisible: true, openSections };
+    });
+  }
+
+  function restoreOpenState() {
+    container.querySelectorAll('[data-card-key]').forEach(card => {
+      const key = card.dataset.cardKey;
+      const state = savedOpen[key];
+      if (!state?.bodyVisible) return;
+      const body = card.querySelector('.project-body');
+      if (!body) return;
+      body.style.display = 'block';
+      const sections = body.querySelectorAll('.project-section');
+      state.openSections.forEach(i => {
+        if (sections[i]) sections[i].classList.add('is-open');
+      });
+      const expandBtn = body.querySelector('.project-expand-toggle');
+      if (expandBtn && sections.length > 0) {
+        const allOpen = Array.from(sections).every(s => s.classList.contains('is-open'));
+        expandBtn.textContent = allOpen ? 'Згорнути проект' : 'Розкрити проект';
+      }
+    });
+  }
+
   if (!container) return;
 
   const expectedValue = String(
@@ -91,7 +127,8 @@ document.addEventListener('DOMContentLoaded', async function () {
     const phoneHref = normalizePhoneHref(service.phone_number);
 
     card.className = 'card project-card';
-    if (service.is_urgent) card.style.border = '2px solid #ff001aad';
+    card.dataset.cardKey = `service-${service.id}`;
+    card.style.border = service.is_urgent ? '2px solid #ff001aad' : '2px solid rgba(59, 130, 246, 0.45)';
 
     card.innerHTML = `
       <div class="project-header">
@@ -199,6 +236,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     const phoneHref = normalizePhoneHref(project.phone_number);
 
     card.className = 'card project-card';
+    card.dataset.cardKey = `project-${project.id}`;
     if (hasGreenTariff) card.classList.add('project-card--green');
     if (hasDefects) card.classList.add('project-card--defects');
 
@@ -330,9 +368,9 @@ document.addEventListener('DOMContentLoaded', async function () {
             <div class="project-field-label">Монтажна бригада примітки</div>
             <div class="btn project-textarea" style="text-align:left; cursor:default;">${esc(project.installation_team_note || '—')}</div>
 
-            ${project.installation_team_task_note ? `
-              <div class="project-field-label">Монтажна бригада: завдання з таблиці</div>
-              <div class="btn project-textarea" style="text-align:left; cursor:default;">${esc(project.installation_team_task_note)}</div>
+            ${(project._todayDescription || project.installation_team_task_note) ? `
+              <div class="project-field-label">Роботи на сьогодні</div>
+              <div class="btn project-textarea" style="text-align:left; cursor:default; white-space:pre-wrap;">${esc(project._todayDescription || project.installation_team_task_note)}</div>
             ` : ''}
 
             <div class="project-field-label">Доп. роботи</div>
@@ -411,9 +449,25 @@ document.addEventListener('DOMContentLoaded', async function () {
   function renderScheduledProjects(projects) {
     const days = getWeekRange();
     const grouped = new Map(days.map(day => [day.key, []]));
+    const unscheduled = [];
+
+    // Build a map of installer_schedule_entries by date for quick lookup
+    function getInstallerDescriptionForDate(project, dateKey) {
+      const entries = Array.isArray(project?.installer_schedule_entries) ? project.installer_schedule_entries : [];
+      const entry = entries.find(e => String(e.date || '').slice(0, 10) === dateKey);
+      return entry?.description || null;
+    }
 
     projects.forEach(project => {
-      const explicitDates = Array.isArray(project?.[SCHEDULE_DATES_KEY]) ? project[SCHEDULE_DATES_KEY] : [];
+      // Prefer installer_schedule_entries (has per-day descriptions) over plain dates array
+      const scheduleEntries = Array.isArray(project?.installer_schedule_entries) && project.installer_schedule_entries.length > 0
+        ? project.installer_schedule_entries
+        : null;
+
+      const explicitDates = scheduleEntries
+        ? scheduleEntries.map(e => e.date)
+        : (Array.isArray(project?.[SCHEDULE_DATES_KEY]) ? project[SCHEDULE_DATES_KEY] : []);
+
       const normalizedKeys = new Set();
 
       explicitDates.forEach(rawDate => {
@@ -422,7 +476,9 @@ document.addEventListener('DOMContentLoaded', async function () {
         const key = date.toISOString().slice(0, 10);
         if (!grouped.has(key) || normalizedKeys.has(key)) return;
         normalizedKeys.add(key);
-        grouped.get(key).push(project);
+        const todayDesc = getInstallerDescriptionForDate(project, key);
+        const projectForDay = todayDesc ? { ...project, _todayDescription: todayDesc } : project;
+        grouped.get(key).push(projectForDay);
       });
 
       if (normalizedKeys.size > 0) {
@@ -430,7 +486,10 @@ document.addEventListener('DOMContentLoaded', async function () {
       }
 
       const startDate = parseProjectDate(project?.[SCHEDULE_FIELD]);
-      if (!startDate) return;
+      if (!startDate) {
+        unscheduled.push(project);
+        return;
+      }
 
       const duration = parseProjectDuration(project);
       for (let offset = 0; offset < duration; offset++) {
@@ -443,9 +502,10 @@ document.addEventListener('DOMContentLoaded', async function () {
       }
     });
 
+    captureOpenState();
     container.innerHTML = '';
 
-    const hasAnyProjects = Array.from(grouped.values()).some(items => items.length > 0);
+    const hasAnyProjects = Array.from(grouped.values()).some(items => items.length > 0) || unscheduled.length > 0;
     if (!hasAnyProjects) {
       container.innerHTML = `<div class="card">${esc(EMPTY_TEXT)}</div>`;
       return;
@@ -481,6 +541,35 @@ document.addEventListener('DOMContentLoaded', async function () {
 
       container.appendChild(daySection);
     });
+
+    if (unscheduled.length > 0) {
+      const unscheduledSection = document.createElement('div');
+      unscheduledSection.className = 'card';
+      unscheduledSection.style.marginBottom = '16px';
+      unscheduledSection.innerHTML = `
+        <div class="project-day-heading">
+          <span style="font-weight:800; font-size:15px; opacity:.6;">Без дати</span>
+        </div>
+        <hr style="margin:10px 0 12px; border:none; border-top:1px solid rgba(255,255,255,.14);">
+      `;
+
+      unscheduled
+        .sort((a, b) => String(a.client_name || '').localeCompare(String(b.client_name || ''), 'uk'))
+        .forEach(project => {
+          const projectCard = makeCard(project);
+          projectCard.style.marginBottom = '12px';
+          unscheduledSection.appendChild(projectCard);
+        });
+
+      const lastCard = unscheduledSection.lastElementChild;
+      if (lastCard && lastCard.classList.contains('project-card')) {
+        lastCard.style.marginBottom = '0';
+      }
+
+      container.appendChild(unscheduledSection);
+    }
+
+    restoreOpenState();
   }
 
   function renderProjects(projects) {
@@ -496,6 +585,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     const sorted = filtered.sort((a, b) => String(a.client_name || '').localeCompare(String(b.client_name || ''), 'uk'));
 
+    captureOpenState();
     container.innerHTML = '';
 
     if (!sorted.length) {
@@ -504,6 +594,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     }
 
     sorted.forEach(project => container.appendChild(makeCard(project)));
+    restoreOpenState();
   }
 
   async function loadProjects() {

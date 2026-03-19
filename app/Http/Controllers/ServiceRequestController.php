@@ -50,7 +50,7 @@ class ServiceRequestController extends Controller
             'description' => (string) ($item->description ?? ''),
             'status' => (string) ($item->status ?? 'open'),
             'created_at' => optional($item->created_at)->format('d.m.Y H:i'),
-            'schedule_date' => optional($item->created_at)->format('Y-m-d'),
+            'schedule_date' => $item->scheduled_date ?? optional($item->created_at)->format('Y-m-d'),
             'entry_type' => 'service',
         ];
     }

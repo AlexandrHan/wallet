@@ -13,6 +13,7 @@ use App\Http\Controllers\DeliveryController;
 use App\Http\Controllers\AmoWebhookController;
 use App\Http\Controllers\AI\AIChatController;
 use App\Http\Controllers\EmployeeTransferController;
+use App\Services\GoogleSheetsService;
 
 
 
@@ -681,17 +682,16 @@ $runAutomationProjectSync = function (
             return 0.0;
         }
 
-        if (str_contains($haystackNorm, $needleNorm) || str_contains($needleNorm, $haystackNorm)) {
+        if (str_contains($haystackNorm, $needleNorm)) {
             return 100.0;
         }
 
         $needleCompact = $compactName($needleNorm);
         $haystackCompact = $compactName($haystackNorm);
 
-        if ($needleCompact !== '' && $haystackCompact !== '' && (
-            str_contains($haystackCompact, $needleCompact) ||
-            str_contains($needleCompact, $haystackCompact)
-        )) {
+        if ($needleCompact !== '' && $haystackCompact !== '' &&
+            str_contains($haystackCompact, $needleCompact)
+        ) {
             return 96.0;
         }
 
@@ -733,16 +733,14 @@ $runAutomationProjectSync = function (
         ->select($projectColumns)
         ->get()
         ->filter(function ($project) use ($normalizeName, $assignmentField, $assignmentValue) {
-            $assignment = $normalizeName($project->{$assignmentField} ?? '');
-            if ($assignment === '') {
-                return false;
-            }
-
             if ($assignmentValue === null) {
                 return true;
             }
 
-            return $assignment === $normalizeName($assignmentValue);
+            $assignment = $normalizeName($project->{$assignmentField} ?? '');
+
+            // Включаємо проекти де поле порожнє (ще не призначено) АБО вже відповідає
+            return $assignment === '' || $assignment === $normalizeName($assignmentValue);
         })
         ->values();
 
@@ -851,6 +849,13 @@ $runAutomationProjectSync = function (
                 if ($score > $bestScore) {
                     $bestScore = $score;
                     $bestCandidate = $candidateProject;
+                } elseif ($score === $bestScore && $score >= 72.0 && $bestCandidate !== null) {
+                    // Tie: prefer the project that already has the assignment field set
+                    $currentHas = ($normalizeName($candidateProject->{$assignmentField} ?? '')) !== '';
+                    $bestHas = ($normalizeName($bestCandidate->{$assignmentField} ?? '')) !== '';
+                    if ($currentHas && !$bestHas) {
+                        $bestCandidate = $candidateProject;
+                    }
                 }
             }
 
@@ -865,6 +870,11 @@ $runAutomationProjectSync = function (
                 $dateField => $date,
                 'updated_at' => now(),
             ];
+
+            // Якщо поле порожнє — встановити значення (Малінін/Шевченко/тощо)
+            if ($assignmentValue !== null && ($project->{$assignmentField} ?? '') === '') {
+                $update[$assignmentField] = $assignmentValue;
+            }
 
             if ($noteField && Schema::hasColumn('sales_projects', $noteField)) {
                 $update[$noteField] = $note ?: ($project->{$noteField} ?? null);
@@ -986,6 +996,298 @@ Route::post('/automation/kryzhanovskyi-sync', fn (Request $request) => $runAutom
     'note_field' => 'installation_team_note',
     'task_note_field' => 'installation_team_task_note',
 ]));
+
+// ─── Electrician Google Sheet sync (ERP-driven) ───────────────────────────────
+// POST /api/automation/electrician-google-sync
+//
+// Структура таблиці: A=день тижня, B=дата, C=замовник, D=нас.пункт,
+//                    E=монтажні роботи, F=сервісні роботи, G=примітки
+// Назва листа = прізвище електрика (перше слово поля electrician)
+//
+// Алгоритм (для кожного проекту з непорожнім полем electrician):
+//   1. Знайти лист за прізвищем електрика
+//   2. Знайти замовника в стовпчику C
+//   3. E є → оновити electric_work_start_date, electrician_task_note
+//   4. F є → створити/оновити service_request
+//   5. Записати в project_schedule_entries
+Route::post('/automation/electrician-google-sync', function (Request $request) {
+
+    if ($request->header('X-AUTO-TOKEN') !== config('services.automation.token')) {
+        return response()->json(['ok' => false, 'error' => 'Unauthorized'], 403);
+    }
+
+    // ── helpers ──────────────────────────────────────────────────────────────
+    $normalizeDate = function ($value): ?string {
+        $value = trim((string) $value);
+        if ($value === '') return null;
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) return $value;
+        if (preg_match('/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2}|\d{4})$/', $value, $m)) {
+            $d = (int) $m[1]; $mo = (int) $m[2]; $y = (int) $m[3];
+            if ($y < 100) $y += 2000;
+            if (checkdate($mo, $d, $y)) return sprintf('%04d-%02d-%02d', $y, $mo, $d);
+        }
+        if (is_numeric($value) && (int) $value > 0) {
+            try { return \Carbon\Carbon::create(1899, 12, 30)->addDays((int) $value)->format('Y-m-d'); }
+            catch (\Throwable) { return null; }
+        }
+        try { return \Carbon\Carbon::parse($value)->format('Y-m-d'); } catch (\Throwable) { return null; }
+    };
+
+    $serviceAvailable  = Schema::hasTable('service_requests');
+    $scheduleAvailable = Schema::hasTable('project_schedule_entries');
+    $skipWords         = ['вихідні', 'вихідний', 'сервіси'];
+
+    // ── 1. Load all projects with electrician set ────────────────────────────
+    $projects = DB::table('sales_projects')
+        ->select(['id', 'client_name', 'electrician', 'electric_work_start_date',
+                  'electrician_note', 'electrician_task_note'])
+        ->whereNotNull('electrician')
+        ->where('electrician', '!=', '')
+        ->get();
+
+    if ($projects->isEmpty()) {
+        return response()->json(['ok' => true, 'projects_checked' => 0,
+            'projects_updated' => 0, 'services_created' => 0, 'services_updated' => 0,
+            'not_found_on_sheet' => [], 'errors' => [], 'log' => []]);
+    }
+
+    // ── 2. Init Google Sheets ────────────────────────────────────────────────
+    try {
+        $sheets = new GoogleSheetsService();
+    } catch (\Throwable $e) {
+        Log::error('electrician-google-sync: GoogleSheetsService init failed', ['err' => $e->getMessage()]);
+        return response()->json(['ok' => false, 'error' => $e->getMessage()], 500);
+    }
+
+    $sheetCache       = [];  // tab name → parsed rows (array of arrays)
+    $missingSheets    = [];  // tab names that failed to load
+    $scheduleRows     = [];
+    $serviceOnlyPairs = [];  // [{project_id, assignment_value}] — F only, no E → delete schedule entries
+
+    $report = [
+        'projects_checked'   => 0,
+        'projects_updated'   => 0,
+        'services_created'   => 0,
+        'services_updated'   => 0,
+        'not_found_on_sheet' => [],
+        'errors'             => [],
+        'log'                => [],
+    ];
+
+    foreach ($projects as $project) {
+        $report['projects_checked']++;
+
+        $electrician = trim((string) $project->electrician);
+        // Surname = first word of the electrician field = sheet tab name
+        $surname = explode(' ', $electrician)[0];
+
+        // ── 3. Load sheet tab (cached) ───────────────────────────────────────
+        if (!isset($sheetCache[$surname])) {
+            if (in_array($surname, $missingSheets, true)) {
+                continue;
+            }
+            try {
+                $sheetCache[$surname] = $sheets->getSheetRows($surname, 'A:G');
+            } catch (\Throwable $e) {
+                $missingSheets[] = $surname;
+                $report['errors'][] = "Лист для електрика '{$surname}' не знайдено";
+                Log::warning('electrician-google-sync: sheet not found',
+                    ['sheet' => $surname, 'err' => $e->getMessage()]);
+                continue;
+            }
+        }
+
+        $sheetRows = $sheetCache[$surname];
+        if (empty($sheetRows)) continue;
+
+        // Skip header row if first cell is not a date-like value
+        $startIndex = 0;
+        $firstCell  = trim((string) ($sheetRows[0][0] ?? ''));
+        if ($firstCell !== '' && !is_numeric($firstCell) && $normalizeDate($firstCell) === null
+            && mb_strlen($firstCell) < 20) {
+            $startIndex = 1;
+        }
+
+        // ── 4. Find client in column C ───────────────────────────────────────
+        $clientName = trim((string) $project->client_name);
+        $clientLow  = mb_strtolower($clientName);
+        $matchedRow = null;
+
+        // Pass 1: exact case-insensitive match, prefer rows with non-empty E or F
+        $fallbackRow = null;
+        foreach (array_slice($sheetRows, $startIndex) as $cols) {
+            $colC = trim((string) ($cols[2] ?? '')); // column C = index 2
+            if ($colC === '') continue;
+            if (in_array(mb_strtolower($colC), $skipWords, true)) continue;
+            if (mb_strtolower($colC) !== $clientLow) continue;
+
+            $hasWork = trim((string) ($cols[4] ?? '')) !== '' // E
+                    || trim((string) ($cols[5] ?? '')) !== ''; // F
+            if ($hasWork) {
+                $matchedRow = $cols;
+                break;
+            }
+            if ($fallbackRow === null) {
+                $fallbackRow = $cols; // exact match but both E+F empty
+            }
+        }
+        if ($matchedRow === null) $matchedRow = $fallbackRow;
+
+        // Pass 2: fuzzy fallback (similar_text ≥ 72%)
+        if ($matchedRow === null) {
+            $bestScore = 0.0;
+            foreach (array_slice($sheetRows, $startIndex) as $cols) {
+                $colC = trim((string) ($cols[2] ?? ''));
+                if ($colC === '') continue;
+                if (in_array(mb_strtolower($colC), $skipWords, true)) continue;
+                similar_text($clientLow, mb_strtolower($colC), $pct);
+                if ($pct > $bestScore) {
+                    $bestScore  = (float) $pct;
+                    $matchedRow = $cols;
+                }
+            }
+            if ($bestScore < 72.0) $matchedRow = null;
+        }
+
+        if ($matchedRow === null) {
+            $report['not_found_on_sheet'][] =
+                "Замовник '{$clientName}' не знайдено на листі '{$surname}'";
+            Log::info('electrician-google-sync: client not found on sheet',
+                ['client' => $clientName, 'sheet' => $surname]);
+            continue;
+        }
+
+        // ── 5. Read matched row columns ──────────────────────────────────────
+        $colB = trim((string) ($matchedRow[1] ?? '')); // B = date
+        $colD = trim((string) ($matchedRow[3] ?? '')); // D = settlement
+        $colE = trim((string) ($matchedRow[4] ?? '')); // E = project works
+        $colF = trim((string) ($matchedRow[5] ?? '')); // F = service works
+        $colG = trim((string) ($matchedRow[6] ?? '')); // G = special notes
+
+        if ($colE === '' && $colF === '') {
+            $report['log'][] =
+                "Для замовника '{$clientName}' на листі '{$surname}' немає запланованих робіт";
+            continue;
+        }
+
+        $date = $normalizeDate($colB);
+        if (!$date) {
+            $report['errors'][] =
+                "Замовник '{$clientName}' (лист '{$surname}'): невалідна дата '{$colB}'";
+            Log::warning('electrician-google-sync: invalid date',
+                ['client' => $clientName, 'sheet' => $surname, 'raw' => $colB]);
+            continue;
+        }
+
+        // ── 6a. E is set → update project ───────────────────────────────────
+        if ($colE !== '') {
+            $update = ['electric_work_start_date' => $date, 'updated_at' => now()];
+
+            if ($colE !== ($project->electrician_task_note ?? '')) {
+                $update['electrician_task_note'] = $colE;
+            }
+            if ($colG !== '' && $colG !== ($project->electrician_note ?? '')) {
+                $update['electrician_note'] = $colG;
+            }
+
+            DB::table('sales_projects')->where('id', $project->id)->update($update);
+            $report['projects_updated']++;
+            $report['log'][] =
+                "Проект '{$clientName}' ({$electrician}): дата {$date}, роботи: {$colE}";
+
+            if ($scheduleAvailable) {
+                // Key = DB unique constraint columns — prevents duplicate inserts
+                $key = "{$project->id}|electrician|{$electrician}|{$date}";
+                $scheduleRows[$key] = [
+                    'project_id'       => $project->id,
+                    'assignment_field' => 'electrician',
+                    'assignment_value' => $electrician,
+                    'work_date'        => $date,
+                    'source'           => 'google_sheet',
+                    'created_at'       => now(),
+                    'updated_at'       => now(),
+                ];
+            }
+        }
+
+        // ── 6b. F is set → create/update service request ────────────────────
+        if ($colF !== '' && $serviceAvailable) {
+            $description = $colF;
+            if ($colG !== '') $description .= "\nПримітки: {$colG}";
+
+            $servicePayload = [
+                'client_name'    => $clientName,
+                'settlement'     => $colD ?: '',
+                'electrician'    => $electrician,
+                'description'    => $description,
+                'scheduled_date' => $date,
+                'status'         => 'open',
+                'updated_at'     => now(),
+            ];
+
+            $existing = DB::table('service_requests')
+                ->where('client_name', $clientName)
+                ->where('electrician', $electrician)
+                ->where('status', 'open')
+                ->orderByDesc('id')
+                ->first();
+
+            if ($existing) {
+                DB::table('service_requests')
+                    ->where('id', $existing->id)
+                    ->update($servicePayload);
+                $report['services_updated']++;
+            } else {
+                $servicePayload['created_at'] = now();
+                $servicePayload['created_by'] = null;
+                DB::table('service_requests')->insert($servicePayload);
+                $report['services_created']++;
+            }
+
+            // project_schedule_entries only for installation work (colE) — not for service-only rows
+            // Track service-only: remove stale schedule entries AND clear electric_work_start_date
+            if ($colE === '') {
+                DB::table('sales_projects')
+                    ->where('id', $project->id)
+                    ->whereNotNull('electric_work_start_date')
+                    ->update(['electric_work_start_date' => null, 'updated_at' => now()]);
+                if ($scheduleAvailable) {
+                    $serviceOnlyPairs[] = ['project_id' => $project->id, 'assignment_value' => $electrician];
+                }
+            }
+        }
+    }
+
+    // ── 6c. Remove project_schedule_entries for service-only projects ─────────
+    // Entries from ANY source (automation, google_sheet) must be removed so the
+    // project card doesn't appear in the electrician's calendar — only the service card will.
+    if ($scheduleAvailable && !empty($serviceOnlyPairs)) {
+        foreach ($serviceOnlyPairs as $pair) {
+            DB::table('project_schedule_entries')
+                ->where('assignment_field', 'electrician')
+                ->where('assignment_value', $pair['assignment_value'])
+                ->where('project_id', $pair['project_id'])
+                ->delete();
+        }
+    }
+
+    // ── 7. Upsert project_schedule_entries ───────────────────────────────────
+    if ($scheduleAvailable && !empty($scheduleRows)) {
+        $electricianValues = array_values(array_unique(
+            array_map(fn ($r) => $r['assignment_value'], $scheduleRows)
+        ));
+
+        DB::table('project_schedule_entries')
+            ->where('assignment_field', 'electrician')
+            ->whereIn('assignment_value', $electricianValues)
+            ->where('source', 'like', 'google_sheet%')
+            ->delete();
+
+        DB::table('project_schedule_entries')->insertOrIgnore(array_values($scheduleRows));
+    }
+
+    return response()->json(['ok' => true] + $report);
+});
 
 // ❗ ПОКИ БЕЗ auth, ЩОБ НЕ ЗАВАЖАВ
 

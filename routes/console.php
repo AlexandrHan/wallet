@@ -29,3 +29,13 @@ Schedule::command('amocrm:sync-complectation-projects')
 Schedule::command('zippy:sync-stock')
     ->everyThirtyMinutes()
     ->withoutOverlapping();
+
+// 🟡 GOOGLE SHEETS — електрики (кожну годину)
+Schedule::command('sheets:sync-electricians')
+    ->hourly()
+    ->withoutOverlapping();
+
+// 🟠 GOOGLE SHEETS — монтажники (кожну годину)
+Schedule::command('sheets:sync-installers')
+    ->hourly()
+    ->withoutOverlapping();

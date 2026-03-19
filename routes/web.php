@@ -244,7 +244,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         if (
             !$user
             || $user->role !== 'worker'
-            || !in_array($user->actor, ['kryzhanovskyi', 'kukuiaka', 'shevchenko'], true)
+            || !in_array(mb_strtolower((string) $user->actor), ['kryzhanovskyi', 'kukuiaka', 'shevchenko'])
         ) {
             abort(403);
         }
