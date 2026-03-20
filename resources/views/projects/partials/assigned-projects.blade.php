@@ -29,6 +29,7 @@ document.addEventListener('DOMContentLoaded', async function () {
   const SCHEDULE_FIELD = @json($scheduleField ?? null);
   const SCHEDULE_DURATION_FIELD = @json($scheduleDurationField ?? null);
   const SCHEDULE_DATES_KEY = @json($scheduleDatesKey ?? null);
+  const RANGE_DAYS = @json($rangeDays ?? 7);
   const REFRESH_MS = 15000;
   const WEEKDAY_LABELS = ['Неділя', 'Понеділок', 'Вівторок', 'Середа', 'Четвер', "П'ятниця", 'Субота'];
 
@@ -203,7 +204,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
 
-    return Array.from({ length: 7 }, (_, index) => {
+    return Array.from({ length: RANGE_DAYS }, (_, index) => {
       const date = new Date(start);
       date.setDate(start.getDate() + index);
       const key = date.toISOString().slice(0, 10);
@@ -548,7 +549,7 @@ document.addEventListener('DOMContentLoaded', async function () {
       unscheduledSection.style.marginBottom = '16px';
       unscheduledSection.innerHTML = `
         <div class="project-day-heading">
-          <span style="font-weight:800; font-size:15px; opacity:.6;">Без дати</span>
+          <span style="font-weight:800; font-size:15px; opacity:.6;">Не визначена дата будівництва</span>
         </div>
         <hr style="margin:10px 0 12px; border:none; border-top:1px solid rgba(255,255,255,.14);">
       `;

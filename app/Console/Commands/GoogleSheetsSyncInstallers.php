@@ -216,60 +216,109 @@ class GoogleSheetsSyncInstallers extends Command
             $keywords       = $kw['keywords'];
             $normalizedKws  = $kw['normalized'];
 
-            // ── 3. Find first matching row (scan full sheet) ──────────────────
-            $firstMatchIdx = null;
+            // ── 3. Collect ALL matching rows across the full sheet ────────────
+            // A client may appear multiple times (e.g. past block + upcoming block).
+            // We collect every matching row regardless of position.
+            $allMatchingRows = [];
 
-            foreach ($dataRows as $idx => $cols) {
+            foreach ($dataRows as $cols) {
                 $colC = trim((string) ($cols[2] ?? ''));
-                if ($colC === '') continue;
                 if (in_array($this->normalizeUkr($colC), $skipWords, true)) continue;
-
+                // Empty C inherits context — only include if we already have matches
+                if ($colC === '') {
+                    if (!empty($allMatchingRows)) {
+                        $allMatchingRows[] = $cols;
+                    }
+                    continue;
+                }
                 if ($this->colCMatchesClient($colC, $clientNameNorm, $keywords, $normalizedKws)) {
-                    $firstMatchIdx = $idx;
-                    break;
+                    $allMatchingRows[] = $cols;
                 }
             }
 
-            if ($firstMatchIdx === null) {
+            // Remove trailing empty-C rows
+            while (!empty($allMatchingRows) && trim((string) (end($allMatchingRows)[2] ?? '')) === '') {
+                array_pop($allMatchingRows);
+            }
+
+            if (empty($allMatchingRows)) {
                 Log::info('sheets:sync-installers: client not found', [
                     'client' => $clientName, 'sheet' => $tabName,
                 ]);
                 continue;
             }
 
-            // ── 4. Collect all consecutive rows for this client ───────────────
-            // Rows must be consecutive (no other client between them).
-            // An empty C column row is treated as a continuation (blank = same block).
-            $matchedRows = [];
+            // ── 4. Group matching rows into consecutive date blocks ───────────
+            // Each block = rows whose dates follow each other day by day.
+            // Pick the best block: nearest upcoming (start >= today), else most recent past.
+            $today  = date('Y-m-d');
+            $blocks = [];   // array of arrays-of-rows
+            $block  = [];
 
-            for ($i = $firstMatchIdx; $i < count($dataRows); $i++) {
-                $cols = $dataRows[$i];
-                $colC = trim((string) ($cols[2] ?? ''));
+            foreach ($allMatchingRows as $cols) {
+                $rawDate = trim((string) ($cols[1] ?? ''));
+                $date    = $rawDate !== '' ? $this->normalizeDate($rawDate) : null;
 
-                if ($colC === '') {
-                    // Empty C = continuation of previous block (blank merged cell)
-                    if (!empty($matchedRows)) {
-                        $matchedRows[] = $cols;
-                    }
+                if ($date === null) {
+                    // Row with no date — attach to current block if open
+                    if (!empty($block)) $block[] = $cols;
                     continue;
                 }
 
-                if (in_array($this->normalizeUkr($colC), $skipWords, true)) break;
+                if (empty($block)) {
+                    $block[] = $cols;
+                    continue;
+                }
 
-                if ($this->colCMatchesClient($colC, $clientNameNorm, $keywords, $normalizedKws)) {
-                    $matchedRows[] = $cols;
-                } else {
-                    // Different client → stop
+                // Check if this date is consecutive with the last dated row in $block
+                $lastDate = null;
+                for ($bi = count($block) - 1; $bi >= 0; $bi--) {
+                    $ld = $this->normalizeDate(trim((string) ($block[$bi][1] ?? '')));
+                    if ($ld !== null) { $lastDate = $ld; break; }
+                }
+
+                if ($lastDate !== null) {
+                    $diff = (int) round(
+                        (\Carbon\Carbon::parse($date)->timestamp - \Carbon\Carbon::parse($lastDate)->timestamp) / 86400
+                    );
+                    if ($diff <= 1 && $diff >= 0) {
+                        // Same day or next day — continue block
+                        $block[] = $cols;
+                        continue;
+                    }
+                }
+
+                // Gap detected — save current block, start new one
+                $blocks[] = $block;
+                $block    = [$cols];
+            }
+            if (!empty($block)) $blocks[] = $block;
+
+            if (empty($blocks)) continue;
+
+            // Pick best block: prefer upcoming (start >= today), else most recent
+            $bestBlock = null;
+
+            // First pass: earliest upcoming block
+            foreach ($blocks as $b) {
+                $firstDate = $this->normalizeDate(trim((string) ($b[0][1] ?? '')));
+                if ($firstDate !== null && $firstDate >= $today) {
+                    $bestBlock = $b;
                     break;
                 }
             }
 
-            // Remove trailing rows with empty C (they were added speculatively)
-            while (!empty($matchedRows) && trim((string) (end($matchedRows)[2] ?? '')) === '') {
-                array_pop($matchedRows);
+            // Second pass: if nothing upcoming, take the most recent past block
+            if ($bestBlock === null) {
+                foreach (array_reverse($blocks) as $b) {
+                    $firstDate = $this->normalizeDate(trim((string) ($b[0][1] ?? '')));
+                    if ($firstDate !== null) { $bestBlock = $b; break; }
+                }
             }
 
-            if (empty($matchedRows)) continue;
+            if ($bestBlock === null) continue;
+
+            $matchedRows = $bestBlock;
 
             // ── 5. Parse dates from each matched row ──────────────────────────
             $workDays = []; // [{date, description, notes}]
