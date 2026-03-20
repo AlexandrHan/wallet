@@ -13,8 +13,16 @@
     </div>
   </div>
 
-  <div style="padding:0 0 10px;">
+  <div style="padding:0 0 10px; display:flex; flex-direction:column; gap:6px;">
     <input type="search" id="projectsSearch" class="btn" placeholder="🔍 Пошук по імені клієнта..." style="width:100%; box-sizing:border-box;">
+    <div style="display:flex; gap:6px;">
+      <select id="filterElectrician" class="btn" style="flex:1; box-sizing:border-box;">
+        <option value="">⚡ Всі електрики</option>
+      </select>
+      <select id="filterInstallationTeam" class="btn" style="flex:1; box-sizing:border-box;">
+        <option value="">🏗 Всі бригади</option>
+      </select>
+    </div>
   </div>
 
   <div id="constructionProjectsContainer"></div>
@@ -332,6 +340,34 @@ async function loadConstructionProjects() {
       };
     }
   } catch (_) {}
+
+  // Populate filter selects from STAFF_OPTIONS
+  const elSelect = document.getElementById('filterElectrician');
+  const teamSelect = document.getElementById('filterInstallationTeam');
+  if (elSelect && elSelect.options.length === 1) {
+    STAFF_OPTIONS.electrician.forEach(opt => {
+      const o = document.createElement('option');
+      o.value = opt.name;
+      o.textContent = opt.name;
+      elSelect.appendChild(o);
+    });
+    const bm = document.createElement('option');
+    bm.value = 'Без монтажних робіт';
+    bm.textContent = 'Без монтажних робіт';
+    elSelect.appendChild(bm);
+  }
+  if (teamSelect && teamSelect.options.length === 1) {
+    STAFF_OPTIONS.installation_team.forEach(opt => {
+      const o = document.createElement('option');
+      o.value = opt.name;
+      o.textContent = opt.name;
+      teamSelect.appendChild(o);
+    });
+    const bm = document.createElement('option');
+    bm.value = 'Без монтажних робіт';
+    bm.textContent = 'Без монтажних робіт';
+    teamSelect.appendChild(bm);
+  }
 
   const r = await fetch('/api/sales-projects?layer=projects');
   const projects = await r.json();
@@ -743,30 +779,43 @@ async function loadConstructionProjects() {
   }
 }
 
+function applyProjectFilters() {
+  const q = (document.getElementById('projectsSearch')?.value || '').trim().toLowerCase();
+  const filterEl = (document.getElementById('filterElectrician')?.value || '').trim();
+  const filterTeam = (document.getElementById('filterInstallationTeam')?.value || '').trim();
+  const container = document.getElementById('constructionProjectsContainer');
+  if (!container) return;
+
+  container.querySelectorAll('.project-card').forEach(card => {
+    const name = card.querySelector('[data-project-preview="client"]')?.textContent?.toLowerCase() || '';
+    const el = (card.querySelector('[data-project-preview="electrician"]')?.textContent || '').trim();
+    const team = (card.querySelector('[data-project-preview="team"]')?.textContent || '').trim();
+
+    const matchQ = !q || name.includes(q);
+    const matchEl = !filterEl || el === filterEl;
+    const matchTeam = !filterTeam || team === filterTeam;
+
+    card.style.display = (matchQ && matchEl && matchTeam) ? '' : 'none';
+  });
+
+  // показуємо/ховаємо групи залежно від того чи є в них видимі картки
+  container.querySelectorAll('.project-stage-group').forEach(group => {
+    const hasVisible = Array.from(group.querySelectorAll('.project-card'))
+      .some(c => c.style.display !== 'none');
+    group.style.display = hasVisible ? '' : 'none';
+    if (hasVisible && (q || filterEl || filterTeam)) {
+      const stageBody = group.querySelector('.project-stage-body');
+      if (stageBody) stageBody.style.display = '';
+    }
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   loadConstructionProjects().catch(() => alert('Не вдалося завантажити проекти'));
 
-  document.getElementById('projectsSearch')?.addEventListener('input', function () {
-    const q = this.value.trim().toLowerCase();
-    const container = document.getElementById('constructionProjectsContainer');
-    if (!container) return;
-
-    container.querySelectorAll('.project-card').forEach(card => {
-      const name = card.querySelector('[data-project-preview="client"]')?.textContent?.toLowerCase() || '';
-      card.style.display = (!q || name.includes(q)) ? '' : 'none';
-    });
-
-    // показуємо/ховаємо групи залежно від того чи є в них видимі картки
-    container.querySelectorAll('.project-stage-group').forEach(group => {
-      const hasVisible = Array.from(group.querySelectorAll('.project-card'))
-        .some(c => c.style.display !== 'none');
-      group.style.display = hasVisible ? '' : 'none';
-      if (hasVisible && q) {
-        const stageBody = group.querySelector('.project-stage-body');
-        if (stageBody) stageBody.style.display = '';
-      }
-    });
-  });
+  document.getElementById('projectsSearch')?.addEventListener('input', applyProjectFilters);
+  document.getElementById('filterElectrician')?.addEventListener('change', applyProjectFilters);
+  document.getElementById('filterInstallationTeam')?.addEventListener('change', applyProjectFilters);
 });
 
 document.addEventListener('click', async function(e){
