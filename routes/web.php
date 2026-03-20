@@ -1499,6 +1499,8 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
                 'sp.panel_qty',
                 'sp.total_amount',
                 'sp.currency',
+                'sp.delivered_inverter',
+                'sp.delivered_panels',
             ])
             ->orderBy('sp.client_name')
             ->get();
@@ -1625,7 +1627,10 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         $isEmpty = fn($v) => empty($v) || trim($v) === '-' || trim($v) === '—';
 
         foreach ($projects as $p) {
-            if (!$isEmpty($p->inverter)) {
+            $inverterDelivered = (int)($p->delivered_inverter ?? 0) === 1;
+            $panelsDelivered   = (int)($p->delivered_panels   ?? 0) === 1;
+
+            if (!$inverterDelivered && !$isEmpty($p->inverter)) {
                 $key = $normalizeInverterName(trim($p->inverter));
                 $inverterSummary[$key] = ($inverterSummary[$key] ?? 0) + 1;
             }
@@ -1638,7 +1643,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
                 $qty = max(1, (int)($p->battery_qty ?? 1));
                 $batterySummary[$key] = ($batterySummary[$key] ?? 0) + $qty;
             }
-            if (!$isEmpty($p->panel_name)) {
+            if (!$panelsDelivered && !$isEmpty($p->panel_name)) {
                 $key = $normalizeEquipName(trim($p->panel_name));
                 $qty = max(1, (int)($p->panel_qty ?? 1));
                 $panelSummary[$key] = ($panelSummary[$key] ?? 0) + $qty;

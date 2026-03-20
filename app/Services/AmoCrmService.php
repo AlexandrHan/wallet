@@ -579,14 +579,8 @@ class AmoCrmService
         if ($this->hasSalesProjectColumn('inverter') && $inverter !== null) {
             $payload['inverter'] = mb_substr($inverter, 0, 255);
         }
-        if ($this->hasSalesProjectColumn('delivered_inverter') && $inverter !== null) {
-            $payload['delivered_inverter'] = mb_substr($inverter, 0, 255);
-        }
         if ($this->hasSalesProjectColumn('bms') && $bms !== null) {
             $payload['bms'] = mb_substr($bms, 0, 255);
-        }
-        if ($this->hasSalesProjectColumn('delivered_bms') && $bms !== null) {
-            $payload['delivered_bms'] = mb_substr($bms, 0, 255);
         }
         if ($this->hasSalesProjectColumn('battery_name') && $battery !== null) {
             $payload['battery_name'] = mb_substr($battery, 0, 255);
@@ -597,9 +591,6 @@ class AmoCrmService
                 $payload['battery_qty'] = $batteryQty;
             }
         }
-        if ($this->hasSalesProjectColumn('delivered_battery') && $battery !== null) {
-            $payload['delivered_battery'] = mb_substr($battery, 0, 255);
-        }
         if ($this->hasSalesProjectColumn('panel_name') && $panels !== null) {
             $payload['panel_name'] = mb_substr($panels, 0, 255);
         }
@@ -609,8 +600,18 @@ class AmoCrmService
                 $payload['panel_qty'] = $panelQty;
             }
         }
-        if ($this->hasSalesProjectColumn('delivered_panels') && $panels !== null) {
-            $payload['delivered_panels'] = mb_substr($panels, 0, 255);
+
+        // "Доставлено на об'єкт" boolean flags:
+        // field_id 1208519 = Інветорне обладнання (Так/Ні)
+        // field_id 1208513 = Сонячні панелі (Так/Ні)
+        $deliveredInverterRaw = $this->extractLeadFieldValue($lead, ['Інветорне обладнання', 'Інверторне обладнання'], [1208519]);
+        if ($this->hasSalesProjectColumn('delivered_inverter') && $deliveredInverterRaw !== null) {
+            $payload['delivered_inverter'] = mb_strtolower(trim($deliveredInverterRaw)) === 'так' ? 1 : 0;
+        }
+
+        $deliveredPanelsRaw = $this->extractLeadFieldValue($lead, ['Сонячні панелі'], [1208513]);
+        if ($this->hasSalesProjectColumn('delivered_panels') && $deliveredPanelsRaw !== null) {
+            $payload['delivered_panels'] = mb_strtolower(trim($deliveredPanelsRaw)) === 'так' ? 1 : 0;
         }
         if ($this->hasSalesProjectColumn('has_green_tariff') && $metaRaw !== null) {
             $metaLower = mb_strtolower(trim($metaRaw));
@@ -642,12 +643,8 @@ class AmoCrmService
      */
     private function applyAppWinsFilter(array $techFields, SalesProject $project): array
     {
-        $deliveredFields = ['delivered_inverter', 'delivered_battery', 'delivered_bms', 'delivered_panels'];
-        foreach ($deliveredFields as $field) {
-            if (isset($techFields[$field]) && trim((string) ($project->{$field} ?? '')) !== '') {
-                unset($techFields[$field]);
-            }
-        }
+        // delivered_inverter and delivered_panels are boolean flags (0/1) synced from AmoCRM —
+        // never block them here; they always come from AmoCRM source of truth.
         return $techFields;
     }
 

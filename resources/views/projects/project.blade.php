@@ -15,11 +15,11 @@
 
   <div style="padding:0 0 10px; display:flex; flex-direction:column; gap:6px;">
     <input type="search" id="projectsSearch" class="btn" placeholder="🔍 Пошук по імені клієнта..." style="width:100%; box-sizing:border-box;">
-    <div style="display:flex; gap:6px;">
-      <select id="filterElectrician" class="btn" style="flex:1; box-sizing:border-box;">
+    <div style="display:flex; gap:6px; width:100%;">
+      <select id="filterElectrician" class="btn" style="flex:1; min-width:0; width:50%; box-sizing:border-box;">
         <option value="">⚡ Всі електрики</option>
       </select>
-      <select id="filterInstallationTeam" class="btn" style="flex:1; box-sizing:border-box;">
+      <select id="filterInstallationTeam" class="btn" style="flex:1; min-width:0; width:50%; box-sizing:border-box;">
         <option value="">🏗 Всі бригади</option>
       </select>
     </div>
