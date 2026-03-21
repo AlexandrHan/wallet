@@ -6,30 +6,32 @@
   $activeStock        = str_starts_with($route ?? '', 'stock.');
   $activeProjects     = str_starts_with($route ?? '', 'projects.');
 
+  $activeQuality = str_starts_with($route ?? '', 'quality-checks');
+
   $tabs = [
     [
       'href'   => route('home'),
       'icon'   => '💼',
-      'label'  => 'Мій гаманець',
+      'label'  => 'Гаманець',
       'active' => $activeWallet
     ],
     [
-      'href'   => route('reclamations.index'),
-      'icon'   => '🛠️',
-      'label'  => 'Сервіс',
-      'active' => $activeReclamations
-    ],
-    [
-      'href'   => url('/stock'),
-      'icon'   => '📦',
-      'label'  => 'Склад',
-      'active' => $activeStock
+      'href'   => url('/quality-checks'),
+      'icon'   => '🔍',
+      'label'  => 'Перевірка',
+      'active' => $activeQuality
     ],
     [
       'href'   => url('/projects'),
       'icon'   => '🏗️',
       'label'  => 'Проекти',
       'active' => $activeProjects
+    ],
+    [
+      'href'   => route('reclamations.index'),
+      'icon'   => '🛠️',
+      'label'  => 'Сервіс',
+      'active' => $activeReclamations
     ],
   ];
 @endphp
@@ -79,6 +81,7 @@
           <div class="tg-acc__body">
             <a class="tg-menu__item" href="/projects"> 🧾 Проекти</a>
             <a class="tg-menu__item" href="/projects/service-repair"> 🛠 Сервіс та ремонт</a>
+            <a class="tg-menu__item" href="/quality-checks">🔍 Контроль якості</a>
           </div>
         </details>
 

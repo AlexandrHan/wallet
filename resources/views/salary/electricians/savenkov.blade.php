@@ -206,7 +206,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     try {
       const [rule, res] = await Promise.all([
         loadRule(),
-        fetch('/api/sales-projects'),
+        fetch('/api/salary/projects'),
       ]);
       const projects = await res.json();
 

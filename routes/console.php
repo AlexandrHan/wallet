@@ -39,3 +39,7 @@ Schedule::command('sheets:sync-electricians')
 Schedule::command('sheets:sync-installers')
     ->hourly()
     ->withoutOverlapping();
+
+// 🗑 Очищення даних про недоліки старших 3 місяців
+Schedule::command('quality:prune-deficiencies')
+    ->dailyAt('03:00');

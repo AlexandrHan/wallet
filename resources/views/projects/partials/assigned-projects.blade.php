@@ -18,6 +18,14 @@
 
 </main>
 
+{{-- QC defect photo preview modal --}}
+<div id="qcPhotoModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:9999; align-items:center; justify-content:center;"
+  onclick="if(event.target===this)this.style.display='none'">
+  <img id="qcPhotoModalImg" src="" style="max-width:95vw; max-height:90vh; border-radius:8px;">
+  <button onclick="document.getElementById('qcPhotoModal').style.display='none'"
+    style="position:absolute; top:16px; right:16px; background:none; border:none; color:#fff; font-size:28px; cursor:pointer;">✕</button>
+</div>
+
 <script>
 document.addEventListener('DOMContentLoaded', async function () {
   const AUTH_USER = @json(auth()->user());
@@ -30,7 +38,7 @@ document.addEventListener('DOMContentLoaded', async function () {
   const SCHEDULE_DURATION_FIELD = @json($scheduleDurationField ?? null);
   const SCHEDULE_DATES_KEY = @json($scheduleDatesKey ?? null);
   const RANGE_DAYS = @json($rangeDays ?? 7);
-  const REFRESH_MS = 15000;
+  const REFRESH_MS = 8000;
   const WEEKDAY_LABELS = ['Неділя', 'Понеділок', 'Вівторок', 'Середа', 'Четвер', "П'ятниця", 'Субота'];
 
   let savedOpen = {}; // cardKey → { bodyVisible, openSectionIndexes[] }
@@ -40,7 +48,14 @@ document.addEventListener('DOMContentLoaded', async function () {
     container.querySelectorAll('[data-card-key]').forEach(card => {
       const key = card.dataset.cardKey;
       const body = card.querySelector('.project-body');
-      if (!body || window.getComputedStyle(body).display === 'none') return;
+      if (!body) return;
+
+      const isCollapsed = window.getComputedStyle(body).display === 'none';
+      if (isCollapsed) {
+        savedOpen[key] = { bodyVisible: false, openSections: [] };
+        return;
+      }
+
       const openSections = [];
       body.querySelectorAll('.project-section').forEach((s, i) => {
         if (s.classList.contains('is-open')) openSections.push(i);
@@ -53,9 +68,16 @@ document.addEventListener('DOMContentLoaded', async function () {
     container.querySelectorAll('[data-card-key]').forEach(card => {
       const key = card.dataset.cardKey;
       const state = savedOpen[key];
-      if (!state?.bodyVisible) return;
+      // Cards not in savedOpen are new — leave them at default (visible)
+      if (!state) return;
       const body = card.querySelector('.project-body');
       if (!body) return;
+
+      if (!state.bodyVisible) {
+        body.style.display = 'none';
+        return;
+      }
+
       body.style.display = 'block';
       const sections = body.querySelectorAll('.project-section');
       state.openSections.forEach(i => {
@@ -215,7 +237,82 @@ document.addEventListener('DOMContentLoaded', async function () {
     });
   }
 
-  function makeCard(project) {
+  const CS_LABELS = {
+    waiting_quality_check: '🟡 Очікує перевірки',
+    quality_approved:      '🟢 Прийнятий',
+    salary_pending:        '💰 Очікує виплати зарплати',
+    salary_paid:           '✅ Зарплата виплачена',
+    has_deficiencies:      '❌ Виявлені недоліки',
+    deficiencies_fixed:    '🔧 Недоліки виправлені — очікує перевірки',
+  };
+
+  function renderQcMedia(project) {
+    const photos = project.quality_defect_photos || [];
+    const voiceUrl = project.quality_voice_memo_url || null;
+    const defText = String(project.quality_deficiencies || project.defects_note || '').trim();
+    let html = '';
+    if (defText) {
+      html += `<div style="font-size:13px; opacity:.9; white-space:pre-wrap; margin-bottom:8px;">${esc(defText)}</div>`;
+    }
+    if (photos.length) {
+      html += `<div style="display:flex; flex-wrap:wrap; gap:5px; margin-bottom:8px;">
+        ${photos.map(url => `<img src="${url}" style="width:56px; height:56px; object-fit:cover; border-radius:5px; cursor:pointer;"
+          onclick="document.getElementById('qcPhotoModalImg').src='${url}';document.getElementById('qcPhotoModal').style.display='flex';">`).join('')}
+      </div>`;
+    }
+    if (voiceUrl) {
+      html += `<audio controls src="${voiceUrl}" style="width:100%; height:34px; margin-bottom:6px;"></audio>`;
+    }
+    return html;
+  }
+
+  function renderConstructionStatus(project) {
+    const cs = project.construction_status || null;
+    const isWorker = AUTH_USER && AUTH_USER.role === 'worker';
+
+    if (cs === 'has_deficiencies') {
+      const media = renderQcMedia(project);
+      return `
+        <div style="margin:8px 0 12px; padding:10px 12px; border-radius:8px; background:rgba(229,62,62,.15); border:1px solid rgba(229,62,62,.35);">
+          <div style="font-size:13px; font-weight:700; color:#f88; margin-bottom:${media ? '8px' : '0'};">❌ Виявлені недоліки</div>
+          ${media}
+          ${isWorker ? `<button type="button" class="btn fix-deficiencies-btn"
+            data-project-id="${project.id}"
+            style="width:100%; margin-top:4px; background:rgba(212,160,23,.2); color:#f4c842; border:1px solid rgba(212,160,23,.4); font-weight:700;">
+            🔧 Виправили недоліки
+          </button>` : ''}
+        </div>`;
+    }
+
+    if (cs === 'deficiencies_fixed') {
+      const media = renderQcMedia(project);
+      return `
+        <div style="margin:8px 0 12px; padding:10px 12px; border-radius:8px; background:rgba(212,160,23,.12); border:1px solid rgba(212,160,23,.35);">
+          <div style="font-size:13px; font-weight:700; color:#f4c842; margin-bottom:${media ? '8px' : '0'};">🔧 Недоліки виправлені — очікує перевірки</div>
+          ${media}
+        </div>`;
+    }
+
+    const label = CS_LABELS[cs] || null;
+    if (label) {
+      const bg = 'rgba(255,255,255,.07)';
+      return `<div style="margin:8px 0 12px; padding:8px 12px; border-radius:8px; background:${bg}; font-size:13px; font-weight:600;">${esc(label)}</div>`;
+    }
+
+    // Show "Завершили будівництво" button for workers only (not owner viewing)
+    const isService = String(project.status || '') === 'service';
+    if (!isWorker || isService) return '';
+
+    return `
+      <button type="button" class="btn complete-construction-btn"
+        data-project-id="${project.id}"
+        style="width:100%; margin:8px 0 12px; background:#2a7a2a; color:#fff; font-weight:700;">
+        🏁 Завершили будівництво
+      </button>
+    `;
+  }
+
+  function makeCard(project, cardKey = null) {
     const card = document.createElement('div');
     const isClosed = String(project.status) === 'completed';
     const hasDefects = String(project.defects_note || '').trim() !== '';
@@ -237,9 +334,10 @@ document.addEventListener('DOMContentLoaded', async function () {
     const phoneHref = normalizePhoneHref(project.phone_number);
 
     card.className = 'card project-card';
-    card.dataset.cardKey = `project-${project.id}`;
+    card.dataset.cardKey = cardKey || `project-${project.id}`;
     if (hasGreenTariff) card.classList.add('project-card--green');
-    if (hasDefects) card.classList.add('project-card--defects');
+    if (hasDefects || project.construction_status === 'has_deficiencies') card.classList.add('project-card--defects');
+    if (project.construction_status === 'deficiencies_fixed') card.style.border = '2px solid #d4a017';
 
     card.innerHTML = `
       <div class="project-header">
@@ -259,6 +357,8 @@ document.addEventListener('DOMContentLoaded', async function () {
 
       <div class="project-body">
         <button type="button" class="btn project-expand-toggle">Розкрити проект</button>
+
+        ${renderConstructionStatus(project)}
 
         <div class="project-section" data-section>
           <button type="button" class="project-section-toggle">
@@ -390,6 +490,22 @@ document.addEventListener('DOMContentLoaded', async function () {
 
             <div class="project-field-label">Головне фото недоліків</div>
             ${photoHtml}
+
+            ${(project.quality_defect_photos || []).length ? `
+              <div class="project-field-label">Фото від майстра (контроль якості)</div>
+              <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
+                ${(project.quality_defect_photos || []).map(url => `
+                  <img src="${url}" style="width:64px; height:64px; object-fit:cover; border-radius:6px; cursor:pointer;"
+                    onclick="document.getElementById('qcPhotoModalImg').src='${url}';document.getElementById('qcPhotoModal').style.display='flex';">`
+                ).join('')}
+              </div>
+            ` : ''}
+
+            ${project.quality_voice_memo_url ? `
+              <div class="project-field-label">Голосовий коментар майстра</div>
+              <audio controls src="${project.quality_voice_memo_url}"
+                style="width:100%; max-width:100%; height:36px; margin-bottom:8px;"></audio>
+            ` : ''}
           </div>
         </div>
 
@@ -443,6 +559,83 @@ document.addEventListener('DOMContentLoaded', async function () {
         }
       });
     });
+
+    // "Завершили будівництво" button handler
+    const completeBtn = card.querySelector('.complete-construction-btn');
+    if (completeBtn) {
+      completeBtn.addEventListener('click', async function (e) {
+        e.stopPropagation();
+        if (!confirm('Підтвердити завершення будівництва? Проект перейде на перевірку.')) return;
+        this.disabled = true;
+        this.textContent = 'Надсилання...';
+        try {
+          const r = await fetch(`/api/projects/${project.id}/complete-construction`, {
+            method: 'POST',
+            headers: {
+              'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+              'Accept': 'application/json',
+            },
+          });
+          const data = await r.json();
+          if (r.ok && data.ok) {
+            this.textContent = '🟡 Очікує перевірки';
+            this.classList.remove('complete-construction-btn');
+            this.style.background = '';
+            this.style.color = '';
+            this.disabled = true;
+          } else {
+            alert(data.error || 'Помилка');
+            this.disabled = false;
+            this.textContent = '🏁 Завершили будівництво';
+          }
+        } catch (err) {
+          alert('Помилка з\'єднання');
+          this.disabled = false;
+          this.textContent = '🏁 Завершили будівництво';
+        }
+      });
+    }
+
+    // "Виправили недоліки" button handler
+    const fixBtn = card.querySelector('.fix-deficiencies-btn');
+    if (fixBtn) {
+      fixBtn.addEventListener('click', async function (e) {
+        e.stopPropagation();
+        if (!confirm('Підтвердити, що недоліки виправлено? Проект знову піде на перевірку.')) return;
+        this.disabled = true;
+        this.textContent = 'Надсилання...';
+        try {
+          const r = await fetch(`/api/projects/${project.id}/deficiencies-fixed`, {
+            method: 'POST',
+            headers: {
+              'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+              'Accept': 'application/json',
+            },
+          });
+          const data = await r.json();
+          if (r.ok && data.ok) {
+            // Update card to deficiencies_fixed state
+            card.classList.remove('project-card--defects');
+            card.style.border = '2px solid #d4a017';
+            const statusBlock = this.closest('[style*="rgba(229,62,62"]') || this.closest('div');
+            if (statusBlock) {
+              statusBlock.outerHTML = `<div style="margin:8px 0 12px; padding:8px 12px; border-radius:8px;
+                background:rgba(212,160,23,.12); font-size:13px; font-weight:600; color:#f4c842;">
+                🔧 Недоліки виправлені — очікує перевірки
+              </div>`;
+            }
+          } else {
+            alert(data.error || 'Помилка');
+            this.disabled = false;
+            this.textContent = '🔧 Виправили недоліки';
+          }
+        } catch (err) {
+          alert('Помилка з\'єднання');
+          this.disabled = false;
+          this.textContent = '🔧 Виправили недоліки';
+        }
+      });
+    }
 
     return card;
   }
@@ -530,7 +723,7 @@ document.addEventListener('DOMContentLoaded', async function () {
       dayProjects.forEach(project => {
         const projectCard = project?.entry_type === 'service'
           ? makeServiceCard(project)
-          : makeCard(project);
+          : makeCard(project, `project-${project.id}-${day.key}`);
         projectCard.style.marginBottom = '12px';
         daySection.appendChild(projectCard);
       });
@@ -600,8 +793,15 @@ document.addEventListener('DOMContentLoaded', async function () {
 
   async function loadProjects() {
     try {
+      // Workers get a slim filtered response; owners/other roles get the full list
+      const isWorker = AUTH_USER && AUTH_USER.role === 'worker';
+      let projectsUrl = '/api/sales-projects';
+      if (isWorker && expectedValue && MATCH_FIELD) {
+        projectsUrl += `?worker_mode=1&match_field=${encodeURIComponent(MATCH_FIELD)}&match_value=${encodeURIComponent(expectedValue)}`;
+      }
+
       const [projectsRes, servicesRes] = await Promise.all([
-        fetch('/api/sales-projects', { headers: { 'Accept': 'application/json' } }),
+        fetch(projectsUrl, { headers: { 'Accept': 'application/json' } }),
         fetch('/api/my-service-requests', { headers: { 'Accept': 'application/json' } }),
       ]);
       const projects = await projectsRes.json();

@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -rn \"deficiencies\\\\|quality_defect\\\\|quality_voice\\\\|defects_note\" /var/www/wallet-ai/resources/views/projects/ --include=*.blade.php -l)",
+      "Bash(sqlite3 /var/www/wallet-ai/database/wallet-prod.sqlite \"SELECT id, project_id, status, deficiencies, voice_memo_path FROM quality_checks WHERE project_id = 809;\")"
+    ]
+  }
+}

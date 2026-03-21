@@ -76,6 +76,8 @@
       <summary class="tg-acc__title">💰 Зарплатня</summary>
       <div class="tg-acc__body">
         <a class="tg-menu__item" href="/salary">💰 Нарахування зарплатні</a>
+        <a class="tg-menu__item" href="/salary/accruals">💸 Виплата зарплат</a>
+        <a class="tg-menu__item" href="/quality-checks">🔍 Контроль якості</a>
         <a class="tg-menu__item" href="/salary/settings">⚙️ Налаштування зарплатні</a>
       </div>
     </details>

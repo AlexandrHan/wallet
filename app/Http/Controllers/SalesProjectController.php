@@ -305,7 +305,20 @@ class SalesProjectController extends Controller
 
     public function index(Request $request)
     {
-        $amoComplectationByProjectId = Schema::hasTable('amo_complectation_projects')
+        // Worker mode: filter to only the calling worker's projects, skip heavy finance data
+        $workerMode = $request->query('worker_mode') === '1';
+        $workerMatchField = null;
+        $workerMatchValue = null;
+        if ($workerMode) {
+            $mf = trim((string) $request->query('match_field', ''));
+            $mv = trim((string) $request->query('match_value', ''));
+            if (in_array($mf, ['installation_team', 'electrician'], true) && $mv !== '') {
+                $workerMatchField = $mf;
+                $workerMatchValue = $mv;
+            }
+        }
+
+        $amoComplectationByProjectId = (!$workerMode && Schema::hasTable('amo_complectation_projects'))
             ? DB::table('amo_complectation_projects')
                 ->select('wallet_project_id', 'responsible_name', 'status_id')
                 ->whereNotNull('wallet_project_id')
@@ -360,23 +373,80 @@ class SalesProjectController extends Controller
                 ->select('sales_projects.*');
         }
 
+        // Worker mode: only load this worker's assigned, non-completed projects
+        if ($workerMatchField && $workerMatchValue) {
+            $projectsQuery->where($workerMatchField, $workerMatchValue);
+        }
+        if ($workerMode) {
+            $projectsQuery->where('status', '!=', 'completed');
+        }
+
         $projects = $projectsQuery->orderByDesc('sales_projects.id')->get();
 
         $projectIds = $projects->pluck('id')->all();
 
-        $transfersByProjectId = CashTransfer::whereIn('project_id', $projectIds)
-            ->orderByDesc('id')
-            ->get()
-            ->groupBy('project_id');
+        // Load quality-check defect media for has_deficiencies and deficiencies_fixed projects
+        $qcByProject = collect();
+        $deficiencyProjectIds = $projects
+            ->filter(fn ($p) => in_array($p->construction_status ?? null, ['has_deficiencies', 'deficiencies_fixed']))
+            ->pluck('id')->all();
+        if (!empty($deficiencyProjectIds)) {
+            $qcRows = DB::table('quality_checks')
+                ->whereIn('project_id', $deficiencyProjectIds)
+                ->whereIn('status', ['has_deficiencies', 'deficiencies_fixed'])
+                ->select('id', 'project_id', 'voice_memo_path', 'deficiencies')
+                ->get()
+                ->keyBy('project_id');
+            $qcIds = $qcRows->pluck('id')->all();
+            $photosByQc = DB::table('quality_photos')
+                ->whereIn('quality_check_id', $qcIds)
+                ->select('quality_check_id', 'file_path')
+                ->get()
+                ->groupBy('quality_check_id');
+            $qcByProject = $qcRows->map(function ($qc) use ($photosByQc) {
+                return [
+                    'photos'         => ($photosByQc->get($qc->id) ?? collect())
+                        ->map(fn ($p) => \Illuminate\Support\Facades\Storage::disk('public')->url($p->file_path))
+                        ->values()->all(),
+                    'voice_memo_url' => $qc->voice_memo_path
+                        ? \Illuminate\Support\Facades\Storage::disk('public')->url($qc->voice_memo_path)
+                        : null,
+                    'deficiencies'   => $qc->deficiencies,
+                ];
+            });
+        }
+
+        $transfersByProjectId = $workerMode
+            ? collect()
+            : CashTransfer::whereIn('project_id', $projectIds)
+                ->orderByDesc('id')
+                ->get()
+                ->groupBy('project_id');
 
         // For projects layer: load amo_status_id from deal map
-        $amoStatusByProjectId = ($layer === 'projects' && Schema::hasTable('amocrm_deal_map'))
+        $amoStatusByProjectId = (!$workerMode && $layer === 'projects' && Schema::hasTable('amocrm_deal_map'))
             ? DB::table('amocrm_deal_map')
                 ->whereIn('wallet_project_id', $projectIds)
                 ->pluck('amo_status_id', 'wallet_project_id')
             : collect();
 
-        $projects = $projects->map(function ($project) use ($userNames, $amoComplectationByProjectId, $transfersByProjectId, $amoStatusByProjectId) {
+        // Bulk-load attachments and schedule entries (fixes N+1 per-project queries)
+        $attachmentsByProject = Schema::hasTable('project_attachments')
+            ? DB::table('project_attachments')
+                ->whereIn('project_id', $projectIds)
+                ->orderByDesc('id')
+                ->get()
+                ->groupBy('project_id')
+            : collect();
+        $scheduleEntriesByProject = Schema::hasTable('project_schedule_entries')
+            ? DB::table('project_schedule_entries')
+                ->whereIn('project_id', $projectIds)
+                ->orderBy('work_date')
+                ->get()
+                ->groupBy('project_id')
+            : collect();
+
+        $projects = $projects->map(function ($project) use ($userNames, $amoComplectationByProjectId, $transfersByProjectId, $amoStatusByProjectId, $qcByProject, $attachmentsByProject, $scheduleEntriesByProject) {
 
             $transfers = $transfersByProjectId->get($project->id, collect());
 
@@ -422,19 +492,8 @@ class SalesProjectController extends Controller
                 ->filter()
                 ->first();
             
-            $attachments = Schema::hasTable('project_attachments')
-                ? DB::table('project_attachments')
-                    ->where('project_id', $project->id)
-                    ->orderByDesc('id')
-                    ->get()
-                : collect();
-
-            $scheduleEntries = Schema::hasTable('project_schedule_entries')
-                ? DB::table('project_schedule_entries')
-                    ->where('project_id', $project->id)
-                    ->orderBy('work_date')
-                    ->get()
-                : collect();
+            $attachments    = $attachmentsByProject->get($project->id, collect());
+            $scheduleEntries = $scheduleEntriesByProject->get($project->id, collect());
 
             $electricScheduleDates = $scheduleEntries
                 ->where('assignment_field', 'electrician')
@@ -515,11 +574,17 @@ class SalesProjectController extends Controller
                 'installation_team_task_note' => Schema::hasColumn('sales_projects', 'installation_team_task_note')
                     ? $project->installation_team_task_note
                     : null,
+                'construction_status' => Schema::hasColumn('sales_projects', 'construction_status')
+                    ? $project->construction_status
+                    : null,
                 'extra_works' => $project->extra_works,
                 'defects_note' => $project->defects_note,
                 'defects_photo_url' => $project->defects_photo_path
                     ? Storage::disk('public')->url($project->defects_photo_path)
                     : null,
+                'quality_defect_photos'   => $qcByProject->get($project->id)['photos'] ?? [],
+                'quality_voice_memo_url'  => $qcByProject->get($project->id)['voice_memo_url'] ?? null,
+                'quality_deficiencies'    => $qcByProject->get($project->id)['deficiencies'] ?? null,
                 'closed_at' => $project->closed_at
                     ? \Carbon\Carbon::parse($project->closed_at)->format('d.m.Y H:i')
                     : null,
@@ -1054,9 +1119,9 @@ class SalesProjectController extends Controller
             return response()->json(['error' => 'Проект не знайдено'], 404);
         }
 
-        if (trim((string)($project->defects_note ?? '')) !== '') {
+        if ($project->construction_status === 'has_deficiencies') {
             return response()->json([
-                'error' => 'Не можна закрити проект, поки заповнені недоліки'
+                'error' => 'Не можна закрити проект, поки недоліки не виправлені монтажником'
             ], 422);
         }
 
@@ -1163,6 +1228,20 @@ class SalesProjectController extends Controller
         }
 
         return response()->json($result);
+    }
+
+    /**
+     * GET /api/salary/projects
+     * Slim list of projects with only fields needed for salary calculations.
+     * 7 fields instead of 45 — ~350KB vs 1.5MB.
+     */
+    public function salaryProjects(): \Illuminate\Http\JsonResponse
+    {
+        $projects = DB::table('sales_projects')
+            ->select(['id', 'client_name', 'installation_team', 'electrician', 'panel_name', 'panel_qty', 'inverter', 'construction_status'])
+            ->get();
+
+        return response()->json($projects);
     }
 
     public function addConstructionStaffOption(Request $request)

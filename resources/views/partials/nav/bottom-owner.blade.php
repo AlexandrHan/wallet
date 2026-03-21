@@ -98,6 +98,7 @@
         <a class="tg-menu__item" href="/projects">🏗 Проекти (активні)</a>
         <a class="tg-menu__item" href="/projects/service-repair">🛠 Сервіс та ремонт</a>
         <a class="tg-menu__item" href="{{ route('reclamations.index') }}">🧾 Рекламації</a>
+        <a class="tg-menu__item" href="/quality-checks">🔍 Контроль якості</a>
         <button type="button" class="tg-menu__item tg-menu__item--static" disabled>📊 Графіки</button>
       </div>
     </details>
@@ -106,6 +107,7 @@
       <summary class="tg-acc__title">💰 Зарплатня</summary>
       <div class="tg-acc__body">
         <a class="tg-menu__item" href="/salary">💰 Нарахування зарплатні</a>
+        <a class="tg-menu__item" href="/salary/accruals">💸 Виплата зарплат</a>
         <a class="tg-menu__item" href="/salary/settings">⚙️ Налаштування зарплатні</a>
       </div>
     </details>

@@ -495,6 +495,166 @@ class SalaryRuleController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    /**
+     * GET /api/salary/summary
+     * Returns pre-calculated salary totals for all staff groups in one request.
+     * Replaces 7 parallel API calls on the salary index page.
+     */
+    public function summary(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $month = (int) $request->input('month', now()->month);
+        $year  = (int) $request->input('year', now()->year);
+
+        $rules = DB::table('salary_rules')->get();
+        $projects = DB::table('sales_projects')
+            ->select(['id', 'client_name', 'installation_team', 'electrician', 'panel_name', 'panel_qty', 'inverter'])
+            ->get();
+
+        // ── Helpers ──────────────────────────────────────────────────────────
+
+        $addAmount = function (array &$bucket, string $currency, float $amount): void {
+            if (!isset($bucket[$currency])) $bucket[$currency] = 0.0;
+            $bucket[$currency] += $amount;
+        };
+
+        $parsePanelWatts = function (string $panelName): ?float {
+            $text = str_replace(',', '.', $panelName);
+            if (preg_match('/(\d+(?:\.\d+)?)\s*(?:w|wp|вт)/iu', $text, $m)) return (float) $m[1];
+            if (preg_match('/(\d{3,4})/', $text, $m)) return (float) $m[1];
+            return null;
+        };
+
+        $parseKw = function (string $inverter): float {
+            $text = str_replace(',', '.', $inverter);
+            if (preg_match('/(\d+(?:\.\d+)?)\s*(?:k|kw|квт)/iu', $text, $m)) return (float) $m[1];
+            return 0.0;
+        };
+
+        $isHybrid = function (string $inverter): bool {
+            return (bool) preg_match('/hybrid|гібрид|гибрид|hyb\b|hibr/iu', $inverter);
+        };
+
+        // Build rule maps keyed by lowercase staff_name
+        $elRules  = [];
+        $instRules = [];
+        $accRules  = [];
+        $foremanRules = [];
+
+        foreach ($rules as $r) {
+            $key = mb_strtolower(trim((string) $r->staff_name));
+            if ($r->staff_group === 'electrician')       $elRules[$key]     = $r;
+            if ($r->staff_group === 'installation_team') $instRules[$key]   = $r;
+            if ($r->staff_group === 'accountant')        $accRules[]        = $r;
+            if ($r->staff_group === 'foreman')           $foremanRules[]    = $r;
+        }
+
+        // ── Electricians ─────────────────────────────────────────────────────
+        $elTotals = [];
+        foreach ($projects as $p) {
+            $name = mb_strtolower(trim((string) ($p->electrician ?? '')));
+            if (!$name || !isset($elRules[$name])) continue;
+            $r = $elRules[$name];
+            if ($r->mode === 'fixed') {
+                $addAmount($elTotals, $r->currency, (float) $r->fixed_amount);
+            } else {
+                $kw = $parseKw((string) ($p->inverter ?? ''));
+                $hybrid = $isHybrid((string) ($p->inverter ?? ''));
+                if ($hybrid) {
+                    $rate = $kw <= 50 ? (float) $r->piecework_hybrid_le_50 : (float) $r->piecework_hybrid_gt_50;
+                } else {
+                    $rate = $kw <= 50 ? (float) $r->piecework_grid_le_50 : (float) $r->piecework_grid_gt_50;
+                }
+                $addAmount($elTotals, $r->currency, $kw * $rate);
+            }
+        }
+
+        // ── Installers ───────────────────────────────────────────────────────
+        $instTotals = [];
+        foreach ($projects as $p) {
+            $name = mb_strtolower(trim((string) ($p->installation_team ?? '')));
+            if (!$name || !isset($instRules[$name])) continue;
+            $r = $instRules[$name];
+            if ($r->mode === 'fixed') {
+                $addAmount($instTotals, $r->currency, (float) $r->fixed_amount);
+            } else {
+                $watts = $parsePanelWatts((string) ($p->panel_name ?? ''));
+                $qty   = (int) ($p->panel_qty ?? 0);
+                $kw    = ($watts && $qty) ? (int) ceil(($watts * $qty) / 1000) : 0;
+                $amount = ($kw * (float) $r->piecework_unit_rate) + (float) $r->foreman_bonus;
+                $addAmount($instTotals, $r->currency, $amount);
+            }
+        }
+
+        // ── Accountant / Foreman (fixed) ─────────────────────────────────────
+        $accTotals = [];
+        foreach ($accRules as $r) {
+            if ($r->mode === 'fixed') $addAmount($accTotals, $r->currency, (float) $r->fixed_amount);
+        }
+
+        $foremanTotals = [];
+        foreach ($foremanRules as $r) {
+            if ($r->mode === 'fixed') $addAmount($foremanTotals, $r->currency, (float) $r->fixed_amount);
+        }
+
+        // ── Managers ─────────────────────────────────────────────────────────
+        $managerIds = DB::table('users')->where('role', 'ntv')->pluck('id')->all();
+        $managerTotals = [];
+
+        if ($managerIds) {
+            $acceptedByProject = DB::table('cash_transfers')
+                ->where('status', 'accepted')
+                ->whereNotNull('project_id')
+                ->select('project_id', DB::raw('SUM(usd_amount) as paid_amount'), DB::raw('MAX(created_at) as paid_at'))
+                ->groupBy('project_id')
+                ->get()->keyBy('project_id');
+
+            DB::table('sales_projects')
+                ->whereIn('created_by', $managerIds)
+                ->select(['id', 'created_by', 'total_amount', 'currency'])
+                ->get()
+                ->each(function ($p) use ($acceptedByProject, &$managerTotals, $addAmount, $year, $month) {
+                    $meta = $acceptedByProject->get($p->id);
+                    if (!$meta) return;
+                    if ((float) $meta->paid_amount + 0.0001 < (float) $p->total_amount) return;
+                    $paidAt = \Carbon\Carbon::parse($meta->paid_at);
+                    if ($paidAt->year !== $year || $paidAt->month !== $month) return;
+                    $addAmount($managerTotals, (string) $p->currency, round((float) $p->total_amount * 0.01, 2));
+                });
+        }
+
+        // ── Pending accruals ─────────────────────────────────────────────────
+        $pendingGroups = DB::table('salary_accruals')->where('status', 'pending')->get();
+        $pendingTotal = $pendingGroups->sum('amount');
+        $pendingCurrency = $pendingGroups->first()?->currency ?? 'USD';
+        $pendingCount = DB::table('salary_accruals')->where('status', 'pending')
+            ->distinct('user_id')->count('user_id');
+
+        $formatTotals = function (array $totals): string {
+            $sym = ['UAH' => '₴', 'USD' => '$', 'EUR' => '€'];
+            $parts = [];
+            foreach ($totals as $currency => $amount) {
+                if ($amount > 0.001) {
+                    $num = number_format($amount, 0, '.', ' ');
+                    $parts[] = $num . "\u{00a0}" . ($sym[$currency] ?? $currency);
+                }
+            }
+            return $parts ? implode(' + ', $parts) : 'Нарахувань немає';
+        };
+
+        return response()->json([
+            'electricians' => $formatTotals($elTotals),
+            'installers'   => $formatTotals($instTotals),
+            'managers'     => $formatTotals($managerTotals),
+            'accountant'   => $formatTotals($accTotals),
+            'foreman'      => $formatTotals($foremanTotals),
+            'accruals' => [
+                'count'    => $pendingCount,
+                'total'    => $pendingTotal,
+                'currency' => $pendingCurrency,
+            ],
+        ]);
+    }
+
     public function managerPayoutData(Request $request)
     {
         $data = $request->validate([

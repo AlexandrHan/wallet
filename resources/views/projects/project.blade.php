@@ -299,19 +299,17 @@ function syncProjectCardPreview(body) {
 function syncProjectCardState(body) {
   if (!body) return;
   const card = body.closest('.project-card');
-  const defects = String(body.querySelector('[data-field="defects_note"]')?.value || '').trim();
-  const hasDefects = defects !== '';
+  const cs = card?.dataset.constructionStatus || '';
+  const hasDefects = cs === 'has_deficiencies';
+  const defectsNote = String(body.querySelector('[data-field="defects_note"]')?.value || '').trim();
+  const hasAnyDefects = hasDefects || cs === 'deficiencies_fixed' || defectsNote !== '';
   const closeBtn = body.querySelector('.close-project-btn');
 
   if (card) {
-    card.classList.toggle('project-card--defects', hasDefects);
+    card.classList.toggle('project-card--defects', hasAnyDefects);
   }
 
-  if (closeBtn && !closeBtn.disabled) {
-    closeBtn.classList.toggle('is-locked', hasDefects);
-    closeBtn.disabled = hasDefects;
-    closeBtn.textContent = hasDefects ? '⚠️ Є недоліки, закриття заборонено' : '🔒 Закрити проект';
-  } else if (closeBtn && !closeBtn.textContent.includes('✅ Проект закритий')) {
+  if (closeBtn && !closeBtn.textContent.includes('✅ Проект закритий')) {
     closeBtn.classList.toggle('is-locked', hasDefects);
     closeBtn.disabled = hasDefects;
     closeBtn.textContent = hasDefects ? '⚠️ Є недоліки, закриття заборонено' : '🔒 Закрити проект';
@@ -373,8 +371,8 @@ async function loadConstructionProjects() {
   const projects = await r.json();
   const visibleProjects = [...projects].filter(p => !p.is_retail);
   const sortedProjects = visibleProjects.sort((a, b) => {
-    const aHasDefects = String(a.defects_note || '').trim() !== '';
-    const bHasDefects = String(b.defects_note || '').trim() !== '';
+    const aHasDefects = a.construction_status === 'has_deficiencies' || a.construction_status === 'deficiencies_fixed' || String(a.defects_note || '').trim() !== '';
+    const bHasDefects = b.construction_status === 'has_deficiencies' || b.construction_status === 'deficiencies_fixed' || String(b.defects_note || '').trim() !== '';
 
     if (aHasDefects !== bHasDefects) {
       return aHasDefects ? -1 : 1;
@@ -406,7 +404,10 @@ async function loadConstructionProjects() {
 
   function buildProjectCard(p) {
     const isClosed = p.status === 'completed';
-    const hasDefects = String(p.defects_note || '').trim() !== '';
+    const hasDefects = p.construction_status === 'has_deficiencies';
+    const hasAnyDefects = hasDefects
+      || p.construction_status === 'deficiencies_fixed'
+      || String(p.defects_note || '').trim() !== '';
     const hasGreenTariff = !!p.has_green_tariff;
     const photoHtml = p.defects_photo_url
       ? `<a href="${p.defects_photo_url}" target="_blank" style="font-size:12px; opacity:.8;">📎 Поточне фото недоліків</a>`
@@ -431,8 +432,9 @@ async function loadConstructionProjects() {
 
     const card = document.createElement('div');
     card.className = 'card project-card';
+    card.dataset.constructionStatus = p.construction_status || '';
     if (hasGreenTariff) card.classList.add('project-card--green');
-    if (hasDefects) card.classList.add('project-card--defects');
+    if (hasAnyDefects) card.classList.add('project-card--defects');
     card.innerHTML = `
       <div class="project-header">
         <div class="project-header-row">
@@ -621,7 +623,26 @@ async function loadConstructionProjects() {
             <span class="project-section-caret">▸</span>
           </button>
           <div class="project-section-body">
-            <div class="project-field-label" style="margin-top:10px;">Опис проблемних місць</div>
+            ${p.construction_status === 'has_deficiencies' ? `
+              <div style="margin-bottom:10px; padding:8px 10px; border-radius:7px; background:rgba(229,62,62,.15); font-size:13px; color:#f88; font-weight:600;">
+                ❌ Є недоліки — очікує виправлення від монтажника
+              </div>` : p.construction_status === 'deficiencies_fixed' ? `
+              <div style="margin-bottom:10px; padding:8px 10px; border-radius:7px; background:rgba(212,160,23,.15); font-size:13px; color:#f4c842; font-weight:600;">
+                🔧 Недоліки виправлені — можна затвердити
+              </div>` : ''}
+
+            ${(p.quality_defect_photos || []).length ? `
+              <div class="project-field-label">Фото від прораба (контроль якості)</div>
+              <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;">
+                ${(p.quality_defect_photos || []).map(url => `<img src="${url}" style="width:60px; height:60px; object-fit:cover; border-radius:6px; cursor:pointer;"
+                  onclick="window.open('${url}','_blank')">`).join('')}
+              </div>` : ''}
+
+            ${p.quality_voice_memo_url ? `
+              <div class="project-field-label">Голосовий коментар прораба</div>
+              <audio controls src="${p.quality_voice_memo_url}" style="width:100%; height:36px; margin-bottom:10px;"></audio>` : ''}
+
+            <div class="project-field-label" style="margin-top:${(p.quality_defect_photos||[]).length || p.quality_voice_memo_url ? '4px' : '10px'};">Опис проблемних місць</div>
             <textarea class="btn project-textarea" data-field="defects_note" placeholder="Опис недоліків...">${esc(p.defects_note)}</textarea>
 
             <div class="project-field-label">Головне фото недоліків</div>
@@ -656,7 +677,7 @@ async function loadConstructionProjects() {
 
 
         <button class="btn close-project-btn project-close-btn ${hasDefects ? 'is-locked' : ''}" data-id="${p.id}" ${(isClosed || hasDefects) ? 'disabled' : ''}>
-          ${isClosed ? '✅ Проект закритий' : (hasDefects ? '⚠️ Є недоліки, закриття заборонено' : '🔒 Закрити проект')}
+          ${isClosed ? '✅ Проект закритий' : hasDefects ? '⚠️ Є недоліки, закриття заборонено' : '🔒 Закрити проект'}
         </button>
 
         <button type="button" class="btn project-history-toggle-btn" data-project-id="${p.id}">

@@ -320,6 +320,8 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         Route::get('/salary/foreman/my', [SalaryRuleController::class, 'myForemanFixedSalaryData']);
         Route::get('/salary/my', [SalaryRuleController::class, 'mySalaryData']);
         Route::get('/salary/managers-data', [SalaryRuleController::class, 'managerPayoutData'])->middleware('only.owner');
+        Route::get('/salary/summary', [SalaryRuleController::class, 'summary'])->middleware('only.owner');
+        Route::get('/salary/projects', [\App\Http\Controllers\SalesProjectController::class, 'salaryProjects']);
         Route::get('/service-requests', [ServiceRequestController::class, 'index']);
         Route::get('/my-service-requests', [ServiceRequestController::class, 'myIndex']);
         Route::post('/service-requests', [ServiceRequestController::class, 'store']);
@@ -1442,6 +1444,50 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
 
     Route::middleware(['auth'])->get('/projects', function () {
         return view('projects.project');
+    });
+
+    // ── Quality Check Workflow ────────────────────────────────────────────────
+    Route::middleware(['auth'])->group(function () {
+        // Worker: mark project construction as done
+        Route::post('/api/projects/{id}/complete-construction',
+            [\App\Http\Controllers\QualityCheckController::class, 'completeConstruction']);
+
+        // Foreman/Owner: quality check pages & approval
+        Route::get('/quality-checks',
+            [\App\Http\Controllers\QualityCheckController::class, 'index'])
+            ->name('quality-checks.index');
+
+        Route::get('/api/quality-checks',
+            [\App\Http\Controllers\QualityCheckController::class, 'apiIndex']);
+
+        Route::post('/api/quality-checks/{id}/approve',
+            [\App\Http\Controllers\QualityCheckController::class, 'approve']);
+
+        Route::post('/api/quality-checks/{id}/save-deficiencies',
+            [\App\Http\Controllers\QualityCheckController::class, 'saveDeficiencies']);
+
+        Route::post('/api/projects/{id}/deficiencies-fixed',
+            [\App\Http\Controllers\QualityCheckController::class, 'markFixed']);
+
+        // Owner: salary accruals
+        Route::get('/salary/accruals',
+            [\App\Http\Controllers\QualityCheckController::class, 'accruals'])
+            ->name('salary.accruals');
+
+        Route::get('/api/salary/accruals',
+            [\App\Http\Controllers\QualityCheckController::class, 'apiAccruals']);
+
+        Route::get('/api/salary/accruals/paid',
+            [\App\Http\Controllers\QualityCheckController::class, 'apiPaidAccruals']);
+
+        Route::post('/api/salary/pay/{userId}',
+            [\App\Http\Controllers\QualityCheckController::class, 'paySalary']);
+
+        Route::get('/api/salary/paid-history',
+            [\App\Http\Controllers\QualityCheckController::class, 'paidHistory']);
+
+        Route::get('/api/quality-checks/wallets',
+            [\App\Http\Controllers\QualityCheckController::class, 'wallets']);
     });
 
     Route::middleware(['auth', 'only.owner'])->get('/equipment-orders', function () {
