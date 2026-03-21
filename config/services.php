@@ -101,7 +101,7 @@ return [
 
     'openclaw' => [
         'url'     => env('OPENCLAW_URL', 'http://localhost:9000'),
-        'timeout' => (int) env('OPENCLAW_TIMEOUT', 60),
+        'timeout' => (int) env('OPENCLAW_TIMEOUT', 130),
     ],
 
     'anthropic' => [

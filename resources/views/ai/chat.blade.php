@@ -129,7 +129,7 @@
 
   let thinking = false;
 
-  const MODEL_LABELS = { local: '⚡ Local AI', claude: '🧠 Claude' };
+  const MODEL_LABELS = { local: '⚡ Local AI', claude: '🧠 Claude', quick: '⚡ Швидка відповідь', 'local-fallback': '⚡ Local AI' };
 
   function scrollBottom() { messagesEl.scrollTop = messagesEl.scrollHeight; }
 
@@ -167,7 +167,11 @@
 
     const bubble = document.createElement('div');
     bubble.className = 'ai-bubble';
-    bubble.textContent = text;
+    // Simple markdown: **bold** and newlines
+    bubble.innerHTML = text
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n/g, '<br>');
 
     const time = document.createElement('div');
     time.className = 'ai-time';
