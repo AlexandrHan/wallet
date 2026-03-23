@@ -108,6 +108,11 @@ return [
         'key' => env('ANTHROPIC_API_KEY', ''),
     ],
 
+    'firebase' => [
+        'server_key' => env('FIREBASE_SERVER_KEY', ''),
+        'vapid_key'  => env('FIREBASE_VAPID_KEY', ''),
+    ],
+
     'ollama' => [
         'url'   => env('OLLAMA_URL', 'http://localhost:11434'),
         'model' => env('OLLAMA_MODEL', 'mistral'),

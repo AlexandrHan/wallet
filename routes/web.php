@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\AI\AIChatController;
+use App\Http\Controllers\MessageController;
 use App\Http\Controllers\UserManagementController;
 use App\Http\Controllers\WalletController;
 use App\Http\Controllers\ReclamationController;
@@ -116,6 +117,9 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
     Route::view('/salary/fixed/show', 'salary.fixed.show')
         ->middleware('only.owner')
         ->name('salary.fixed.show');
+
+    // Internal messages (all authenticated users)
+    Route::get('/messages', [MessageController::class, 'index'])->name('messages.index');
 
     // AI Financial Assistant (owner only)
     Route::view('/ai', 'ai.chat')

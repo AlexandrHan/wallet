@@ -7,6 +7,7 @@ use App\Services\AI\AIChatRouter;
 use App\Services\AI\AIAgentService;
 use App\Services\AI\IntentService;
 use App\Services\AI\SqlAgentService;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -27,10 +28,11 @@ class AIChatController extends Controller
     private const FALLBACK = 'Не вдалося знайти дані. Спробуй уточнити питання або обери одну з тем: баланс рахунків, витрати, активні проекти, склад, зарплата, недоліки.';
 
     public function __construct(
-        private AIChatRouter    $router,
-        private AIAgentService  $agent,
-        private SqlAgentService $sqlAgent,
-        private IntentService   $intentService,
+        private AIChatRouter        $router,
+        private AIAgentService      $agent,
+        private SqlAgentService     $sqlAgent,
+        private IntentService       $intentService,
+        private NotificationService $notifications,
     ) {}
 
     // =========================================================================
@@ -79,6 +81,7 @@ class AIChatController extends Controller
         if ($intentAnswer !== null) {
             $ms = (int) round((microtime(true) - $started) * 1000);
             $this->aiLog('intent:' . ($intent ?? 'unknown'), $question, $intentAnswer, $ms, $user?->id);
+            $this->maybeNotify($user?->id, $intent ?? '', $intentAnswer);
             return $this->json($intentAnswer, 'intent', $ms);
         }
 
@@ -1140,6 +1143,59 @@ class AIChatController extends Controller
             ]);
         } catch (\Throwable) {
             // Never fail because of logging
+        }
+    }
+
+    /**
+     * Check AI response for critical signals and fire notifications.
+     * Called after a response is generated — never throws.
+     */
+    private function maybeNotify(?int $userId, string $intent, string $response): void
+    {
+        if (!$userId) return;
+
+        try {
+            // Unpaid salary alert
+            if (in_array($intent, ['salary_pending_total', 'unpaid_workers', 'salary_pending_by_role'])
+                && str_contains($response, 'До виплати:')
+                && !str_contains($response, 'Невиплачених нарахувань немає')
+            ) {
+                // Extract amount from response
+                preg_match('/До виплати:\s*([\d\s]+)/u', $response, $m);
+                $amount = $m[1] ?? '';
+                $this->notifications->send(
+                    $userId,
+                    '⚠️ Невиплачена зарплата',
+                    trim($amount) ? "Залишок до виплати: {$amount} грн" : 'Є невиплачені нарахування',
+                    'salary_alert'
+                );
+            }
+
+            // Low stock / equipment gap alert
+            if (in_array($intent, ['stock_shortage', 'equipment_gap'])
+                && str_contains($response, 'ЗАМОВИТИ')
+            ) {
+                preg_match('/Список для замовлення \((\d+) позиці/u', $response, $m);
+                $cnt = $m[1] ?? '';
+                $this->notifications->send(
+                    $userId,
+                    '📦 Нестача обладнання',
+                    $cnt ? "Потрібно замовити {$cnt} позицій" : 'Частина обладнання відсутня на складі',
+                    'stock_alert'
+                );
+            }
+
+            // Negative wallet balance alert
+            if ($intent === 'wallet_balance' && str_contains($response, '⚠️')) {
+                $this->notifications->send(
+                    $userId,
+                    '💰 Увага: від\'ємний баланс',
+                    'Один або кілька рахунків мають від\'ємний залишок',
+                    'finance_alert'
+                );
+            }
+        } catch (\Throwable) {
+            // Never fail because of notifications
         }
     }
 }

@@ -13,6 +13,8 @@ use App\Http\Controllers\DeliveryController;
 use App\Http\Controllers\AmoWebhookController;
 use App\Http\Controllers\AI\AIChatController;
 use App\Http\Controllers\EmployeeTransferController;
+use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\MessageController;
 use App\Services\GoogleSheetsService;
 
 
@@ -1846,5 +1848,20 @@ Route::middleware(['web', 'auth'])->group(function () {
     Route::post('/employee-transfers/{id}/cancel', [EmployeeTransferController::class, 'cancel']);
 });
 
+
+// ─── Notifications ─────────────────────────────────────────────
+Route::middleware(['web', 'auth'])->group(function () {
+    Route::get('/notifications',           [NotificationController::class, 'index']);
+    Route::get('/notifications/count',     [NotificationController::class, 'count']);
+    Route::post('/notifications/read',     [NotificationController::class, 'markRead']);
+    Route::post('/push-token',             [NotificationController::class, 'savePushToken']);
+});
+
+// ─── Internal Messages ─────────────────────────────────────────
+Route::middleware(['web', 'auth'])->group(function () {
+    Route::get('/messages/unread',         [MessageController::class, 'unread']);
+    Route::get('/messages/{userId}',       [MessageController::class, 'history']);
+    Route::post('/messages',               [MessageController::class, 'send']);
+});
 
 // ─── AI Financial Assistant ────────────────────────────────────
