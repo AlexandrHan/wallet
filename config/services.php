@@ -108,6 +108,11 @@ return [
         'key' => env('ANTHROPIC_API_KEY', ''),
     ],
 
+    'ollama' => [
+        'url'   => env('OLLAMA_URL', 'http://localhost:11434'),
+        'model' => env('OLLAMA_MODEL', 'mistral'),
+    ],
+
     'amocrm' => [
         'domain' => env('AMO_DOMAIN'),
         'client_id' => env('AMO_CLIENT_ID'),

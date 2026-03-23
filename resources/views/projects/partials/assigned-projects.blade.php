@@ -143,6 +143,12 @@ document.addEventListener('DOMContentLoaded', async function () {
     return Math.max(1, Math.round(raw));
   }
 
+  function formatDateShort(isoString) {
+    const d = parseProjectDate(isoString);
+    if (!d) return '';
+    return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getFullYear()).slice(-2)}`;
+  }
+
   function makeServiceCard(service) {
     const card = document.createElement('div');
     const telegramUrl = normalizeExternalUrl(service.telegram_group_link);
@@ -339,12 +345,14 @@ document.addEventListener('DOMContentLoaded', async function () {
     if (hasDefects || project.construction_status === 'has_deficiencies') card.classList.add('project-card--defects');
     if (project.construction_status === 'deficiencies_fixed') card.style.border = '2px solid #d4a017';
 
+    const scheduledDateLabel = project._scheduledDate ? formatDateShort(project._scheduledDate) : '';
+
     card.innerHTML = `
       <div class="project-header">
         <div class="project-header-row">
           <div class="project-header-name">${esc(project.client_name)}</div>
           <div class="project-header-meta">
-            ${esc(project.created_at || '')} ${isClosed ? '• ✅ Закритий' : ''}
+            ${scheduledDateLabel ? `📅 ${esc(scheduledDateLabel)}` : esc(project.created_at || '')} ${isClosed ? '• ✅ Закритий' : ''}
           </div>
         </div>
         <div class="project-header-row project-header-sub">
@@ -693,6 +701,12 @@ document.addEventListener('DOMContentLoaded', async function () {
         if (!grouped.has(key) || normalizedKeys.has(key)) continue;
         normalizedKeys.add(key);
         grouped.get(key).push(project);
+      }
+
+      // Date is set but falls entirely outside the visible window (past or far future) —
+      // show in unscheduled so the project is never invisible.
+      if (normalizedKeys.size === 0) {
+        unscheduled.push({ ...project, _scheduledDate: project[SCHEDULE_FIELD] });
       }
     });
 

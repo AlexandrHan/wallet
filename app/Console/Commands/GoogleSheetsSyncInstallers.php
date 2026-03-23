@@ -37,6 +37,8 @@ class GoogleSheetsSyncInstallers extends Command
     private function normalizeUkr(string $text): string
     {
         $text = mb_strtolower(trim($text));
+        // Strip apostrophes and soft signs (straight, typographic, modifier letter)
+        $text = str_replace(["'", "\u{2019}", "\u{02BC}", "\u{0060}", "\u{00B4}"], '', $text);
         // Ukrainian letter equivalences that vary between sources
         $text = str_replace(['ї', 'і', 'є'], ['и', 'и', 'е'], $text);
         // Gendered suffix variations

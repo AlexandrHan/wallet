@@ -129,7 +129,7 @@
 
   let thinking = false;
 
-  const MODEL_LABELS = { local: '⚡ Local AI', claude: '🧠 Claude', quick: '⚡ Швидка відповідь', 'local-fallback': '⚡ Local AI' };
+  const MODEL_LABELS = { local: '⚡ Local AI', claude: '🧠 Claude', quick: '⚡ Швидка відповідь', 'local-fallback': '⚡ Local AI', 'sql-agent': '🗄 SQL агент' };
 
   function scrollBottom() { messagesEl.scrollTop = messagesEl.scrollHeight; }
 
@@ -226,7 +226,11 @@
         addBotMessage('Помилка: ' + (err.message || resp.status), null);
       } else {
         const data = await resp.json();
-        addBotMessage(data.response, data.model_used);
+        let msg = data.response;
+        if (data.model_used === 'sql-agent' && data.sql) {
+          msg += '\n\n🗄 _SQL: `' + data.sql.replace(/\s+/g, ' ').trim().substring(0, 120) + (data.sql.length > 120 ? '…' : '') + '`_';
+        }
+        addBotMessage(msg, data.model_used);
       }
     } catch (e) {
       thinkEl.remove();
