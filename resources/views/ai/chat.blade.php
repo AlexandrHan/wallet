@@ -82,6 +82,18 @@
   display: flex;
   flex-direction: column;
 }
+#aiMain {
+  min-height: 0;
+}
+#aiMessages {
+  min-height: 0;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scroll-padding-bottom: 16px;
+}
+#aiInputBar {
+  box-sizing: border-box;
+}
 .ai-msg--user { align-self: flex-end; }
 .ai-msg--bot  { align-self: flex-start; }
 .ai-bubble {
@@ -126,6 +138,9 @@
   const sendBtn    = document.getElementById('aiSend');
   const modelEl    = document.getElementById('aiModel');
   const csrfToken  = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
+  const mainEl     = document.getElementById('aiMain');
+  const inputBar   = document.getElementById('aiInputBar');
+  const headerEl   = document.querySelector('header');
 
   let thinking = false;
 
@@ -260,14 +275,30 @@
     btn.addEventListener('click', () => send(btn.dataset.q));
   });
 
-  // Keep main bottom in sync with input bar height
-  const mainEl    = document.getElementById('aiMain');
-  const inputBar  = document.getElementById('aiInputBar');
-  const syncBottom = () => {
-    mainEl.style.bottom = inputBar.offsetHeight + 'px';
-  };
-  new ResizeObserver(syncBottom).observe(inputBar);
-  syncBottom();
+  function syncLayout() {
+    const headerHeight = Math.ceil(headerEl?.getBoundingClientRect().height || 0);
+    const inputHeight = Math.ceil(inputBar?.getBoundingClientRect().height || 0);
+
+    if (mainEl) {
+      mainEl.style.top = headerHeight + 'px';
+      mainEl.style.bottom = inputHeight + 'px';
+    }
+
+    if (messagesEl) {
+      messagesEl.style.paddingBottom = '16px';
+    }
+  }
+
+  if (window.ResizeObserver) {
+    const resizeObserver = new ResizeObserver(() => syncLayout());
+    if (inputBar) resizeObserver.observe(inputBar);
+    if (headerEl) resizeObserver.observe(headerEl);
+    if (document.body) resizeObserver.observe(document.body);
+  }
+
+  window.addEventListener('resize', syncLayout);
+  window.addEventListener('orientationchange', syncLayout);
+  syncLayout();
 
   inputEl.focus();
   scrollBottom();
