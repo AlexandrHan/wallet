@@ -224,9 +224,113 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
             ['label' => 'Інвертори',  'needed' => (int)$equipTotals->inverters_needed, 'stock' => $equipStock['inverters']],
         ];
 
+        // --- Фінансовий звіт авансів з AMO CRM ---
+        $amoStageLabels = [
+            38556547 => 'Частично оплатил',
+            69586234 => 'Комплектація',
+            38556550 => 'Очікування доставки',
+            69593822 => 'Заплановане будівництво',
+            69593826 => 'Монтаж сонячних панелей',
+            69593830 => 'Електрична частина',
+            69593834 => 'Здача проекту',
+        ];
+        $amoStageIds = array_values(array_unique(array_map('intval', array_filter(
+            (array) config('services.amocrm.finance_stage_ids', array_keys($amoStageLabels)),
+            fn ($id) => is_numeric($id) && (int) $id > 0
+        ))));
+
+        $amoAdvanceRows = DB::table('amocrm_deal_map as m')
+            ->join('sales_projects as p', 'p.id', '=', 'm.wallet_project_id')
+            ->whereIn('m.amo_status_id', $amoStageIds)
+            ->select(
+                'm.amo_status_id',
+                'p.currency',
+                'p.total_amount',
+                'p.advance_amount'
+            )
+            ->get();
+
+        $amoAdvanceReport = [
+            'total_projects' => 0,
+            'stage_count' => count($amoStageIds),
+            'currencies' => [],
+        ];
+
+        foreach ($amoAdvanceRows as $row) {
+            $currency = strtoupper(trim((string) ($row->currency ?? 'USD')));
+            if ($currency === '') {
+                $currency = 'USD';
+            }
+
+            $stageId = (int) ($row->amo_status_id ?? 0);
+            $totalAmount = round((float) ($row->total_amount ?? 0), 2);
+            $advanceAmount = max(0, round((float) ($row->advance_amount ?? 0), 2));
+            $remainingAmount = max(0, round($totalAmount - $advanceAmount, 2));
+
+            if (!isset($amoAdvanceReport['currencies'][$currency])) {
+                $amoAdvanceReport['currencies'][$currency] = [
+                    'currency' => $currency,
+                    'projects' => 0,
+                    'total_amount' => 0.0,
+                    'advance_amount' => 0.0,
+                    'remaining_amount' => 0.0,
+                    'completion_percent' => 0,
+                    'stages' => [],
+                ];
+
+                foreach ($amoStageIds as $amoStageId) {
+                    $amoAdvanceReport['currencies'][$currency]['stages'][$amoStageId] = [
+                        'id' => $amoStageId,
+                        'label' => $amoStageLabels[$amoStageId] ?? ('Етап #' . $amoStageId),
+                        'projects' => 0,
+                        'total_amount' => 0.0,
+                        'advance_amount' => 0.0,
+                        'remaining_amount' => 0.0,
+                        'completion_percent' => 0,
+                    ];
+                }
+            }
+
+            $amoAdvanceReport['total_projects']++;
+            $amoAdvanceReport['currencies'][$currency]['projects']++;
+            $amoAdvanceReport['currencies'][$currency]['total_amount'] += $totalAmount;
+            $amoAdvanceReport['currencies'][$currency]['advance_amount'] += $advanceAmount;
+            $amoAdvanceReport['currencies'][$currency]['remaining_amount'] += $remainingAmount;
+
+            $amoAdvanceReport['currencies'][$currency]['stages'][$stageId]['projects']++;
+            $amoAdvanceReport['currencies'][$currency]['stages'][$stageId]['total_amount'] += $totalAmount;
+            $amoAdvanceReport['currencies'][$currency]['stages'][$stageId]['advance_amount'] += $advanceAmount;
+            $amoAdvanceReport['currencies'][$currency]['stages'][$stageId]['remaining_amount'] += $remainingAmount;
+        }
+
+        foreach ($amoAdvanceReport['currencies'] as &$currencyReport) {
+            $currencyReport['total_amount'] = round($currencyReport['total_amount'], 2);
+            $currencyReport['advance_amount'] = round($currencyReport['advance_amount'], 2);
+            $currencyReport['remaining_amount'] = round($currencyReport['remaining_amount'], 2);
+            $currencyReport['completion_percent'] = $currencyReport['total_amount'] > 0
+                ? (int) round(($currencyReport['advance_amount'] / $currencyReport['total_amount']) * 100)
+                : 0;
+
+            foreach ($currencyReport['stages'] as &$stageReport) {
+                $stageReport['total_amount'] = round($stageReport['total_amount'], 2);
+                $stageReport['advance_amount'] = round($stageReport['advance_amount'], 2);
+                $stageReport['remaining_amount'] = round($stageReport['remaining_amount'], 2);
+                $stageReport['completion_percent'] = $stageReport['total_amount'] > 0
+                    ? (int) round(($stageReport['advance_amount'] / $stageReport['total_amount']) * 100)
+                    : 0;
+            }
+            unset($stageReport);
+        }
+        unset($currencyReport);
+
+        $amoAdvanceReport['currencies'] = collect($amoAdvanceReport['currencies'])
+            ->sortBy('currency')
+            ->values()
+            ->all();
+
         return view('analytics.index', compact(
             'balances', 'thisMonth', 'months', 'stages', 'pendingTransfers', 'month', 'year',
-            'equipBalance'
+            'equipBalance', 'amoAdvanceReport'
         ));
     })->middleware('only.owner')->name('analytics');
     Route::get('/salary/foreman', function () {

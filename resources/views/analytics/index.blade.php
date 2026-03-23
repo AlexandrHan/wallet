@@ -1,5 +1,92 @@
 @push('styles')
 <link rel="stylesheet" href="/css/nav-telegram.css?v={{ filemtime(public_path('css/nav-telegram.css')) }}">
+<style>
+  .amo-advance-report {
+    background:
+      radial-gradient(circle at top right, rgba(255, 200, 87, 0.16), transparent 34%),
+      radial-gradient(circle at bottom left, rgba(76, 201, 240, 0.14), transparent 38%),
+      linear-gradient(145deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+    border: 1px solid rgba(255,255,255,0.08);
+    overflow: hidden;
+  }
+  .amo-advance-summary {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .amo-advance-pill {
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.08);
+    font-size: 12px;
+    opacity: .82;
+  }
+  .amo-advance-currency {
+    margin-top: 16px;
+    padding: 14px;
+    border-radius: 18px;
+    background: rgba(10,16,24,0.28);
+    border: 1px solid rgba(255,255,255,0.06);
+    backdrop-filter: blur(10px);
+  }
+  .amo-advance-kpis {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin: 14px 0;
+  }
+  .amo-advance-kpi {
+    padding: 14px;
+    border-radius: 16px;
+    background: rgba(255,255,255,0.06);
+  }
+  .amo-advance-progress {
+    height: 14px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.08);
+    overflow: hidden;
+    display: flex;
+    margin-bottom: 8px;
+  }
+  .amo-advance-progress__advance {
+    background: linear-gradient(90deg, #2dd4bf, #22c55e);
+  }
+  .amo-advance-progress__remaining {
+    background: linear-gradient(90deg, #fb923c, #f97316);
+  }
+  .amo-advance-stage-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 14px;
+  }
+  .amo-advance-stage {
+    padding: 12px;
+    border-radius: 16px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+  .amo-advance-stage__bar {
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.08);
+    overflow: hidden;
+    margin-top: 10px;
+  }
+  .amo-advance-stage__bar > span {
+    display: block;
+    height: 100%;
+    background: linear-gradient(90deg, #38bdf8, #22c55e);
+    border-radius: 999px;
+  }
+  @media (max-width: 640px) {
+    .amo-advance-kpis,
+    .amo-advance-stage-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
 @endpush
 
 @extends('layouts.app')
@@ -10,6 +97,96 @@
 
   <div style="font-weight:700; font-size:18px; margin-bottom:18px; text-align:center;">
     📊 Аналітика
+  </div>
+
+  {{-- ФІНАНСОВИЙ ЗВІТ АВАНСІВ З AMO CRM --}}
+  <div class="card amo-advance-report" style="margin-bottom:14px; padding:16px;">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:12px;">
+      <div>
+        <div style="font-weight:600; opacity:.7; font-size:13px; text-transform:uppercase; letter-spacing:.05em;">Фінансовий звіт авансів з AMO CRM</div>
+        <div style="font-size:14px; opacity:.72; margin-top:6px;">Сума проектів від етапу "Частично оплатил" до фінальних етапів, аванси з amoCRM і залишок до оплати.</div>
+      </div>
+    </div>
+
+    <div class="amo-advance-summary">
+      <div class="amo-advance-pill">Проектів у звіті: <b>{{ number_format($amoAdvanceReport['total_projects'] ?? 0, 0, '.', ' ') }}</b></div>
+      <div class="amo-advance-pill">Етапів враховано: <b>{{ number_format($amoAdvanceReport['stage_count'] ?? 0, 0, '.', ' ') }}</b></div>
+      <div class="amo-advance-pill">Валют у звіті: <b>{{ number_format(count($amoAdvanceReport['currencies'] ?? []), 0, '.', ' ') }}</b></div>
+    </div>
+
+    @php
+      $moneySigns = ['USD' => '$', 'UAH' => '₴', 'EUR' => '€'];
+      $formatAmoMoney = function ($amount, $currency) use ($moneySigns) {
+          $sign = $moneySigns[$currency] ?? $currency;
+          return number_format((float) $amount, 0, '.', ' ') . ' ' . $sign;
+      };
+    @endphp
+
+    @forelse(($amoAdvanceReport['currencies'] ?? []) as $currencyReport)
+      @php
+        $currency = $currencyReport['currency'];
+        $advancePercent = max(0, min(100, (int) ($currencyReport['completion_percent'] ?? 0)));
+        $remainingPercent = max(0, 100 - $advancePercent);
+        $currencyColor = match($currency) {
+          'USD' => '#fbbf24',
+          'EUR' => '#60a5fa',
+          default => '#34d399',
+        };
+      @endphp
+      <div class="amo-advance-currency">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <div style="width:12px; height:12px; border-radius:999px; background:{{ $currencyColor }};"></div>
+            <div style="font-size:18px; font-weight:700;">{{ $currency }}</div>
+          </div>
+          <div style="font-size:12px; opacity:.68;">Проектів: {{ number_format($currencyReport['projects'], 0, '.', ' ') }}</div>
+        </div>
+
+        <div class="amo-advance-kpis">
+          <div class="amo-advance-kpi">
+            <div style="font-size:12px; opacity:.58; margin-bottom:6px;">Загальна сума проектів</div>
+            <div style="font-size:22px; font-weight:700;">{{ $formatAmoMoney($currencyReport['total_amount'], $currency) }}</div>
+          </div>
+          <div class="amo-advance-kpi">
+            <div style="font-size:12px; opacity:.58; margin-bottom:6px;">Аванси з AMO CRM</div>
+            <div style="font-size:22px; font-weight:700; color:#4ade80;">{{ $formatAmoMoney($currencyReport['advance_amount'], $currency) }}</div>
+          </div>
+          <div class="amo-advance-kpi">
+            <div style="font-size:12px; opacity:.58; margin-bottom:6px;">Залишок до оплати</div>
+            <div style="font-size:22px; font-weight:700; color:#fb923c;">{{ $formatAmoMoney($currencyReport['remaining_amount'], $currency) }}</div>
+          </div>
+        </div>
+
+        <div class="amo-advance-progress" aria-hidden="true">
+          <div class="amo-advance-progress__advance" style="width:{{ $advancePercent }}%;"></div>
+          <div class="amo-advance-progress__remaining" style="width:{{ $remainingPercent }}%;"></div>
+        </div>
+        <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; font-size:12px; opacity:.68;">
+          <span>Проавансовано: {{ $advancePercent }}%</span>
+          <span>Залишилось: {{ $remainingPercent }}%</span>
+        </div>
+
+        <div class="amo-advance-stage-grid">
+          @foreach($currencyReport['stages'] as $stageReport)
+            @continue(($stageReport['projects'] ?? 0) === 0)
+            <div class="amo-advance-stage">
+              <div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
+                <div style="font-size:14px; font-weight:600;">{{ $stageReport['label'] }}</div>
+                <div style="font-size:12px; opacity:.62;">{{ number_format($stageReport['projects'], 0, '.', ' ') }} пр.</div>
+              </div>
+              <div style="margin-top:8px; font-size:12px; opacity:.6;">Сума: {{ $formatAmoMoney($stageReport['total_amount'], $currency) }}</div>
+              <div style="margin-top:3px; font-size:12px; color:#4ade80;">Аванси: {{ $formatAmoMoney($stageReport['advance_amount'], $currency) }}</div>
+              <div style="margin-top:3px; font-size:12px; color:#fb923c;">Залишок: {{ $formatAmoMoney($stageReport['remaining_amount'], $currency) }}</div>
+              <div class="amo-advance-stage__bar"><span style="width:{{ max(0, min(100, (int) ($stageReport['completion_percent'] ?? 0))) }}%;"></span></div>
+            </div>
+          @endforeach
+        </div>
+      </div>
+    @empty
+      <div style="padding:14px; border-radius:16px; background:rgba(255,255,255,0.05); font-size:14px; opacity:.72;">
+        Немає amoCRM-проектів у вибраних етапах для побудови звіту.
+      </div>
+    @endforelse
   </div>
 
   {{-- БАЛАНСИ ПО ВАЛЮТАХ --}}
