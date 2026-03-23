@@ -124,10 +124,10 @@ return [
         'won_status_id' => (int) env('AMO_WON_STATUS_ID', 142),
         'project_status_ids' => array_map('intval', array_filter(explode(',', env('AMO_PROJECT_STATUS_IDS', '69586234,38556550,69593822,69593826,69593830')))),
         // Exact AmoCRM stage IDs shown in finance (Проавансовані/Оплачені).
-        // Default covers all 7 required stages: частично оплатил, Комплектація,
-        // Очікування доставки, Заплановане будівництво, Монтаж сонячних панелей,
-        // Електрична частина, Здача проекту замовнику.
-        'finance_stage_ids' => array_map('intval', array_filter(explode(',', env('AMO_FINANCE_STAGE_IDS', '38556547,69586234,38556550,69593822,69593826,69593830,69593834')))),
+        // Stages: частично оплатил → Комплектація → Очікування доставки →
+        // Заплановане будівництво → Монтаж → Електрична частина →
+        // Здача проекту → Остаточна оплата (49782427).
+        'finance_stage_ids' => array_map('intval', array_filter(explode(',', env('AMO_FINANCE_STAGE_IDS', '38556547,69586234,38556550,69593822,69593826,69593830,69593834,49782427')))),
     ],
 
 ];

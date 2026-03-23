@@ -31,7 +31,7 @@
   </div>
 
   {{-- Chat messages --}}
-  <div id="aiMessages" style="flex:1; overflow-y:auto; padding:0 12px 12px; display:flex; flex-direction:column; gap:10px;">
+  <div id="aiMessages" style="flex:1; min-height:0; overflow-y:auto; padding:0 12px 48px; display:flex; flex-direction:column; gap:10px;">
     <div class="ai-msg ai-msg--bot" style="align-self:flex-start;">
       <div class="ai-bubble">
         Привіт! Я фінансовий аналітик SolarGlass. Маю доступ до балансів, витрат, проектів та залишків обладнання. Що вас цікавить?
@@ -131,7 +131,11 @@
 
   const MODEL_LABELS = { local: '⚡ Local AI', claude: '🧠 Claude', quick: '⚡ Швидка відповідь', 'local-fallback': '⚡ Local AI', 'sql-agent': '🗄 SQL агент' };
 
-  function scrollBottom() { messagesEl.scrollTop = messagesEl.scrollHeight; }
+  function scrollBottom() {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => { messagesEl.scrollTop = messagesEl.scrollHeight; });
+    });
+  }
 
   function timeStr() {
     const d = new Date();
@@ -264,7 +268,7 @@
   const mainEl    = document.getElementById('aiMain');
   const inputBar  = document.getElementById('aiInputBar');
   const syncBottom = () => {
-    mainEl.style.bottom = inputBar.offsetHeight + 'px';
+    mainEl.style.bottom = (inputBar.offsetHeight + 40) + 'px';
   };
   new ResizeObserver(syncBottom).observe(inputBar);
   syncBottom();

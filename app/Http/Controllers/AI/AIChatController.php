@@ -369,6 +369,72 @@ class AIChatController extends Controller
             return "🔍 **Проекти з недоліками ({$all->count()}):**\n" . implode("\n", $lines);
         }
 
+        // ── Client debt (remaining payments) ──────────────────────────────────
+        if ($this->matches($lq, ['заборгованість клієнт', 'борг клієнт', 'скільки винні клієнт', 'залишок оплат', 'залишок по проект', 'скільки не оплатили', 'не доплатили', 'остаток оплат', 'скільки ще повинні'])) {
+            $financeStageIds = array_filter(
+                (array) config('services.amocrm.finance_stage_ids', []),
+                fn ($id) => is_numeric($id) && (int) $id > 0
+            );
+            $rows = DB::table('sales_projects as sp')
+                ->join('amo_complectation_projects as ac', 'ac.wallet_project_id', '=', 'sp.id')
+                ->whereIn('ac.status_id', $financeStageIds)
+                ->where('sp.status', '!=', 'completed')
+                ->select('sp.client_name', 'sp.total_amount', 'sp.currency', 'ac.raw_payload')
+                ->get();
+
+            if ($rows->isEmpty()) return "✅ Активних боргів не знайдено.";
+
+            $totalSum = 0.0;
+            $paidSum  = 0.0;
+            $debtRows = [];
+            foreach ($rows as $r) {
+                $total   = (float) ($r->total_amount ?? 0);
+                $prepaid = 0.0;
+                if (!empty($r->raw_payload)) {
+                    $payload = json_decode($r->raw_payload, true);
+                    foreach ($payload['custom_fields_values'] ?? [] as $field) {
+                        if (($field['field_name'] ?? '') === 'Предоплата, $') {
+                            $prepaid = max(0.0, (float) ($field['values'][0]['value'] ?? 0));
+                            break;
+                        }
+                    }
+                }
+                $debt = max(0.0, $total - $prepaid);
+                $totalSum += $total;
+                $paidSum  += $prepaid;
+                if ($debt > 0) {
+                    $debtRows[] = ['name' => $r->client_name, 'debt' => $debt, 'total' => $total, 'paid' => $prepaid];
+                }
+            }
+            usort($debtRows, fn ($a, $b) => $b['debt'] <=> $a['debt']);
+
+            $debtSum  = $totalSum - $paidSum;
+            $pct      = $totalSum > 0 ? round($paidSum / $totalSum * 100) : 0;
+            $lines = [];
+            foreach ($debtRows as $d) {
+                $debt  = number_format($d['debt'], 0, '.', ' ');
+                $total = number_format($d['total'], 0, '.', ' ');
+                $lines[] = "• {$d['name']} — {$debt} $ (з {$total} $)";
+            }
+            $totalFmt = number_format($totalSum, 0, '.', ' ');
+            $paidFmt  = number_format($paidSum,  0, '.', ' ');
+            $debtFmt  = number_format($debtSum,  0, '.', ' ');
+            $cnt      = count($debtRows);
+            return "💰 **Заборгованість клієнтів (активні проекти, {$cnt} боржників):**\n"
+                . "Загальна сума: {$totalFmt} $\nОплачено: {$paidFmt} $ ({$pct}%)\n**Залишок: {$debtFmt} $**\n\n"
+                . implode("\n", $lines);
+        }
+
+        // ── Equipment gap / what to order ─────────────────────────────────────
+        if ($this->matches($lq, [
+            'яке обладнання потрібно', 'чого не вистачає', 'що дозамовити', 'що замовити',
+            'не вистачає для проект', 'комплектація обладнання', 'обладнання для комплектац',
+            'перевір склад', 'аналіз складу', 'що треба замовити', 'нестача обладнання',
+            'яке обладнання відсутнє', 'що на складі не вистачає', 'замовити обладнання',
+        ])) {
+            return $this->equipmentGapReport();
+        }
+
         // ── Reclamations ──────────────────────────────────────────────────────
         if ($this->matches($lq, ['рекламац', 'скарг', 'відкрит', 'відкриті рекламац'])) {
             $rows = DB::table('reclamations')
@@ -437,6 +503,180 @@ class AIChatController extends Controller
         }
         $totalFmt = number_format((float)$total, 0, '.', ' ');
         return "📤 **Витрати за {$month} (топ-15, всього {$totalFmt} грн):**\n" . implode("\n", $lines);
+    }
+
+    /**
+     * Analyse equipment needed for active комплектація projects vs stock.
+     * Stages: Частково оплатив (38556547), Комплектація (69586234), Очікування доставки (38556550).
+     */
+    private function equipmentGapReport(): string
+    {
+        $stageIds = [38556547, 69586234, 38556550];
+
+        $projects = DB::table('sales_projects as sp')
+            ->join('amo_complectation_projects as ac', 'ac.wallet_project_id', '=', 'sp.id')
+            ->whereIn('ac.status_id', $stageIds)
+            ->where('sp.status', '!=', 'completed')
+            ->select(
+                'sp.client_name', 'sp.panel_name', 'sp.panel_qty',
+                'sp.inverter', 'sp.battery_name', 'sp.battery_qty',
+                'sp.delivered_panels', 'sp.delivered_inverter', 'sp.delivered_battery'
+            )
+            ->get();
+
+        if ($projects->isEmpty()) {
+            return "✅ Немає активних проектів на етапах комплектації / очікування доставки.";
+        }
+
+        $stock = DB::table('solarglass_stock')
+            ->where('qty', '>', 0)
+            ->get(['item_name', 'qty'])
+            ->toArray();
+
+        // ── Aggregate needed (not yet delivered) ─────────────────────────────
+        $panelsNeeded    = [];
+        $invertersNeeded = [];
+        $batteriesNeeded = [];
+
+        foreach ($projects as $p) {
+            // Panels
+            $panelName = $this->stripEquipQty(trim((string) ($p->panel_name ?? '')));
+            $panelQty  = max(0, (int) ($p->panel_qty ?? 0));
+            $delivered = max(0, (int) ($p->delivered_panels ?? 0));
+            if ($panelName && $panelName !== '-' && $panelQty > $delivered) {
+                $key = $this->normalizeEquipName($panelName);
+                $panelsNeeded[$key] = ($panelsNeeded[$key] ?? ['orig' => $panelName, 'qty' => 0]);
+                $panelsNeeded[$key]['qty'] += ($panelQty - $delivered);
+            }
+
+            // Inverter (1 per project)
+            $invName = trim((string) ($p->inverter ?? ''));
+            if ($invName && $invName !== '-' && !(int) ($p->delivered_inverter ?? 0)) {
+                $key = $this->normalizeEquipName($invName);
+                $invertersNeeded[$key] = ($invertersNeeded[$key] ?? ['orig' => $invName, 'qty' => 0]);
+                $invertersNeeded[$key]['qty']++;
+            }
+
+            // Batteries
+            $batName = $this->stripEquipQty(trim((string) ($p->battery_name ?? '')));
+            $batQty  = max(0, (int) ($p->battery_qty ?? 0));
+            if ($batName && $batName !== '-' && $batQty > 0 && trim((string) ($p->delivered_battery ?? '')) === '') {
+                $key = $this->normalizeEquipName($batName);
+                $batteriesNeeded[$key] = ($batteriesNeeded[$key] ?? ['orig' => $batName, 'qty' => 0]);
+                $batteriesNeeded[$key]['qty'] += $batQty;
+            }
+        }
+
+        // ── Match against stock & build report ───────────────────────────────
+        $sections = [];
+        $toOrder  = [];
+
+        $buildSection = function (array $needed, string $emoji, string $label) use ($stock, &$toOrder): string {
+            if (empty($needed)) return '';
+            $lines = [];
+            foreach ($needed as $item) {
+                $qty      = $item['qty'];
+                $orig     = $item['orig'];
+                $match    = $this->bestStockMatch($orig, $stock);
+                $inStock  = $match ? (int) $match['qty'] : 0;
+                $stockName = $match ? $match['item_name'] : null;
+
+                if (!$match) {
+                    $lines[]  = "  • {$orig}: потрібно {$qty} шт — ❓ не знайдено на складі";
+                    $toOrder[] = "{$orig}: {$qty} шт (не знайдено)";
+                } elseif ($inStock >= $qty) {
+                    $spare    = $inStock - $qty;
+                    $lines[]  = "  • {$orig}: потрібно {$qty} шт → склад {$inStock} шт ✅ (залишок {$spare})";
+                } else {
+                    $gap      = $qty - $inStock;
+                    $lines[]  = "  • {$orig}: потрібно {$qty} шт → склад {$inStock} шт ❌ **ЗАМОВИТИ {$gap} шт**";
+                    $toOrder[] = "{$orig}: {$gap} шт (є {$inStock}, потрібно {$qty})";
+                }
+            }
+            return "{$emoji} **{$label}:**\n" . implode("\n", $lines);
+        };
+
+        $sections[] = $buildSection($panelsNeeded,    '☀️', 'Панелі');
+        $sections[] = $buildSection($invertersNeeded, '⚡', 'Інвертори');
+        $sections[] = $buildSection($batteriesNeeded, '🔋', 'Батареї');
+        $sections   = array_filter($sections);
+
+        $cnt = $projects->count();
+        $header = "🔧 **Аналіз обладнання для комплектації ({$cnt} проектів):**\n";
+
+        if (empty($sections)) {
+            return $header . "Дані по обладнанню відсутні в проектах.";
+        }
+
+        $body = implode("\n\n", $sections);
+
+        if (!empty($toOrder)) {
+            $orderList = implode("\n", array_map(fn ($s) => "  • {$s}", $toOrder));
+            $body .= "\n\n🛒 **Список для замовлення (" . count($toOrder) . " позиції):**\n{$orderList}";
+        } else {
+            $body .= "\n\n✅ Все необхідне обладнання є на складі.";
+        }
+
+        return $header . $body;
+    }
+
+    /**
+     * Find the best matching stock item for a given equipment name.
+     * Uses token overlap scoring — requires ≥55% of name tokens to match.
+     */
+    private function bestStockMatch(string $name, array $stock): ?array
+    {
+        $norm   = $this->normalizeEquipName($name);
+        $tokens = $this->equipTokens($norm);
+        if (empty($tokens)) return null;
+
+        $bestScore = 0.0;
+        $bestItem  = null;
+
+        foreach ($stock as $item) {
+            $stockNorm = $this->normalizeEquipName((string) ($item->item_name ?? $item['item_name'] ?? ''));
+            $matched   = 0;
+            foreach ($tokens as $t) {
+                if (str_contains($stockNorm, $t)) $matched++;
+            }
+            $score = $matched / count($tokens);
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $bestItem  = (array) $item;
+            }
+        }
+
+        return $bestScore >= 0.55 ? $bestItem : null;
+    }
+
+    /** Lowercase + keep only letters, digits, spaces */
+    private function normalizeEquipName(string $s): string
+    {
+        $s = mb_strtolower(trim($s));
+        $s = preg_replace('/[^\p{L}\p{N}\s]/u', ' ', $s);
+        $s = preg_replace('/\s+/', ' ', $s);
+        return trim((string) $s);
+    }
+
+    /** Split into tokens ≥3 chars, remove pure numeric or unit noise */
+    private function equipTokens(string $norm): array
+    {
+        $noise = ['шт', 'pcs', 'кw', 'kw', 'lv', 'hv', 'вт', 'the', 'для'];
+        $tokens = [];
+        foreach (explode(' ', $norm) as $t) {
+            $t = trim($t);
+            if (mb_strlen($t) < 3 || in_array($t, $noise, true)) continue;
+            $tokens[] = $t;
+        }
+        return array_unique($tokens);
+    }
+
+    /** Strip quantity suffix like "- 5шт", "- 16шт.", "(10 шт)" from equipment name */
+    private function stripEquipQty(string $s): string
+    {
+        $s = preg_replace('/[-–—]?\s*\d+\s*шт\.?/ui', '', $s);
+        $s = preg_replace('/\(\s*\d+\s*шт\.?\s*\)/ui', '', $s);
+        return trim((string) preg_replace('/[-–—\s]+$/', '', $s));
     }
 
     /**

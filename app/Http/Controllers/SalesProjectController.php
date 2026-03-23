@@ -365,11 +365,12 @@ class SalesProjectController extends Controller
             $projectsQuery->where('source_layer', 'projects');
         }
 
-        // Join amo_complectation_projects for finance layer to restrict to AMO-tracked projects,
-        // but do NOT filter by stage — projects must stay visible after moving to any AMO stage.
+        // Join amo_complectation_projects for finance layer, restricted to finance stages only.
+        // Stages 142 (Успішно реалізовано) and 143 (Закрито) are intentionally excluded.
         if ($layer === 'finance' && $amoComplectationByProjectId->isNotEmpty()) {
             $projectsQuery
                 ->join('amo_complectation_projects', 'amo_complectation_projects.wallet_project_id', '=', 'sales_projects.id')
+                ->whereIn('amo_complectation_projects.status_id', $financeStageIds)
                 ->select('sales_projects.*');
         }
 
