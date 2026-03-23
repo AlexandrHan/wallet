@@ -241,12 +241,13 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
 
         $amoAdvanceRows = DB::table('amocrm_deal_map as m')
             ->join('sales_projects as p', 'p.id', '=', 'm.wallet_project_id')
+            ->leftJoin('amo_complectation_projects as ac', 'ac.amo_deal_id', '=', 'm.amo_deal_id')
             ->whereIn('m.amo_status_id', $amoStageIds)
             ->select(
                 'm.amo_status_id',
                 'p.currency',
                 'p.total_amount',
-                'p.advance_amount'
+                'ac.raw_payload'
             )
             ->get();
 
@@ -264,7 +265,18 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
 
             $stageId = (int) ($row->amo_status_id ?? 0);
             $totalAmount = round((float) ($row->total_amount ?? 0), 2);
-            $advanceAmount = max(0, round((float) ($row->advance_amount ?? 0), 2));
+
+            $advanceAmount = 0.0;
+            if (!empty($row->raw_payload)) {
+                $payload = json_decode($row->raw_payload, true);
+                foreach ($payload['custom_fields_values'] ?? [] as $field) {
+                    if (($field['field_name'] ?? '') === 'Предоплата, $') {
+                        $advanceAmount = max(0.0, (float) ($field['values'][0]['value'] ?? 0));
+                        break;
+                    }
+                }
+            }
+            $advanceAmount = round($advanceAmount, 2);
             $remainingAmount = max(0, round($totalAmount - $advanceAmount, 2));
 
             if (!isset($amoAdvanceReport['currencies'][$currency])) {
