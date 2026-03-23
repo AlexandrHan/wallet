@@ -5,6 +5,7 @@ namespace App\Http\Controllers\AI;
 use App\Http\Controllers\Controller;
 use App\Services\AI\AIChatRouter;
 use App\Services\AI\AIAgentService;
+use App\Services\AI\IntentService;
 use App\Services\AI\SqlAgentService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -29,6 +30,7 @@ class AIChatController extends Controller
         private AIChatRouter    $router,
         private AIAgentService  $agent,
         private SqlAgentService $sqlAgent,
+        private IntentService   $intentService,
     ) {}
 
     // =========================================================================
@@ -61,6 +63,23 @@ class AIChatController extends Controller
             $ms = (int) round((microtime(true) - $started) * 1000);
             $this->aiLog('quick', $question, $quick, $ms, $user?->id);
             return $this->json($quick, 'quick', $ms);
+        }
+
+        // ── 1.5. Intent router ────────────────────────────────────────────────
+        // AI-based intent detection (2s timeout) + keyword fallback.
+        // Runs only when quick patterns returned nothing.
+        try {
+            $intent       = $this->intentService->detectIntent($question);
+            $intentAnswer = $intent ? $this->dispatchByIntent($intent, $question, $context) : null;
+        } catch (\Throwable) {
+            $intent       = null;
+            $intentAnswer = null;
+        }
+
+        if ($intentAnswer !== null) {
+            $ms = (int) round((microtime(true) - $started) * 1000);
+            $this->aiLog('intent:' . ($intent ?? 'unknown'), $question, $intentAnswer, $ms, $user?->id);
+            return $this->json($intentAnswer, 'intent', $ms);
         }
 
         // ── 2. SQL Agent (AI generates SELECT, max 5s Ollama timeout) ────────
@@ -127,7 +146,9 @@ class AIChatController extends Controller
         $orig = $q;
 
         // ── Wallet balances ───────────────────────────────────────────────────
-        if ($this->matches($lq, ['скільки грошей', 'баланс гаманц', 'залишок гаманц', 'скільки коштів', 'гроші на рахунк', 'скільки на рахунк', 'баланс рахунк'])) {
+        // Exclude client-debt context so "скільки грошей винні клієнти" doesn't match here
+        $isClientDebtQ = $this->matches($lq, ['винн', 'борг', 'заборгован', 'не оплатил', 'не доплатил', 'клієнт']);
+        if (!$isClientDebtQ && $this->matches($lq, ['скільки грошей', 'баланс гаманц', 'залишок гаманц', 'скільки коштів', 'гроші на рахунк', 'скільки на рахунк', 'баланс рахунк'])) {
             $balances = $context['wallet_balances'] ?? [];
             if (empty($balances)) {
                 // Fallback: query directly
@@ -276,18 +297,52 @@ class AIChatController extends Controller
             return "📊 **Місячний огляд (UAH):**\n" . implode("\n", $lines);
         }
 
+        // ── Salary — unpaid workers ───────────────────────────────────────────
+        if ($this->matches($lq, ['хто не отримав', 'хто без зарплати', 'хто ще не отримав', 'невиплачені співроб', 'хто не отримал', 'хто ще не заробив'])) {
+            return $this->unpaidWorkers();
+        }
+
+        // ── Salary — pending total / "скільки я винен" ────────────────────────
+        if ($this->matches($lq, ['скільки я винен', 'скільки треба виплатити', 'загальна зарплата', 'загальна зп', 'загальне нарахування', 'скільки винен співроб', 'скільки до виплати'])) {
+            return $this->salaryPendingTotal();
+        }
+
+        // ── Salary — by role/group ────────────────────────────────────────────
+        if ($this->matches($lq, ['зп монтаж', 'зарплата монтаж', 'зп електрик', 'зарплата електрик', 'зп прораб', 'зарплата прораб', 'нарахування монтаж', 'нарахування електрик', 'винен монтаж', 'винен електрик', 'скільки монтажникам', 'скільки електрикам'])) {
+            $role = $this->extractSalaryRole($lq);
+            return $this->salaryByRole($role);
+        }
+
         // ── Salary by worker name ─────────────────────────────────────────────
         if ($this->matches($lq, ['зарплата', 'зарплатня', 'нарахування', 'заробіток', 'ставка'])) {
-            $name = $this->extractPersonName($orig);
+            $nameRaw = $this->extractPersonName($orig) ?? $this->extractPersonName($lq);
 
-            if ($name) {
-                $nameLower = mb_strtolower($name);
-                $lines     = [];
+            if ($nameRaw) {
+                // Collect all known staff names from both tables
+                $allNames = DB::table('salary_rules')->pluck('staff_name')
+                    ->merge(DB::table('salary_accruals')->distinct()->pluck('staff_name'))
+                    ->unique()->values()->all();
 
-                // 1. salary_rules — ставка (тариф)
-                $rules = DB::table('salary_rules')
-                    ->get()
-                    ->filter(fn($r) => str_contains(mb_strtolower($r->staff_name), $nameLower));
+                $matches = $this->fuzzyFindStaff($nameRaw, $allNames);
+
+                // Ambiguous — show candidates
+                if (count($matches) > 1) {
+                    $list = implode("\n", array_map(fn($n) => "• {$n}", $matches));
+                    return "💰 Знайдено кілька співробітників. Уточніть кого маєте на увазі:\n{$list}";
+                }
+
+                // Not found
+                if (empty($matches)) {
+                    return "💰 Співробітника «{$nameRaw}» не знайдено. Перевір написання або запитай список зарплат.";
+                }
+
+                // Exactly one match
+                $resolvedName = $matches[0];
+                $normalizedResolved = $this->normalizeUkr($resolvedName);
+                $lines = [];
+
+                $rules = DB::table('salary_rules')->get()
+                    ->filter(fn($r) => $this->normalizeUkr($r->staff_name) === $normalizedResolved);
 
                 foreach ($rules as $r) {
                     $group = $r->staff_group ?? '?';
@@ -303,12 +358,11 @@ class AIChatController extends Controller
                     }
                 }
 
-                // 2. salary_accruals — фактичні нарахування
                 $accruals = DB::table('salary_accruals')
                     ->selectRaw('staff_name, currency, status, SUM(amount) as total, COUNT(*) as cnt')
                     ->groupBy('staff_name', 'currency', 'status')
                     ->get()
-                    ->filter(fn($r) => str_contains(mb_strtolower($r->staff_name), $nameLower));
+                    ->filter(fn($r) => $this->normalizeUkr($r->staff_name) === $normalizedResolved);
 
                 foreach ($accruals as $r) {
                     $total       = number_format((float)$r->total, 2, '.', ' ');
@@ -317,9 +371,9 @@ class AIChatController extends Controller
                 }
 
                 if (empty($lines)) {
-                    return "💰 По співробітнику «{$name}» даних не знайдено. Перевір правопис.";
+                    return "💰 По {$resolvedName} записів не знайдено.";
                 }
-                return "💰 **Зарплата — {$name}:**\n" . implode("\n", $lines);
+                return "💰 **Зарплата — {$resolvedName}:**\n" . implode("\n", $lines);
             }
 
             // No name — show all salary rules
@@ -370,7 +424,12 @@ class AIChatController extends Controller
         }
 
         // ── Client debt (remaining payments) ──────────────────────────────────
-        if ($this->matches($lq, ['заборгованість клієнт', 'борг клієнт', 'скільки винні клієнт', 'залишок оплат', 'залишок по проект', 'скільки не оплатили', 'не доплатили', 'остаток оплат', 'скільки ще повинні'])) {
+        if ($this->matches($lq, [
+            'заборгованість клієнт', 'борг клієнт', 'скільки винні клієнт', 'залишок оплат',
+            'залишок по проект', 'скільки не оплатили', 'не доплатили', 'остаток оплат',
+            'скільки ще повинні', 'скільки грошей винн', 'скільки грошей клієнт',
+            'скільки нам винн', 'клієнти винн', 'скільки боргу', 'загальний борг',
+        ])) {
             $financeStageIds = array_filter(
                 (array) config('services.amocrm.finance_stage_ids', []),
                 fn ($id) => is_numeric($id) && (int) $id > 0
@@ -429,11 +488,13 @@ class AIChatController extends Controller
         if ($this->matches($lq, [
             'яке обладнання потрібн', 'чого не вистачає', 'що дозамовити', 'що замовити',
             'не вистачає для проект', 'комплектація обладнання', 'обладнання для комплектац',
-            'перевір склад', 'аналіз складу', 'що треба замовити', 'нестача обладнання',
+            'перевір склад', 'аналіз складу', 'що треба замовит', 'нестача обладнання',
             'яке обладнання відсутн', 'що на складі не вистачає', 'замовити обладнання',
             'обладнання для реаліз', 'потрібне для реаліз', 'потрібно для реаліз',
             'що потрібно замовити', 'які матеріали', 'яке обладнання треба',
             'обладнання не вистачає', 'що відсутнє на складі',
+            'по обладнанню', 'обладнання для проект', 'обладнання для завершен',
+            'статус обладнання', 'обладнання проект', 'що з обладнанням',
         ])) {
             return $this->equipmentGapReport();
         }
@@ -480,6 +541,223 @@ class AIChatController extends Controller
     // =========================================================================
     // Private helpers
     // =========================================================================
+
+    /**
+     * Route a detected intent to the appropriate data handler.
+     * Returns null if the intent cannot be resolved to a data answer.
+     */
+    private function dispatchByIntent(string $intent, string $question, array $context = []): ?string
+    {
+        return match ($intent) {
+            'wallet_balance'          => $this->quickAnswer('скільки грошей', $context),
+            'stock_balance'           => $this->quickAnswer('залишок на складі', $context),
+            'stock_shortage',
+            'equipment_gap'           => $this->equipmentGapReport(),
+            'expenses'                => $this->monthlyExpenses(now()->format('Y-m')),
+            'salary'                  => $this->quickAnswer('зарплата', $context),
+            'salary_total'            => $this->salaryPendingTotal(),
+            'salary_pending_total'    => $this->salaryPendingTotal(),
+            'salary_by_role'          => $this->salaryByRole($this->extractSalaryRole($question)),
+            'salary_pending_by_role'  => $this->salaryByRole($this->extractSalaryRole($question), pendingOnly: true),
+            'unpaid_workers'          => $this->unpaidWorkers(),
+            'defects'                 => $this->quickAnswer('недолік', $context),
+            'client_debt'             => $this->quickAnswer('заборгованість клієнт', $context),
+            'projects'                => $this->quickAnswer('активні проекти', $context),
+            'reclamations'            => $this->quickAnswer('рекламац', $context),
+            'services'                => $this->quickAnswer('сервісні заявки', $context),
+            default                   => null,
+        };
+    }
+
+    /** Map role keyword → staff_group DB value */
+    private const ROLE_MAP = [
+        'монтаж'    => 'installation_team',
+        'монтажник' => 'installation_team',
+        'монтажнік' => 'installation_team',
+        'монтера'   => 'installation_team',
+        'електрик'  => 'electrician',
+        'електрікам'=> 'electrician',
+        'прораб'    => 'foreman',
+        'форман'    => 'foreman',
+        'бухгалтер' => 'accountant',
+    ];
+
+    private const ROLE_LABELS = [
+        'installation_team' => 'Монтажники',
+        'electrician'       => 'Електрики',
+        'foreman'           => 'Прораби',
+        'accountant'        => 'Бухгалтери',
+    ];
+
+    /** Extract DB staff_group from question text */
+    private function extractSalaryRole(string $lq): ?string
+    {
+        foreach (self::ROLE_MAP as $keyword => $group) {
+            if (str_contains($lq, $keyword)) {
+                return $group;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Salary breakdown by role/group.
+     * If $role is null — shows all groups.
+     * If $pendingOnly — only status='pending'.
+     */
+    private function salaryByRole(?string $role, bool $pendingOnly = false): string
+    {
+        $query = DB::table('salary_accruals')
+            ->selectRaw('staff_group, staff_name, currency, status, SUM(amount) as total')
+            ->groupBy('staff_group', 'staff_name', 'currency', 'status');
+
+        if ($role) {
+            $query->where('staff_group', $role);
+        }
+        if ($pendingOnly) {
+            $query->where('status', 'pending');
+        }
+
+        $rows = $query->orderBy('staff_group')->orderBy('staff_name')->get();
+
+        if ($rows->isEmpty()) {
+            $label = $role ? (self::ROLE_LABELS[$role] ?? $role) : 'співробітникам';
+            $pend  = $pendingOnly ? ' (невиплачені)' : '';
+            return "💰 Нарахувань{$pend} для «{$label}» не знайдено.";
+        }
+
+        // Group by staff_group for display
+        $byGroup  = [];
+        $totals   = [];
+        $currency = 'грн';
+
+        foreach ($rows as $r) {
+            $g = $r->staff_group ?? 'other';
+            $byGroup[$g][$r->staff_name] = ($byGroup[$g][$r->staff_name] ?? 0) + (float)$r->total;
+            $totals[$g] = ($totals[$g] ?? 0) + (float)$r->total;
+            $currency   = $r->currency ?? $currency;
+        }
+
+        $header = $pendingOnly ? '💰 **Невиплачена зарплата' : '💰 **Нараховано';
+        if ($role) {
+            $header .= ' — ' . (self::ROLE_LABELS[$role] ?? $role);
+        }
+        $header .= ':**';
+
+        $lines = [];
+        foreach ($byGroup as $group => $people) {
+            $groupLabel = self::ROLE_LABELS[$group] ?? $group;
+            if (!$role && count($byGroup) > 1) {
+                $lines[] = "**{$groupLabel}:**";
+            }
+            foreach ($people as $name => $amount) {
+                $fmt     = number_format($amount, 0, '.', ' ');
+                $lines[] = "  • {$name} — {$fmt} {$currency}";
+            }
+            if (!$role && count($byGroup) > 1) {
+                $groupFmt = number_format($totals[$group], 0, '.', ' ');
+                $lines[]  = "  Разом: {$groupFmt} {$currency}";
+            }
+        }
+
+        $grandTotal = array_sum($totals);
+        $totalFmt   = number_format($grandTotal, 0, '.', ' ');
+        $lines[]    = "\n**Загалом: {$totalFmt} {$currency}**";
+
+        return $header . "\n" . implode("\n", $lines);
+    }
+
+    /**
+     * Total pending (unpaid) salary across all groups.
+     * If nothing pending — shows total paid as reference.
+     */
+    private function salaryPendingTotal(): string
+    {
+        $pending = DB::table('salary_accruals')
+            ->where('status', 'pending')
+            ->selectRaw('staff_group, currency, SUM(amount) as total')
+            ->groupBy('staff_group', 'currency')
+            ->get();
+
+        if ($pending->isEmpty()) {
+            // No pending — show paid totals for context
+            $paid = DB::table('salary_accruals')
+                ->where('status', 'paid')
+                ->selectRaw('staff_group, currency, SUM(amount) as total')
+                ->groupBy('staff_group', 'currency')
+                ->get();
+
+            if ($paid->isEmpty()) {
+                return "💰 Нарахувань не знайдено.";
+            }
+
+            $lines = [];
+            $grand = 0.0;
+            $cur   = 'грн';
+            foreach ($paid as $r) {
+                $label  = self::ROLE_LABELS[$r->staff_group] ?? ($r->staff_group ?? '?');
+                $fmt    = number_format((float)$r->total, 0, '.', ' ');
+                $lines[] = "• {$label}: {$fmt} {$r->currency}";
+                $grand  += (float)$r->total;
+                $cur     = $r->currency;
+            }
+            $totalFmt = number_format($grand, 0, '.', ' ');
+            return "✅ **Невиплачених нарахувань немає.**\n\nДовідково — всього виплачено:\n"
+                . implode("\n", $lines)
+                . "\n\n**Загалом: {$totalFmt} {$cur}**";
+        }
+
+        $lines = [];
+        $grand = 0.0;
+        $cur   = 'грн';
+        foreach ($pending as $r) {
+            $label  = self::ROLE_LABELS[$r->staff_group] ?? ($r->staff_group ?? '?');
+            $fmt    = number_format((float)$r->total, 0, '.', ' ');
+            $lines[] = "• {$label}: {$fmt} {$r->currency}";
+            $grand  += (float)$r->total;
+            $cur     = $r->currency;
+        }
+        $totalFmt = number_format($grand, 0, '.', ' ');
+        return "💸 **Невиплачена зарплата (по групах):**\n"
+            . implode("\n", $lines)
+            . "\n\n**До виплати: {$totalFmt} {$cur}**";
+    }
+
+    /**
+     * List of workers with pending (unpaid) salary.
+     */
+    private function unpaidWorkers(): string
+    {
+        $rows = DB::table('salary_accruals')
+            ->where('status', 'pending')
+            ->selectRaw('staff_name, staff_group, currency, SUM(amount) as total')
+            ->groupBy('staff_name', 'staff_group', 'currency')
+            ->orderBy('staff_group')
+            ->orderByDesc('total')
+            ->get();
+
+        if ($rows->isEmpty()) {
+            $total = DB::table('salary_accruals')->where('status', 'paid')->count();
+            return "✅ **Всі співробітники отримали зарплату.** (виплачено {$total} записів)";
+        }
+
+        $lines = [];
+        $grand = 0.0;
+        $cur   = 'грн';
+        foreach ($rows as $r) {
+            $label  = self::ROLE_LABELS[$r->staff_group] ?? '';
+            $badge  = $label ? " ({$label})" : '';
+            $fmt    = number_format((float)$r->total, 0, '.', ' ');
+            $lines[] = "• {$r->staff_name}{$badge} — {$fmt} {$r->currency}";
+            $grand  += (float)$r->total;
+            $cur     = $r->currency;
+        }
+        $cnt      = $rows->count();
+        $totalFmt = number_format($grand, 0, '.', ' ');
+        return "⚠️ **Не отримали зарплату ({$cnt} осіб):**\n"
+            . implode("\n", $lines)
+            . "\n\n**Разом до виплати: {$totalFmt} {$cur}**";
+    }
 
     private function monthlyExpenses(string $month): string
     {
@@ -706,21 +984,102 @@ class AIChatController extends Controller
     }
 
     /**
-     * Extract person name from question (uses original case).
-     * "яка зарплата у Малінін" → "Малінін"
-     * "зарплата Кукуяки"      → "Кукуяки"
+     * Extract person name from question.
+     * Works with any case: "у Малінін", "у малініна", "зарплата кукуяки"
      */
     private function extractPersonName(string $q): ?string
     {
-        // After prepositions: "у Малінін", "в Малінін", "для Малінін"
+        // After prepositions: "у Малінін", "в малініна", "для кукуяки"
         if (preg_match('/(?:у|в|для|по)\s+([а-яіїєґА-ЯІЇЄҐ][а-яіїєґА-ЯІЇЄҐ\'-]{2,})/u', $q, $m)) {
             return $m[1];
         }
-        // Keyword followed by name (only if first letter is uppercase = proper name)
-        if (preg_match('/(?:зарплата|зарплатня|нарахування|заробіток)\s+([А-ЯІЇЄҐ][а-яіїєґА-ЯІЇЄҐ\'-]{2,})/u', $q, $m)) {
+        // Keyword followed by name (any case)
+        if (preg_match('/(?:зарплата|зарплатня|нарахування|заробіток)\s+([а-яіїєґА-ЯІЇЄҐ][а-яіїєґА-ЯІЇЄҐ\'-]{2,})/u', $q, $m)) {
+            return $m[1];
+        }
+        // Lone word at end that looks like a surname (≥4 chars, after salary keyword in sentence)
+        if (preg_match('/(?:зарплат|нарахуван|заробіток|ставк)\S*\s+.*?\s+([а-яіїєґА-ЯІЇЄҐ][а-яіїєґА-ЯІЇЄҐ\'-]{3,})$/u', $q, $m)) {
             return $m[1];
         }
         return null;
+    }
+
+    /**
+     * Normalize Ukrainian text for fuzzy comparison:
+     * lowercase, trim, і→и, ї→и, є→е, ґ→г
+     */
+    private function normalizeUkr(string $s): string
+    {
+        $s = mb_strtolower(trim($s));
+        $s = str_replace(['і', 'ї', 'є', 'ґ'], ['и', 'и', 'е', 'г'], $s);
+        return $s;
+    }
+
+    /**
+     * Fuzzy staff name search.
+     *
+     * Algorithm (per candidate name):
+     *   1. Exact substring match on normalized text        → score 1.0
+     *   2. Input is prefix/stem of any word in candidate  → score 0.9
+     *   3. Levenshtein distance ≤ 2 on any word           → score 0.8
+     *   4. similar_text() ≥ 70% on any word               → score by pct
+     *
+     * Returns canonical DB names that matched (sorted best-first, max 5).
+     *
+     * @param  string   $input   Raw user input (e.g. "малініна")
+     * @param  string[] $names   List of canonical staff names from DB
+     * @return string[]
+     */
+    private function fuzzyFindStaff(string $input, array $names): array
+    {
+        $normInput = $this->normalizeUkr($input);
+        // Strip common case endings from input to get a stem for prefix matching
+        // е.г. "малініна" → "малинин", "кукуяки" → "кукуяк"
+        $stem = rtrim($normInput, 'аяуюоеиіїє');
+        if (mb_strlen($stem) < 3) $stem = $normInput;
+
+        $scored = [];
+
+        foreach ($names as $name) {
+            $normName  = $this->normalizeUkr($name);
+            $bestScore = 0.0;
+
+            // Check against whole name and each word separately
+            $parts = array_filter(explode(' ', $normName), fn($p) => mb_strlen($p) >= 2);
+
+            foreach ([$normName, ...$parts] as $part) {
+                // 1. Exact substring
+                if (str_contains($part, $normInput) || str_contains($normInput, $part)) {
+                    $bestScore = max($bestScore, 1.0);
+                    break;
+                }
+
+                // 2. Stem prefix
+                if (mb_strlen($stem) >= 3 && str_contains($part, $stem)) {
+                    $bestScore = max($bestScore, 0.9);
+                }
+
+                // 3. Levenshtein ≤ 2
+                $lev = levenshtein($normInput, $part);
+                if ($lev <= 2) {
+                    $score = 1.0 - ($lev / max(mb_strlen($normInput), mb_strlen($part)));
+                    $bestScore = max($bestScore, $score);
+                }
+
+                // 4. similar_text ≥ 70%
+                similar_text($normInput, $part, $pct);
+                if ($pct >= 70) {
+                    $bestScore = max($bestScore, $pct / 100);
+                }
+            }
+
+            if ($bestScore >= 0.7) {
+                $scored[$name] = $bestScore;
+            }
+        }
+
+        arsort($scored);
+        return array_keys(array_slice($scored, 0, 5, true));
     }
 
     /**

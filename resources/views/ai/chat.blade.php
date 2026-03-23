@@ -34,7 +34,7 @@
   <div id="aiMessages" style="flex:1; min-height:0; overflow-y:auto; padding:0 12px 48px; display:flex; flex-direction:column; gap:10px;">
     <div class="ai-msg ai-msg--bot" style="align-self:flex-start;">
       <div class="ai-bubble">
-        Привіт! Я фінансовий аналітик SolarGlass. Маю доступ до балансів, витрат, проектів та залишків обладнання. Що вас цікавить?
+        Ну що погнали?
       </div>
     </div>
   </div>
@@ -51,7 +51,7 @@
       <option value="claude">🧠 Claude (глибокий аналіз)</option>
     </select>
   </div>
-  {{-- Textarea + send --}}
+  {{-- Textarea + mic + send --}}
   <div style="display:flex; gap:8px; align-items:flex-end;">
     <textarea
       id="aiInput"
@@ -59,6 +59,11 @@
       placeholder="Задайте питання..."
       style="flex:1; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); border-radius:16px; padding:10px 14px; color:inherit; font-size:15px; resize:none; max-height:120px; overflow-y:auto; line-height:1.4;"
     ></textarea>
+    <button id="aiMic"
+      style="width:44px; height:44px; border-radius:50%; background:rgba(255,255,255,0.15); border:none; cursor:pointer; font-size:20px; flex-shrink:0; display:none; align-items:center; justify-content:center;"
+      aria-label="Голосовий ввід">
+      🎤
+    </button>
     <button id="aiSend"
       style="width:44px; height:44px; border-radius:50%; background:rgba(255,255,255,0.15); border:none; cursor:pointer; font-size:18px; flex-shrink:0; display:flex; align-items:center; justify-content:center;"
       aria-label="Надіслати">
@@ -129,6 +134,15 @@
 .ai-suggestion { transition: opacity .15s; }
 .ai-suggestion:hover { opacity: 1 !important; }
 #aiModel option { background: #1e2535; }
+#aiMic { transition: background .2s, transform .1s; }
+#aiMic.recording {
+  background: rgba(255, 60, 60, 0.55) !important;
+  animation: mic-pulse 1s ease-in-out infinite;
+}
+@keyframes mic-pulse {
+  0%, 100% { transform: scale(1); }
+  50%       { transform: scale(1.12); }
+}
 </style>
 
 <script>
@@ -144,7 +158,7 @@
 
   let thinking = false;
 
-  const MODEL_LABELS = { local: '⚡ Local AI', claude: '🧠 Claude', quick: '⚡ Швидка відповідь', 'local-fallback': '⚡ Local AI', 'sql-agent': '🗄 SQL агент' };
+  const MODEL_LABELS = { local: '⚡ Local AI', claude: '🧠 Claude', quick: '⚡ Швидка відповідь', 'local-fallback': '⚡ Local AI', 'sql-agent': '🗄 SQL агент', intent: '🎯 Intent' };
 
   function scrollBottom() {
     requestAnimationFrame(() => {
@@ -306,6 +320,72 @@
 
   inputEl.focus();
   scrollBottom();
+
+  // ── Voice input ────────────────────────────────────────────────────────────
+  const micBtn = document.getElementById('aiMic');
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if (SpeechRecognition && micBtn) {
+    micBtn.style.display = 'flex';
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'uk-UA';
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+    recognition.continuous = false;
+
+    let isRecording = false;
+    let textBeforeMic = '';
+
+    function startRecording() {
+      if (isRecording) return;
+      isRecording = true;
+      textBeforeMic = inputEl.value;
+      micBtn.classList.add('recording');
+      micBtn.setAttribute('aria-label', 'Зупинити запис');
+      try { recognition.start(); } catch(e) {}
+    }
+
+    function stopRecording() {
+      if (!isRecording) return;
+      isRecording = false;
+      micBtn.classList.remove('recording');
+      micBtn.setAttribute('aria-label', 'Голосовий ввід');
+      try { recognition.stop(); } catch(e) {}
+    }
+
+    micBtn.addEventListener('click', () => {
+      if (isRecording) stopRecording();
+      else startRecording();
+    });
+
+    recognition.addEventListener('result', (e) => {
+      let transcript = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        transcript += e.results[i][0].transcript;
+      }
+      inputEl.value = textBeforeMic + transcript;
+      inputEl.style.height = 'auto';
+      inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+    });
+
+    recognition.addEventListener('end', () => {
+      if (!isRecording) return; // stopped manually — already clean
+      isRecording = false;
+      micBtn.classList.remove('recording');
+      micBtn.setAttribute('aria-label', 'Голосовий ввід');
+      // Auto-send if text was dictated
+      const text = inputEl.value.trim();
+      if (text && text !== textBeforeMic.trim()) send(text);
+    });
+
+    recognition.addEventListener('error', (e) => {
+      stopRecording();
+      if (e.error !== 'no-speech' && e.error !== 'aborted') {
+        addBotMessage('Помилка мікрофону: ' + e.error, null);
+      }
+    });
+  }
 })();
 </script>
 
