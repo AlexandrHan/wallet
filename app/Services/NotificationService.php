@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Events\NewNotificationEvent;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -27,6 +28,24 @@ class NotificationService
             'is_read'    => false,
             'created_at' => now(),
         ]);
+
+        $payload = [
+            'id'         => $id,
+            'user_id'    => $userId,
+            'type'       => $type,
+            'title'      => $title,
+            'message'    => $message,
+            'data'       => $data ?: null,
+            'is_read'    => false,
+            'created_at' => now()->toISOString(),
+        ];
+
+        // Broadcast via WebSocket (real-time badge + dropdown update)
+        try {
+            broadcast(new NewNotificationEvent($payload));
+        } catch (\Throwable $e) {
+            Log::debug('NotificationService: broadcast failed', ['err' => $e->getMessage()]);
+        }
 
         // Fire push if user has a token
         $pushToken = DB::table('users')->where('id', $userId)->value('push_token');

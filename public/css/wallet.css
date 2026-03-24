@@ -345,7 +345,7 @@ header .wrap{
 
 .burger-item.danger{ color:var(--red); }
 
-.userName{ color:#fff; }
+.userName{ color:#fff; z-index: 10; height: 20px;}
 
 /* ================== BUTTONS ================== */
 .btn{
@@ -558,7 +558,7 @@ tbody td:last-child{
 ================================================= */
 .segmented{
   display:flex;
-  margin-top:2rem;
+  margin-top:3.5rem;
   border-radius:999px;
   padding:4px;
 

@@ -51,6 +51,8 @@
   </div>
 
   <div class="tg-menu__content">
+    <a class="tg-menu__item" href="/messages" style="font-size:15px; font-weight:600; padding:14px 18px; margin-bottom:14px; border-bottom:1px solid rgba(255,255,255,0.06);">💬 Чат</a>
+
     <details class="tg-acc" >
       <summary class="tg-acc__title">💳 Гаманець</summary>
       <div class="tg-acc__body">

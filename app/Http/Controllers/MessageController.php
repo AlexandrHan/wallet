@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\NewMessageEvent;
 use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -94,6 +95,18 @@ class MessageController extends Controller
             'created_at'   => now(),
         ]);
 
+        $payload = [
+            'id'           => $id,
+            'from_user_id' => $myId,
+            'to_user_id'   => $toId,
+            'message'      => $text,
+            'created_at'   => now()->toISOString(),
+            'sender_name'  => $me->name,
+        ];
+
+        // Broadcast via WebSocket (real-time)
+        broadcast(new NewMessageEvent($payload))->toOthers();
+
         // In-app notification to recipient
         $this->notifications->send(
             $toId,
@@ -103,13 +116,7 @@ class MessageController extends Controller
             ['from_user_id' => $myId]
         );
 
-        return response()->json([
-            'id'           => $id,
-            'from_user_id' => $myId,
-            'to_user_id'   => $toId,
-            'message'      => $text,
-            'created_at'   => now()->toISOString(),
-        ]);
+        return response()->json($payload);
     }
 
     /** GET /api/messages/unread — total unread count */

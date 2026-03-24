@@ -40,6 +40,7 @@
   </div>
 
   <div class="tg-menu__content">
+    <a class="tg-menu__item" href="/messages" style="font-size:15px; font-weight:600; padding:14px 18px; margin-bottom:14px; border-bottom:1px solid rgba(255,255,255,0.06);">💬 Чат</a>
     <a class="tg-menu__item" style="margin-bottom:15px;" href="/">🏦 Гаманець</a>
 
     <a class="tg-menu__item" style="margin-bottom:15px;" href="/projects/my-installation">🏗️ Проекти</a>

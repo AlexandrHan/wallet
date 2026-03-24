@@ -60,12 +60,13 @@
         <span style="font-weight:800;">
           {{ collect(explode(' ', trim(auth()->user()->name)))->first() }}
         </span>
+        @include('partials.notif-bell')
       </div>
 
       @include('partials.nav.top-avatar-placeholder')
     </div>
 
-    <div class="header-right">
+    <div class="header-right" style="display:flex; align-items:center; gap:6px;">
       <span class="tag" id="actorTag" style="display:none"></span>
     </div>
 
