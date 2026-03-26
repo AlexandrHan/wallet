@@ -344,6 +344,10 @@ document.addEventListener('DOMContentLoaded', async function () {
     if (hasGreenTariff) card.classList.add('project-card--green');
     if (hasDefects || project.construction_status === 'has_deficiencies') card.classList.add('project-card--defects');
     if (project.construction_status === 'deficiencies_fixed') card.style.border = '2px solid #d4a017';
+    if (project._isOverdue) {
+      card.style.border = '2px solid rgba(127, 255, 0, 0.7)';
+      card.style.background = 'rgba(127, 255, 0, 0.05)';
+    }
 
     const scheduledDateLabel = project._scheduledDate ? formatDateShort(project._scheduledDate) : '';
 
@@ -586,11 +590,17 @@ document.addEventListener('DOMContentLoaded', async function () {
           });
           const data = await r.json();
           if (r.ok && data.ok) {
-            this.textContent = '🟡 Очікує перевірки';
-            this.classList.remove('complete-construction-btn');
-            this.style.background = '';
-            this.style.color = '';
-            this.disabled = true;
+            // Project disappears completely from the installer's schedule
+            card.style.transition = 'opacity 0.4s';
+            card.style.opacity = '0';
+            setTimeout(() => {
+              const daySection = card.closest('.card:not(.project-card)');
+              card.remove();
+              // Remove empty day section if no project cards remain
+              if (daySection && !daySection.querySelector('.project-card')) {
+                daySection.remove();
+              }
+            }, 400);
           } else {
             alert(data.error || 'Помилка');
             this.disabled = false;
@@ -703,10 +713,24 @@ document.addEventListener('DOMContentLoaded', async function () {
         grouped.get(key).push(project);
       }
 
-      // Date is set but falls entirely outside the visible window (past or far future) —
-      // show in unscheduled so the project is never invisible.
+      // Date is set but falls entirely outside the visible window (past or far future).
       if (normalizedKeys.size === 0) {
-        unscheduled.push({ ...project, _scheduledDate: project[SCHEDULE_FIELD] });
+        // Check if all dates are in the past → overdue (not yet completed by worker)
+        const todayStr = days[0].key;
+        const allInPast = explicitDates.length > 0
+          && explicitDates.every(rawDate => {
+            const d = parseProjectDate(rawDate);
+            return d && d.toISOString().slice(0, 10) < todayStr;
+          });
+
+        if (allInPast && !project.installation_completed_at) {
+          // Pin overdue project to today with a flag for lime highlight
+          if (grouped.has(todayStr)) {
+            grouped.get(todayStr).push({ ...project, _isOverdue: true });
+          }
+        } else {
+          unscheduled.push({ ...project, _scheduledDate: project[SCHEDULE_FIELD] });
+        }
       }
     });
 
@@ -780,11 +804,15 @@ document.addEventListener('DOMContentLoaded', async function () {
     restoreOpenState();
   }
 
+  const DONE_STATUSES = new Set(['waiting_quality_check', 'salary_pending']);
+
   function renderProjects(projects) {
     const filtered = projects
       .filter(project => !project?.is_retail)
       .filter(project => matchesAssignment(project?.[MATCH_FIELD]))
-      .filter(project => String(project.status || '') !== 'completed');
+      .filter(project => String(project.status || '') !== 'completed')
+      .filter(project => !project?.installation_completed_at)
+      .filter(project => !DONE_STATUSES.has(project?.construction_status));
 
     if (SCHEDULE_FIELD) {
       renderScheduledProjects(filtered);
@@ -814,12 +842,15 @@ document.addEventListener('DOMContentLoaded', async function () {
         projectsUrl += `?worker_mode=1&match_field=${encodeURIComponent(MATCH_FIELD)}&match_value=${encodeURIComponent(expectedValue)}`;
       }
 
-      const [projectsRes, servicesRes] = await Promise.all([
-        fetch(projectsUrl, { headers: { 'Accept': 'application/json' } }),
-        fetch('/api/my-service-requests', { headers: { 'Accept': 'application/json' } }),
-      ]);
+      const fetchList = [fetch(projectsUrl, { headers: { 'Accept': 'application/json' } })];
+      const isElectricianView = MATCH_FIELD === 'electrician';
+      if (isElectricianView) {
+        fetchList.push(fetch('/api/my-service-requests', { headers: { 'Accept': 'application/json' } }));
+      }
+
+      const [projectsRes, servicesRes] = await Promise.all(fetchList);
       const projects = await projectsRes.json();
-      const services = servicesRes.ok ? await servicesRes.json() : [];
+      const services = (isElectricianView && servicesRes && servicesRes.ok) ? await servicesRes.json() : [];
 
       if (!projectsRes.ok || !Array.isArray(projects)) {
         throw new Error('Не вдалося завантажити проекти');

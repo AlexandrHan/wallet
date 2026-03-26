@@ -18,14 +18,59 @@
 
 {{-- Payment modal --}}
 <div id="payModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.75); z-index:9000;
-  align-items:center; justify-content:center; padding:16px;">
-  <div class="card" style="width:100%; max-width:400px; padding:20px;">
-    <div style="font-weight:800; font-size:16px; margin-bottom:6px;" id="payModalTitle">Виплатити зарплату</div>
-    <div style="font-size:14px; opacity:.8; margin-bottom:16px;" id="payModalDesc"></div>
-    <div class="project-field-label">Гаманець для списання</div>
-    <select id="payWalletSelect" class="btn" style="width:100%; margin-bottom:16px;">
-      <option value="">Завантаження...</option>
-    </select>
+  align-items:center; justify-content:center; padding:16px; overflow-y:auto;">
+  <div class="card" style="width:100%; max-width:420px; padding:20px; margin:auto;">
+    <div style="font-weight:800; font-size:16px; margin-bottom:14px;" id="payModalTitle">💸 Виплатити зарплату</div>
+
+    {{-- Salary summary line --}}
+    <div id="payModalSalaryLine" style="font-size:15px; font-weight:700; margin-bottom:4px;"></div>
+
+    {{-- Bonus row --}}
+    <div style="margin-bottom:14px;">
+      <div class="project-field-label" style="margin-bottom:6px;">Премія</div>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <input id="bonusAmountInput" type="number" min="0" step="1" placeholder="0"
+          class="btn" style="flex:1; text-align:right;" value="0">
+        <div style="display:flex; border-radius:8px; overflow:hidden; border:1px solid rgba(255,255,255,.2);">
+          <button id="bonusCurrencyUsd" type="button"
+            style="padding:8px 14px; font-weight:700; background:rgba(245,200,66,.25); color:#f5c842; border:none; cursor:pointer;">
+            USD
+          </button>
+          <button id="bonusCurrencyUah" type="button"
+            style="padding:8px 14px; font-weight:700; background:transparent; color:inherit; border:none; cursor:pointer; opacity:.5;">
+            UAH
+          </button>
+        </div>
+      </div>
+    </div>
+
+    {{-- USD to pay --}}
+    <div style="margin-bottom:10px;">
+      <div class="project-field-label" style="margin-bottom:6px;">Виплатити в USD</div>
+      <input id="usdPaidInput" type="number" min="0" step="1"
+        class="btn" style="width:100%; text-align:right;">
+    </div>
+
+    {{-- Live breakdown --}}
+    <div id="payBreakdown" style="margin-bottom:14px; font-size:13px; opacity:.8; padding:10px 12px;
+      border-radius:8px; background:rgba(255,255,255,.06); line-height:1.7;"></div>
+
+    {{-- USD wallet --}}
+    <div id="usdWalletRow" style="margin-bottom:12px;">
+      <div class="project-field-label" style="margin-bottom:6px;">USD гаманець</div>
+      <select id="usdWalletSelect" class="btn" style="width:100%;">
+        <option value="">Завантаження...</option>
+      </select>
+    </div>
+
+    {{-- UAH wallet --}}
+    <div id="uahWalletRow" style="margin-bottom:16px;">
+      <div class="project-field-label" style="margin-bottom:6px;">UAH гаманець</div>
+      <select id="uahWalletSelect" class="btn" style="width:100%;">
+        <option value="">Завантаження...</option>
+      </select>
+    </div>
+
     <div style="display:flex; gap:8px;">
       <button id="payConfirmBtn" type="button" class="btn save" style="flex:1;">Виплатити</button>
       <button type="button" class="btn" style="flex:1;" onclick="closePayModal()">Скасувати</button>
@@ -37,31 +82,125 @@
 const CSRF = document.querySelector('meta[name="csrf-token"]').content;
 let walletsCache = [];
 let currentPayUserId = null;
+let _payModalSalaryUsd = 0;
+let _bonusCurrency = 'USD';
+let _FX_USD = 40; // loaded from fx_rates on modal open
 
 function fmoney(amount, currency) {
   const sym = { UAH: '₴', USD: '$', EUR: '€' };
-  return new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 })
+  return new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 })
     .format(Number(amount) || 0) + '\u00a0' + (sym[currency] || currency || '');
 }
 
-async function openPayModal(userId, userName, total, currency) {
-  currentPayUserId = userId;
-  document.getElementById('payModalTitle').textContent = `Виплатити — ${userName}`;
-  document.getElementById('payModalDesc').textContent  = `Сума: ${fmoney(total, currency)}`;
-  const sel = document.getElementById('payWalletSelect');
-  sel.innerHTML = '<option value="">Завантаження...</option>';
+function fmt(n) {
+  return new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 }).format(Number(n) || 0);
+}
+
+function setBonusCurrency(cur) {
+  _bonusCurrency = cur;
+  const usdBtn = document.getElementById('bonusCurrencyUsd');
+  const uahBtn = document.getElementById('bonusCurrencyUah');
+  if (cur === 'USD') {
+    usdBtn.style.background = 'rgba(245,200,66,.25)';
+    usdBtn.style.color = '#f5c842';
+    usdBtn.style.opacity = '1';
+    uahBtn.style.background = 'transparent';
+    uahBtn.style.opacity = '.5';
+  } else {
+    uahBtn.style.background = 'rgba(100,180,255,.2)';
+    uahBtn.style.color = '#7ec8f8';
+    uahBtn.style.opacity = '1';
+    usdBtn.style.background = 'transparent';
+    usdBtn.style.opacity = '.5';
+  }
+  updatePayModalCalc();
+}
+
+function updatePayModalCalc() {
+  const salaryUsd  = _payModalSalaryUsd;
+  const bonusAmt   = Math.max(0, parseFloat(document.getElementById('bonusAmountInput')?.value || 0));
+  const bonusUsd   = _bonusCurrency === 'USD' ? bonusAmt : 0;
+  const bonusUah   = _bonusCurrency === 'UAH' ? bonusAmt : 0;
+  const usdTotal   = salaryUsd + bonusUsd;
+
+  const usdPaidInput = parseFloat(document.getElementById('usdPaidInput')?.value || 0);
+  const usdToPay  = (usdPaidInput > 0 && usdPaidInput < usdTotal) ? usdPaidInput : usdTotal;
+  const usdRemain = Math.max(0, usdTotal - usdToPay);
+  const uahFromUsd = usdRemain * _FX_USD;
+  const uahTotal   = uahFromUsd + bonusUah;
+
+  // Breakdown text
+  const lines = [];
+  lines.push(`ЗП: ${fmt(salaryUsd)} USD`);
+  if (bonusUsd > 0) lines.push(`Премія: ${fmt(bonusUsd)} USD`);
+  if (bonusUah > 0) lines.push(`Премія: ${fmt(bonusUah)} ₴`);
+  lines.push(`─────────────`);
+  lines.push(`💵 USD виплата: ${fmt(usdToPay)} USD`);
+  if (usdRemain > 0) {
+    lines.push(`💱 Залишок: ${fmt(usdRemain)} USD × ${fmt(_FX_USD)} = ${fmt(uahFromUsd)} ₴`);
+  }
+  if (bonusUah > 0) lines.push(`  + премія ${fmt(bonusUah)} ₴`);
+  if (uahTotal > 0) lines.push(`🇺🇦 UAH виплата: ${fmt(uahTotal)} ₴`);
+  lines.push(`<span style="opacity:.45; font-size:11px;">Курс (купівля): ${fmt(_FX_USD)} ₴/$</span>`);
+
+  const bd = document.getElementById('payBreakdown');
+  if (bd) bd.innerHTML = lines.join('<br>');
+
+  // Show/hide wallet rows
+  const usdRow = document.getElementById('usdWalletRow');
+  const uahRow = document.getElementById('uahWalletRow');
+  if (usdRow) usdRow.style.display = usdToPay > 0 ? 'block' : 'none';
+  if (uahRow) uahRow.style.display = uahTotal > 0 ? 'block' : 'none';
+}
+
+async function loadPayWallets() {
+  const usdSel = document.getElementById('usdWalletSelect');
+  const uahSel = document.getElementById('uahWalletSelect');
   try {
     if (!walletsCache.length) {
       const r = await fetch('/api/quality-checks/wallets');
       walletsCache = r.ok ? await r.json() : [];
     }
-    const matching = walletsCache.filter(w => w.currency === currency);
-    sel.innerHTML = matching.length
-      ? matching.map(w => `<option value="${w.id}">${String(w.name ?? '').replace(/"/g,'&quot;')} (${w.currency})</option>`).join('')
-      : `<option value="">Немає гаманців у ${currency}</option>`;
+    const usdWallets = walletsCache.filter(w => w.currency === 'USD');
+    const uahWallets = walletsCache.filter(w => w.currency === 'UAH');
+
+    usdSel.innerHTML = usdWallets.length
+      ? usdWallets.map(w => `<option value="${w.id}">${String(w.name ?? '').replace(/"/g,'&quot;')} (USD)</option>`).join('')
+      : '<option value="">Немає USD гаманців</option>';
+
+    uahSel.innerHTML = uahWallets.length
+      ? uahWallets.map(w => `<option value="${w.id}">${String(w.name ?? '').replace(/"/g,'&quot;')} (UAH)</option>`).join('')
+      : '<option value="">Немає UAH гаманців</option>';
   } catch (_) {
-    sel.innerHTML = '<option value="">Помилка завантаження</option>';
+    usdSel.innerHTML = '<option value="">Помилка завантаження</option>';
+    uahSel.innerHTML = '<option value="">Помилка завантаження</option>';
   }
+}
+
+async function openPayModal(userId, userName, salaryUsd) {
+  currentPayUserId  = userId;
+  _payModalSalaryUsd = salaryUsd;
+
+  document.getElementById('payModalTitle').textContent = `Виплатити — ${userName}`;
+  document.getElementById('payModalSalaryLine').textContent = `ЗП: ${fmoney(salaryUsd, 'USD')}`;
+
+  document.getElementById('bonusAmountInput').value = 0;
+  document.getElementById('usdPaidInput').value = Math.round(salaryUsd);
+
+  // Load FX rate from internal exchange
+  try {
+    const r = await fetch('/api/fx/rates', { headers: { Accept: 'application/json' } });
+    if (r.ok) {
+      const d = await r.json();
+      const usdRow = (d.rates || []).find(x => x.currency === 'USD');
+      if (usdRow?.purchase) _FX_USD = usdRow.purchase;
+    }
+  } catch (_) {}
+
+  setBonusCurrency('USD');
+  updatePayModalCalc();
+  loadPayWallets();
+
   document.getElementById('payModal').style.display = 'flex';
 }
 
@@ -71,16 +210,37 @@ function closePayModal() {
 }
 
 async function paySalary() {
-  const walletId = document.getElementById('payWalletSelect').value;
-  if (!walletId) { alert('Оберіть гаманець'); return; }
+  const salaryUsd   = _payModalSalaryUsd;
+  const bonusAmt    = Math.max(0, parseFloat(document.getElementById('bonusAmountInput').value || 0));
+  const bonusUsd    = _bonusCurrency === 'USD' ? bonusAmt : 0;
+  const bonusUah    = _bonusCurrency === 'UAH' ? bonusAmt : 0;
+  const usdTotal    = salaryUsd + bonusUsd;
+  const usdPaidInput = parseFloat(document.getElementById('usdPaidInput').value || 0);
+  const usdToPay    = (usdPaidInput > 0 && usdPaidInput < usdTotal) ? usdPaidInput : usdTotal;
+  const usdRemain   = Math.max(0, usdTotal - usdToPay);
+  const uahTotal    = usdRemain * _FX_USD + bonusUah;
+
+  const usdWalletId = usdToPay > 0 ? document.getElementById('usdWalletSelect').value : '';
+  const uahWalletId = uahTotal > 0 ? document.getElementById('uahWalletSelect').value : '';
+
+  if (usdToPay > 0 && !usdWalletId) { alert('Оберіть USD гаманець'); return; }
+  if (uahTotal > 0 && !uahWalletId) { alert('Оберіть UAH гаманець'); return; }
+
   const btn = document.getElementById('payConfirmBtn');
   btn.disabled = true;
   btn.textContent = 'Виплата...';
   try {
+    const body = {
+      usd_wallet_id:   parseInt(usdWalletId) || 0,
+      uah_wallet_id:   parseInt(uahWalletId) || 0,
+      usd_paid:        usdToPay,
+      bonus_amount:    bonusAmt,
+      bonus_currency:  _bonusCurrency,
+    };
     const r = await fetch(`/api/salary/pay/${currentPayUserId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF },
-      body: JSON.stringify({ wallet_id: walletId }),
+      body: JSON.stringify(body),
     });
     const data = await r.json();
     if (r.ok && data.ok) {
@@ -98,6 +258,10 @@ async function paySalary() {
 }
 
 document.getElementById('payConfirmBtn').addEventListener('click', paySalary);
+document.getElementById('bonusCurrencyUsd').addEventListener('click', () => setBonusCurrency('USD'));
+document.getElementById('bonusCurrencyUah').addEventListener('click', () => setBonusCurrency('UAH'));
+document.getElementById('bonusAmountInput').addEventListener('input', updatePayModalCalc);
+document.getElementById('usdPaidInput').addEventListener('input', updatePayModalCalc);
 
 document.addEventListener('click', function (e) {
   const btn = e.target.closest('.pay-btn');
@@ -106,8 +270,7 @@ document.addEventListener('click', function (e) {
     openPayModal(
       parseInt(btn.dataset.userId),
       btn.dataset.userName,
-      parseFloat(btn.dataset.total),
-      btn.dataset.currency,
+      parseFloat(btn.dataset.salaryUsd || btn.dataset.total || 0),
     );
     return;
   }
@@ -226,17 +389,29 @@ document.addEventListener('DOMContentLoaded', async function () {
       const monthLabel = MONTH_NAMES[parseInt(m) - 1] + ' ' + y;
       const monthId = `month_${group.year_month.replace('-','_')}`;
 
-      const projectRows = (group.rows || []).map(row => `
+      const projectRows = (group.rows || []).map(row => {
+        let paidLine = '';
+        if (row.paid_usd > 0 && row.paid_uah > 0) {
+          paidLine = `${formatMoney(row.paid_usd, 'USD')} + ${formatMoney(row.paid_uah, 'UAH')}`;
+        } else if (row.paid_usd > 0) {
+          paidLine = formatMoney(row.paid_usd, 'USD');
+        } else if (row.paid_uah > 0) {
+          paidLine = formatMoney(row.paid_uah, 'UAH');
+        } else {
+          paidLine = formatMoney(row.amount, row.currency);
+        }
+        const rateNote = row.paid_rate ? ` • курс ${row.paid_rate}` : '';
+        return `
         <div class="card project-card project-card--green"
           data-project-card="h${row.id}" style="margin-bottom:8px;">
           <div class="project-header" data-project-toggle="h${row.id}" style="cursor:pointer;">
             <div class="project-header-row">
               <div class="project-header-name">${esc(row.client_name || 'Без назви')}</div>
-              <div class="project-header-meta" style="font-size:11px; opacity:.6;">${fdate(row.paid_at)}</div>
+              <div class="project-header-meta" style="font-size:11px; opacity:.6;">${fdate(row.paid_at)}${esc(rateNote)}</div>
             </div>
             <div class="project-header-row">
               <div class="project-header-sub">✅ Виплачено</div>
-              <div class="project-header-meta" style="font-weight:800; opacity:.9;">${formatMoney(row.amount, row.currency)}</div>
+              <div class="project-header-meta" style="font-weight:800; opacity:.9; font-size:13px;">${paidLine}</div>
             </div>
           </div>
           <div class="project-body" style="display:none;">
@@ -247,7 +422,8 @@ document.addEventListener('DOMContentLoaded', async function () {
             </div>
           </div>
         </div>
-      `).join('');
+      `;
+      }).join('');
 
       // First (most recent) month is collapsed too — user can open any
       return `
@@ -409,6 +585,7 @@ document.addEventListener('DOMContentLoaded', async function () {
           <button type="button" class="btn save pay-btn"
             data-user-id="${accrualUserId}"
             data-user-name="${esc(TEAM_NAME)}"
+            data-salary-usd="${pendingAccruals.filter(a=>a.currency==='USD').reduce((s,a)=>s+Number(a.amount||0),0)}"
             data-total="${total}"
             data-currency="${esc(accrualCurrency)}"
             style="width:100%; margin-top:10px;">

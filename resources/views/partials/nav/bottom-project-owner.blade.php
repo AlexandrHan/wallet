@@ -1,6 +1,10 @@
 @php
   $activeProjects = request()->is('projects') || request()->is('projects/*');
   $activeSalary = request()->is('salary') || request()->is('salary/*');
+
+  $qcCount = \Illuminate\Support\Facades\DB::table('quality_checks')
+    ->whereIn('status', ['pending', 'has_deficiencies', 'deficiencies_fixed'])
+    ->count();
 @endphp
 
 <nav class="tg-bottom-nav tg-bottom-nav--project-owner">
@@ -78,7 +82,13 @@
       <div class="tg-acc__body">
         <a class="tg-menu__item" href="/salary">💰 Нарахування зарплатні</a>
         <a class="tg-menu__item" href="/salary/accruals">💸 Виплата зарплат</a>
-        <a class="tg-menu__item" href="/quality-checks">🔍 Контроль якості</a>
+        <a class="tg-menu__item" href="/quality-checks" style="display:flex; justify-content:space-between; align-items:center;">
+          <span>🔍 Контроль якості</span>
+          @if($qcCount > 0)
+            <span style="min-width:20px; height:20px; padding:0 6px; background:#e53e3e; color:#fff;
+              border-radius:99px; font-size:11px; font-weight:800; line-height:20px; text-align:center;">{{ $qcCount }}</span>
+          @endif
+        </a>
         <a class="tg-menu__item" href="/salary/settings">⚙️ Налаштування зарплатні</a>
       </div>
     </details>

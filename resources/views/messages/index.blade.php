@@ -11,12 +11,18 @@
      STYLES
 ══════════════════════════════════════════════ --}}
 <style>
+html, body {
+  overflow-x: hidden !important;
+  max-width: 100% !important;
+  overscroll-behavior-x: none;
+}
+
 /* ── Reset / scope ─────────────────────────────── */
 #msgApp *, #msgApp *::before, #msgApp *::after { box-sizing: border-box; }
 #msgApp { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; }
 
 /* Keep site header above the fixed #msgApp overlay */
-header { position: relative; z-index: 200; }
+header { position: fixed; z-index: 200; }
 
 /* ── Layout shell ──────────────────────────────── */
 #msgApp {
@@ -26,13 +32,17 @@ header { position: relative; z-index: 200; }
   flex-direction: column;
   background: #0d0f14;
   color: #e8eaf0;
+  overflow: hidden;
+  width: 100%;
+  max-width: 100vw;
+  touch-action: manipulation;
 }
 
 /* ── Top bar ───────────────────────────────────── */
 #msgTopBar {
   display: flex;
   align-items: center;
-  margin-top: 5rem;
+  margin-top: 50px;
   gap: 10px;
   padding: max(env(safe-area-inset-top, 12px), 12px) 16px 12px;
   background: rgba(17,19,26,0.96);
@@ -74,6 +84,8 @@ header { position: relative; z-index: 200; }
   min-height: 0;
   display: flex;
   overflow: hidden;
+  width: 100%;
+  min-width: 0;
 }
 
 /* ── Sidebar ───────────────────────────────────── */
@@ -202,6 +214,7 @@ header { position: relative; z-index: 200; }
   flex-direction: column;
   background: #0d0f14;
   position: relative;
+  overflow: hidden;
 }
 
 /* Chat header */
@@ -215,6 +228,7 @@ header { position: relative; z-index: 200; }
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid rgba(255,255,255,0.06);
   flex-shrink: 0;
+  margin-top: 8rem;
 }
 #msgChatAvatar {
   width: 36px; height: 36px; border-radius: 50%;
@@ -425,19 +439,63 @@ header { position: relative; z-index: 200; }
 
 /* ── Mobile: sidebar hidden, panel full width ───── */
 @media (max-width: 600px) {
+  #msgTopBar {
+    margin-top: 70px;
+  }
+  
+
+  #msgApp {
+    overflow-x: hidden;
+    width: 100vw;
+    max-width: 100vw;
+  }
+
+  #msgBody {
+    display: block;
+    position: relative;
+    width: 100vw;
+    max-width: 100vw;
+  }
+
   #msgSidebar {
     width: 100%;
     border-right: none;
     position: absolute; top: 50px; left: 0; right: 0; bottom: 0; z-index: 20;
     background: #0d0f14;
-    transition: transform .22s cubic-bezier(.4,0,.2,1);
-    margin-top: 5rem;
+    max-width: 100%;
+    overflow-x: hidden;
+    top: 10px;
   }
-  #msgSidebar.slide-out {
-    transform: translateX(-100%);
-    pointer-events: none;
+  #msgPanel {
+    width: 100vw;
+    max-width: 100vw;
+    position: absolute;
+    inset: 0;
+    left: 0;
+    right: auto;
   }
-  #msgPanel { width: 100%; }
+  #msgApp.chat-open #msgSidebar {
+    display: none;
+  }
+  #msgApp.chat-open #msgTopBar {
+    display: none;
+  }
+  #msgApp.chat-open #msgChatHeader,
+  #msgApp.chat-open #msgHistory,
+  #msgApp.chat-open #msgInput,
+  #msgApp.chat-open #msgEmpty {
+    width: 100vw;
+    max-width: 100vw;
+  }
+  #msgHistory {
+    overflow-x: hidden;
+  }
+  #msgSearchInput,
+  #msgText,
+  #msgSend,
+  #msgMobileBack {
+    font-size: 16px;
+  }
   #msgChatHeader { display: flex; }
   #msgMobileBack {
     display: flex; align-items: center; justify-content: center;
@@ -613,7 +671,7 @@ header { position: relative; z-index: 200; }
 
   /* ── mobile sidebar ─────────────────────────────────── */
   window.closeMobileChat = function () {
-    document.getElementById('msgSidebar').classList.remove('slide-out');
+    document.getElementById('msgApp').classList.remove('chat-open');
     currentUid = null;
     document.getElementById('msgHistory').style.display = 'none';
     document.getElementById('msgInput').style.display   = 'none';
@@ -645,7 +703,7 @@ header { position: relative; z-index: 200; }
 
     // Mobile: slide sidebar out, show chat header
     if (window.innerWidth <= 600) {
-      document.getElementById('msgSidebar').classList.add('slide-out');
+      document.getElementById('msgApp').classList.add('chat-open');
       const chatHeader = document.getElementById('msgChatHeader');
       chatHeader.style.display = 'flex';
       document.getElementById('msgChatName').textContent = name;

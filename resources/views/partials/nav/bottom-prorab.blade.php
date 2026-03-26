@@ -8,18 +8,24 @@
 
   $activeQuality = str_starts_with($route ?? '', 'quality-checks');
 
+  $qcCount = \Illuminate\Support\Facades\DB::table('quality_checks')
+    ->whereIn('status', ['pending', 'has_deficiencies', 'deficiencies_fixed'])
+    ->count();
+
   $tabs = [
     [
       'href'   => route('home'),
       'icon'   => '💼',
       'label'  => 'Гаманець',
-      'active' => $activeWallet
+      'active' => $activeWallet,
+      'badge'  => 0,
     ],
     [
       'href'   => url('/quality-checks'),
       'icon'   => '🔍',
       'label'  => 'Перевірка',
-      'active' => $activeQuality
+      'active' => $activeQuality,
+      'badge'  => $qcCount,
     ],
     [
       'href'   => url('/projects'),
@@ -39,8 +45,14 @@
 <nav class="tg-bottom-nav">
   <div class="tg-bottom-left">
     @foreach($tabs as $t)
-      <a class="tg-tab {{ $t['active'] ? 'is-active' : '' }}" href="{{ $t['href'] }}">
-        {!! $t['icon'] !!}<span>{{ $t['label'] }}</span>
+      <a class="tg-tab {{ $t['active'] ? 'is-active' : '' }}" href="{{ $t['href'] }}" style="position:relative;">
+        {!! $t['icon'] !!}
+        @if(!empty($t['badge']) && $t['badge'] > 0)
+          <span style="position:absolute; top:2px; right:2px; min-width:16px; height:16px; padding:0 4px;
+            background:#e53e3e; color:#fff; border-radius:99px; font-size:10px; font-weight:800;
+            line-height:16px; text-align:center; pointer-events:none;">{{ $t['badge'] }}</span>
+        @endif
+        <span>{{ $t['label'] }}</span>
       </a>
     @endforeach
   </div>
@@ -82,7 +94,13 @@
           <div class="tg-acc__body">
             <a class="tg-menu__item" href="/projects"> 🧾 Проекти</a>
             <a class="tg-menu__item" href="/projects/service-repair"> 🛠 Сервіс та ремонт</a>
-            <a class="tg-menu__item" href="/quality-checks">🔍 Контроль якості</a>
+            <a class="tg-menu__item" href="/quality-checks" style="display:flex; justify-content:space-between; align-items:center;">
+              <span>🔍 Контроль якості</span>
+              @if($qcCount > 0)
+                <span style="min-width:20px; height:20px; padding:0 6px; background:#e53e3e; color:#fff;
+                  border-radius:99px; font-size:11px; font-weight:800; line-height:20px; text-align:center;">{{ $qcCount }}</span>
+              @endif
+            </a>
           </div>
         </details>
 

@@ -11,6 +11,10 @@
   $activeDebts  = $is('stock/supplier-cash');   // /stock/supplier-cash/*
   $activeStock  = $is('stock') && !$activeDebts; // /stock/* крім боргів
 
+  $qcCount = \Illuminate\Support\Facades\DB::table('quality_checks')
+    ->whereIn('status', ['pending', 'has_deficiencies', 'deficiencies_fixed'])
+    ->count();
+
   // ✅ вкладки (ОДИН список на весь застосунок)
   $tabs = [
     ['href'=>'/',                    'icon'=>'💼', 'label'=>'Гаманець', 'active'=>$activeWallet],
@@ -100,7 +104,13 @@
         <a class="tg-menu__item" href="/projects">🏗 Проекти (активні)</a>
         <a class="tg-menu__item" href="/projects/service-repair">🛠 Сервіс та ремонт</a>
         <a class="tg-menu__item" href="{{ route('reclamations.index') }}">🧾 Рекламації</a>
-        <a class="tg-menu__item" href="/quality-checks">🔍 Контроль якості</a>
+        <a class="tg-menu__item" href="/quality-checks" style="display:flex; justify-content:space-between; align-items:center;">
+          <span>🔍 Контроль якості</span>
+          @if($qcCount > 0)
+            <span style="min-width:20px; height:20px; padding:0 6px; background:#e53e3e; color:#fff;
+              border-radius:99px; font-size:11px; font-weight:800; line-height:20px; text-align:center;">{{ $qcCount }}</span>
+          @endif
+        </a>
         <button type="button" class="tg-menu__item tg-menu__item--static" disabled>📊 Графіки</button>
       </div>
     </details>

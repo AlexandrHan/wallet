@@ -211,6 +211,7 @@ document.addEventListener('DOMContentLoaded', function () {
     root.querySelectorAll('.my-salary-month').forEach(card => bindCollapse(card));
   }
 
+
   async function load() {
     root.innerHTML = `
       <div class="card">

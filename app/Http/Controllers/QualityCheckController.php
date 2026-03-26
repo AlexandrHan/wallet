@@ -202,10 +202,14 @@ class QualityCheckController extends Controller
             return response()->json(['error' => 'Вже очікує перевірки'], 422);
         }
 
-        DB::transaction(function () use ($id, $user) {
+        $completedAt = now();
+
+        DB::transaction(function () use ($id, $user, $completedAt) {
             DB::table('sales_projects')->where('id', $id)->update([
-                'construction_status' => 'waiting_quality_check',
-                'updated_at'          => now(),
+                'construction_status'       => 'waiting_quality_check',
+                'installation_completed_at' => $completedAt,
+                'installation_completed_by' => $user->name,
+                'updated_at'                => $completedAt,
             ]);
 
             // Remove any old pending check for this project before creating new one
@@ -218,12 +222,32 @@ class QualityCheckController extends Controller
                 'project_id' => $id,
                 'created_by' => $user->id,
                 'status'     => 'pending',
-                'created_at' => now(),
-                'updated_at' => now(),
+                'created_at' => $completedAt,
+                'updated_at' => $completedAt,
             ]);
         });
 
-        return response()->json(['ok' => true, 'construction_status' => 'waiting_quality_check']);
+        // Notify foremen (owner + manager roles)
+        $project = DB::table('sales_projects')->where('id', $id)->first();
+        $dateLabel = $completedAt->format('d.m.Y');
+        $notifTitle = '🔧 Монтаж завершено';
+        $notifBody  = "🔧 Монтаж завершено\n\n"
+            . "👷 Монтажник: {$user->name}\n"
+            . "📍 Проект: {$project->client_name}\n"
+            . "📅 Дата завершення: {$dateLabel}\n\n"
+            . 'Потрібно перевірити якість робіт і підтвердити завершення для нарахування зарплати.';
+
+        $notifService = app(\App\Services\NotificationService::class);
+        $foremen = DB::table('users')->whereIn('role', ['owner', 'manager'])->get();
+        foreach ($foremen as $foreman) {
+            $notifService->send((int) $foreman->id, $notifTitle, $notifBody, 'system');
+        }
+
+        return response()->json([
+            'ok'                        => true,
+            'construction_status'       => 'waiting_quality_check',
+            'installation_completed_at' => $completedAt->toISOString(),
+        ]);
     }
 
     /**
@@ -558,6 +582,9 @@ class QualityCheckController extends Controller
                 'sa.details',
                 'sa.created_at',
                 'sa.paid_at',
+                'sa.paid_usd',
+                'sa.paid_uah',
+                'sa.paid_rate',
                 'u.name as user_name',
                 'sp.client_name',
             ])
@@ -584,7 +611,11 @@ class QualityCheckController extends Controller
 
     /**
      * POST /api/salary/pay/{userId}
-     * Owner pays all pending accruals for a user — deducts from wallet
+     *
+     * Legacy mode  (wallet_id present): single-wallet, single-currency — unchanged behaviour.
+     * Multi-currency mode (usd_wallet_id present): supports partial USD payout + UAH remainder
+     * + optional bonus in USD or UAH.  Two separate expense entries are created (NOT wrapped
+     * in one transaction per spec).
      */
     public function paySalary(Request $request, int $userId): JsonResponse
     {
@@ -606,7 +637,12 @@ class QualityCheckController extends Controller
             return response()->json(['error' => 'Немає нарахувань до виплати'], 422);
         }
 
-        // Group by currency, pay each currency separately
+        // ── Multi-currency mode ───────────────────────────────────────────────
+        if ($request->has('usd_wallet_id')) {
+            return $this->paySalaryMultiCurrency($request, $userId, $pending);
+        }
+
+        // ── Legacy single-wallet mode ─────────────────────────────────────────
         $byCurrency = $pending->groupBy('currency');
 
         $walletId = (int) $request->input('wallet_id');
@@ -623,7 +659,6 @@ class QualityCheckController extends Controller
             $owner   = auth()->user();
             $entryIds = [];
 
-            // Pre-load client names for all projects in this payment
             $projectIds   = $pending->pluck('project_id')->unique()->all();
             $clientNames  = DB::table('sales_projects')
                 ->whereIn('id', $projectIds)
@@ -634,8 +669,6 @@ class QualityCheckController extends Controller
                 if ($total <= 0) continue;
 
                 $staffName = $accruals->first()->staff_name;
-
-                // Build title: "З/П Кукуяка - Денщиков, Іванов"
                 $clients = $accruals
                     ->pluck('project_id')
                     ->unique()
@@ -644,7 +677,6 @@ class QualityCheckController extends Controller
                     ->implode(', ');
                 $comment = "З/П {$staffName}" . ($clients ? " - {$clients}" : '');
 
-                // Create expense entry in wallet
                 $entryId = DB::table('entries')->insertGetId([
                     'wallet_id'    => $wallet->id,
                     'posting_date' => now()->toDateString(),
@@ -659,7 +691,6 @@ class QualityCheckController extends Controller
 
                 $entryIds[] = $entryId;
 
-                // Mark all accruals as paid
                 $ids = $accruals->pluck('id')->all();
                 DB::table('salary_accruals')->whereIn('id', $ids)->update([
                     'status'     => 'paid',
@@ -670,7 +701,6 @@ class QualityCheckController extends Controller
                 ]);
             }
 
-            // Update construction_status on all fully-paid projects
             $projectIds = $pending->pluck('project_id')->unique()->all();
             foreach ($projectIds as $pid) {
                 $stillPending = DB::table('salary_accruals')
@@ -687,6 +717,168 @@ class QualityCheckController extends Controller
         });
 
         return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Multi-currency salary payout:
+     *   salary_usd  — sum of pending USD accruals
+     *   bonus_amount / bonus_currency — optional bonus (USD or UAH)
+     *   usd_paid    — how much to pay in USD (rest → convert to UAH at FX rate)
+     *   usd_wallet_id / uah_wallet_id — wallets for each currency
+     *
+     * Two separate expense entries are created (not in one transaction).
+     */
+    private function paySalaryMultiCurrency(
+        \Illuminate\Http\Request $request,
+        int $userId,
+        \Illuminate\Support\Collection $pending
+    ): JsonResponse {
+        $owner = auth()->user();
+
+        $usdWalletId   = (int)   $request->input('usd_wallet_id', 0);
+        $uahWalletId   = (int)   $request->input('uah_wallet_id', 0);
+        $bonusAmount   = max(0, (float) $request->input('bonus_amount', 0));
+        $bonusCurrency = in_array($request->input('bonus_currency'), ['USD', 'UAH'], true)
+            ? (string) $request->input('bonus_currency') : 'UAH';
+        $fxRow = DB::table('fx_rates')->where('currency', 'USD')->first();
+        $rate  = $fxRow ? (float) $fxRow->buy : (float) config('services.erpnext.fx.usd', 40);
+
+        // Sum pending USD accruals (all installer accruals are in USD)
+        $salaryUsd = (float) $pending->where('currency', 'USD')->sum('amount');
+
+        $bonusUsd  = ($bonusCurrency === 'USD') ? $bonusAmount : 0.0;
+        $bonusUah  = ($bonusCurrency === 'UAH') ? $bonusAmount : 0.0;
+        $usdTotal  = $salaryUsd + $bonusUsd;
+
+        // How much to pay in USD (default: all)
+        $usdPaidInput = (float) $request->input('usd_paid', 0);
+        $usdToPay = ($usdPaidInput > 0 && $usdPaidInput < $usdTotal)
+            ? $usdPaidInput
+            : $usdTotal;
+        $usdToPay = round($usdToPay, 2);
+
+        $usdRemaining = round($usdTotal - $usdToPay, 2);
+        $uahFromUsd   = round($usdRemaining * $rate, 2);
+        $uahTotal     = round($uahFromUsd + $bonusUah, 2);
+
+        // Validate wallets
+        $usdWallet = null;
+        if ($usdToPay > 0) {
+            if (!$usdWalletId) {
+                return response()->json(['error' => 'Не вказано USD гаманець'], 422);
+            }
+            $usdWallet = DB::table('wallets')
+                ->where('id', $usdWalletId)
+                ->where('currency', 'USD')
+                ->where('is_active', true)
+                ->first();
+            if (!$usdWallet) {
+                return response()->json(['error' => 'USD гаманець не знайдено або не активний'], 422);
+            }
+        }
+
+        $uahWallet = null;
+        if ($uahTotal > 0) {
+            if (!$uahWalletId) {
+                return response()->json(['error' => 'Не вказано UAH гаманець'], 422);
+            }
+            $uahWallet = DB::table('wallets')
+                ->where('id', $uahWalletId)
+                ->where('currency', 'UAH')
+                ->where('is_active', true)
+                ->first();
+            if (!$uahWallet) {
+                return response()->json(['error' => 'UAH гаманець не знайдено або не активний'], 422);
+            }
+        }
+
+        $accrualIds  = $pending->pluck('id')->all();
+        $projectIds  = $pending->pluck('project_id')->unique()->all();
+        $staffName   = $pending->first()->staff_name;
+        $clientNames = DB::table('sales_projects')
+            ->whereIn('id', $projectIds)
+            ->pluck('client_name', 'id');
+        $clients = collect($projectIds)
+            ->map(fn ($pid) => $clientNames->get($pid, ''))
+            ->filter()
+            ->implode(', ');
+
+        $now = now();
+        $firstEntryId = null;
+
+        // ── USD entry ──────────────────────────────────────────────────────────
+        if ($usdToPay > 0 && $usdWallet) {
+            $bonusNote = $bonusUsd > 0 ? " (вкл. премія {$bonusUsd} USD)" : '';
+            $comment   = "З/П {$staffName}{$bonusNote}" . ($clients ? " - {$clients}" : '');
+            $firstEntryId = DB::table('entries')->insertGetId([
+                'wallet_id'    => $usdWallet->id,
+                'posting_date' => $now->toDateString(),
+                'entry_type'   => 'expense',
+                'amount'       => $usdToPay,
+                'title'        => $comment,
+                'comment'      => $comment,
+                'created_by'   => $owner->name,
+                'created_at'   => $now,
+                'updated_at'   => $now,
+            ]);
+        }
+
+        // ── UAH entry ──────────────────────────────────────────────────────────
+        if ($uahTotal > 0 && $uahWallet) {
+            $uahNote  = $bonusUah > 0 ? " + премія {$bonusUah} ₴" : '';
+            $comment  = "З/П {$staffName}: {$usdRemaining} USD × {$rate}{$uahNote}" . ($clients ? " - {$clients}" : '');
+            DB::table('entries')->insertGetId([
+                'wallet_id'    => $uahWallet->id,
+                'posting_date' => $now->toDateString(),
+                'entry_type'   => 'expense',
+                'amount'       => $uahTotal,
+                'title'        => $comment,
+                'comment'      => $comment,
+                'created_by'   => $owner->name,
+                'created_at'   => $now,
+                'updated_at'   => $now,
+            ]);
+        }
+
+        // ── Mark accruals paid (store proportional actual amounts) ────────────
+        // Distribute usdToPay and uahTotal proportionally by accrual amount.
+        $totalAccrued = max((float) $pending->sum('amount'), 0.0001);
+        foreach ($pending as $accrual) {
+            $ratio        = (float) $accrual->amount / $totalAccrued;
+            $accrualUsd   = round($usdToPay  * $ratio, 2);
+            $accrualUah   = round($uahTotal   * $ratio, 2);
+            DB::table('salary_accruals')->where('id', $accrual->id)->update([
+                'status'     => 'paid',
+                'paid_by'    => $owner->id,
+                'paid_at'    => $now,
+                'entry_id'   => $firstEntryId,
+                'paid_usd'   => $accrualUsd > 0 ? $accrualUsd : null,
+                'paid_uah'   => $accrualUah > 0 ? $accrualUah : null,
+                'paid_rate'  => $rate,
+                'updated_at' => $now,
+            ]);
+        }
+
+        // ── Update project statuses ────────────────────────────────────────────
+        foreach ($projectIds as $pid) {
+            $stillPending = DB::table('salary_accruals')
+                ->where('project_id', $pid)
+                ->where('status', 'pending')
+                ->exists();
+            if (!$stillPending) {
+                DB::table('sales_projects')->where('id', $pid)->update([
+                    'construction_status' => 'salary_paid',
+                    'updated_at'          => $now,
+                ]);
+            }
+        }
+
+        return response()->json([
+            'ok'       => true,
+            'usd_paid' => $usdToPay,
+            'uah_paid' => $uahTotal,
+            'rate'     => $rate,
+        ]);
     }
 
     /**
@@ -709,6 +901,9 @@ class QualityCheckController extends Controller
                 'sa.amount',
                 'sa.currency',
                 'sa.paid_at',
+                'sa.paid_usd',
+                'sa.paid_uah',
+                'sa.paid_rate',
                 'sp.client_name',
                 'sp.panel_name',
                 'sp.panel_qty',

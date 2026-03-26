@@ -578,6 +578,9 @@ class SalesProjectController extends Controller
                 'construction_status' => Schema::hasColumn('sales_projects', 'construction_status')
                     ? $project->construction_status
                     : null,
+                'installation_completed_at' => Schema::hasColumn('sales_projects', 'installation_completed_at')
+                    ? $project->installation_completed_at
+                    : null,
                 'extra_works' => $project->extra_works,
                 'defects_note' => $project->defects_note,
                 'defects_photo_url' => $project->defects_photo_path
