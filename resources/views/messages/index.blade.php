@@ -773,7 +773,7 @@ header { position: relative; z-index: 200; }
           row.classList.add('has-unread');
         }
       }
-      try { new Audio('/sounds/moneta.mp3').play(); } catch {}
+      try { new Audio('/sounds/chat.mp3').play(); } catch {}
     });
   }
 

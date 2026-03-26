@@ -21,6 +21,20 @@ use App\Services\AutomationService;
 
 use App\Models\BankTransactionRaw;
 
+// Firebase Service Worker — served dynamically so config can be injected
+Route::get('/firebase-messaging-sw.js', function () {
+    $config = [
+        'apiKey'            => config('services.firebase.api_key'),
+        'authDomain'        => config('services.firebase.auth_domain'),
+        'projectId'         => config('services.firebase.project_id'),
+        'messagingSenderId' => config('services.firebase.messaging_sender_id'),
+        'appId'             => config('services.firebase.app_id'),
+    ];
+    return response(view('firebase-sw', ['config' => $config]))
+        ->header('Content-Type', 'application/javascript')
+        ->header('Service-Worker-Allowed', '/');
+});
+
 Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(function () {
 
 

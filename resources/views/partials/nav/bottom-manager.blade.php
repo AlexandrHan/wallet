@@ -1,0 +1,55 @@
+@php
+  $current = '/'.trim(request()->path(), '/');
+
+  $activeHome  = ($current === '/');
+  $activeStock = str_starts_with($current, '/solar-glass');
+  $activeMsgs  = str_starts_with($current, '/messages');
+
+  $tabs = [
+    ['href'=>'/',             'icon'=>'💼', 'label'=>'Гаманець', 'active'=>$activeHome],
+    ['href'=>'/solar-glass',  'icon'=>'🌞', 'label'=>'Склад',    'active'=>$activeStock],
+    ['href'=>'/messages',     'icon'=>'💬', 'label'=>'Чат',      'active'=>$activeMsgs],
+  ];
+@endphp
+
+<nav class="tg-bottom-nav">
+  <div class="tg-bottom-left">
+    @foreach($tabs as $t)
+      <a class="tg-tab {{ $t['active'] ? 'is-active' : '' }}" href="{{ $t['href'] }}">
+        {!! $t['icon'] !!}<span>{{ $t['label'] }}</span>
+      </a>
+    @endforeach
+  </div>
+
+  <div class="tg-fab-wrap">
+    <a class="tg-fab" href="#tgManagerMenu" aria-label="Меню">
+      <span class="tg-fab-ico">☰</span>
+      <span class="tg-fab-label">Меню</span>
+    </a>
+  </div>
+</nav>
+
+{{-- FULLSCREEN MENU --}}
+<div id="tgManagerMenu" class="tg-menu">
+  <div class="tg-menu__top">
+    <div class="tg-menu__title">Меню</div>
+    <a class="tg-menu__close" href="#" aria-label="Закрити">✕</a>
+  </div>
+
+  <div class="tg-menu__content">
+    <a class="tg-menu__item" href="/messages" style="font-size:15px; font-weight:600; padding:14px 18px; margin-bottom:14px; border-bottom:1px solid rgba(255,255,255,0.06);">💬 Чат</a>
+
+    <a class="tg-menu__item" style="margin-bottom:15px;" href="/">🏦 Мій гаманець</a>
+
+    <a class="tg-menu__item" style="margin-bottom:15px;" href="/solar-glass">🌞 Залишки SolarGlass</a>
+
+    <a class="tg-menu__item" href="/profile">👤 Профіль</a>
+  </div>
+
+  <div class="tg-menu__bottom">
+    <form method="POST" action="{{ route('logout') }}">
+      @csrf
+      <button type="submit" class="tg-menu__item danger">🚪 Вийти з облікового запису</button>
+    </form>
+  </div>
+</div>

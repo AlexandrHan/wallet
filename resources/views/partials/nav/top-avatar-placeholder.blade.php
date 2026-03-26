@@ -23,7 +23,7 @@
     <img src="{{ $avatarSrc }}" alt="Avatar" class="avatar-image">
   </a>
 
-  <a class="tg-fab tg-top-menu-trigger" href="#tgOwnerMenu" aria-label="Меню">
+  <a class="tg-fab tg-top-menu-trigger" href="#{{ $u->role === 'manager' ? 'tgManagerMenu' : 'tgOwnerMenu' }}" aria-label="Меню">
     <span class="tg-fab-ico">☰</span>
     <span class="tg-fab-label">Меню</span>
   </a>

@@ -7,6 +7,7 @@ use App\Services\AI\AIChatRouter;
 use App\Services\AI\AIAgentService;
 use App\Services\AI\IntentService;
 use App\Services\AI\SqlAgentService;
+use App\Services\AmoSearchService;
 use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -33,6 +34,7 @@ class AIChatController extends Controller
         private SqlAgentService     $sqlAgent,
         private IntentService       $intentService,
         private NotificationService $notifications,
+        private AmoSearchService    $amoSearch,
     ) {}
 
     // =========================================================================
@@ -51,6 +53,26 @@ class AIChatController extends Controller
         $user     = auth()->user();
         $started  = microtime(true);
         $lq       = mb_strtolower($question);
+
+        // ── 0. AmoCRM search ─────────────────────────────────────────────────
+        if ($this->isAmoSearch($lq)) {
+            try {
+                $amoQuery = $this->extractAmoQuery($question);
+                Log::info('AI amo-search: triggered', ['original' => $question, 'query' => $amoQuery]);
+                $amoHits  = $this->amoSearch->search($amoQuery);
+                $stock    = $this->getStockInfo($amoQuery);
+                $needed   = $this->extractRequiredQty($amoHits);
+                Log::info('AI amo-search: stock', ['query' => $amoQuery, 'found' => $stock['found'], 'qty' => $stock['qty'], 'needed' => $needed]);
+                $answer   = $this->formatAmoResults($amoHits, $amoQuery)
+                          . $this->formatStockSection($stock, $needed);
+            } catch (\Throwable $e) {
+                Log::warning('AI: amo search error', ['err' => $e->getMessage()]);
+                $answer = '❌ Помилка під час пошуку в amoCRM. Спробуй ще раз.';
+            }
+            $ms = (int) round((microtime(true) - $started) * 1000);
+            $this->aiLog('amo-search', $question, $answer, $ms, $user?->id);
+            return $this->json($answer, 'amo-search', $ms);
+        }
 
         // ── 1. Quick SQL patterns ─────────────────────────────────────────────
         try {
@@ -137,6 +159,312 @@ class AIChatController extends Controller
             $data['sql'] = $sql;
         }
         return response()->json($data);
+    }
+
+    // =========================================================================
+    // AmoCRM search helpers
+    // =========================================================================
+
+    /**
+     * Known product aliases: fuzzy user input → canonical AmoCRM search string.
+     * Keys are lowercase, matched via str_contains on normalised input.
+     */
+    private const PRODUCT_ALIASES = [
+        'boost 6k g4'  => 'X1 BOOST 6K G4',
+        'boost 6к г4'  => 'X1 BOOST 6K G4',
+        'boost 6k'     => 'X1 BOOST 6K G4',
+        'boost 6к'     => 'X1 BOOST 6K G4',
+        'boost 5k g4'  => 'X1 BOOST 5K G4',
+        'boost 5к г4'  => 'X1 BOOST 5K G4',
+        'boost 5k'     => 'X1 BOOST 5K G4',
+        'boost 5к'     => 'X1 BOOST 5K G4',
+        'boost 4k'     => 'X1 BOOST 4K G4',
+        'boost 4к'     => 'X1 BOOST 4K G4',
+        'boost 3k'     => 'X1 BOOST 3K G4',
+        'boost 3к'     => 'X1 BOOST 3K G4',
+        'boost 3.6k'   => 'X1 BOOST 3.6K G4',
+        'boost 3 6k'   => 'X1 BOOST 3.6K G4',
+        'mini 6k'      => 'X1 MINI 6K G4',
+        'mini 5k'      => 'X1 MINI 5K G4',
+        'mini 4k'      => 'X1 MINI 4K G4',
+        'fit 5k'       => 'X1-FIT 5K',
+        'fit 6k'       => 'X1-FIT 6K',
+        'fit 7.5k'     => 'X1-FIT 7.5K',
+        'hybrid 6k'    => 'X1 HYBRID 6K',
+        'hybrid 5k'    => 'X1 HYBRID 5K',
+        'hybrid 10k'   => 'X3 HYBRID 10K',
+        'hybrid 12k'   => 'X3 HYBRID 12K',
+        'hybrid 15k'   => 'X3 HYBRID 15K',
+        'hybrid 20k'   => 'X3 HYBRID 20K',
+        'hybrid 30k'   => 'X3 HYBRID 30K',
+        'x3 10k'       => 'X3 HYBRID 10K',
+        'x3 12k'       => 'X3 HYBRID 12K',
+        'x3 15k'       => 'X3 HYBRID 15K',
+        'x3 20k'       => 'X3 HYBRID 20K',
+        'x3 30k'       => 'X3 HYBRID 30K',
+    ];
+
+    /**
+     * Normalise "к" / "кВт" / "квт" / "kw" → "k" and collapse spaces.
+     * Works on lowercase input.
+     */
+    private function normalisePower(string $s): string
+    {
+        // "6квт" / "6 квт" / "6kw" → "6k"
+        $s = preg_replace('/(\d+)\s*(?:квт|kw|квт\.)/ui', '$1k', $s);
+        // Cyrillic "к" used as kilo after a digit: "6к" → "6k"
+        $s = preg_replace('/(\d+)\s*к\b/ui', '$1k', $s);
+        // Cyrillic "г" used as "G" in model suffix: "г4" → "g4"
+        $s = preg_replace('/г(\d)/ui', 'g$1', $s);
+        return preg_replace('/\s+/', ' ', trim($s));
+    }
+
+    /**
+     * Return true if the normalised query looks like a product/model mention.
+     * Triggers on:  brand keywords  OR  (number + power unit)  OR  model-like tokens.
+     */
+    private function looksLikeProduct(string $norm): bool
+    {
+        // Known brand / series keywords (all lowercase)
+        $brands = [
+            'boost', 'solax', 'hybrid', 'inverter', 'інвертор',
+            'mini', 'fit', 'growatt', 'deye', 'goodwe', 'solis',
+            'pylontech', 'byd', 'huawei', 'sofar', 'sungrow',
+        ];
+        foreach ($brands as $b) {
+            if (str_contains($norm, $b)) return true;
+        }
+
+        // Number followed by power unit (k / kw / квт)
+        if (preg_match('/\d+\s*k(?:w|вт)?\b/i', $norm)) return true;
+
+        // Model-code pattern: letter+digit run like "x1", "se10", "mg3"
+        if (preg_match('/\b[a-z]{1,3}\d+\b/i', $norm)) return true;
+
+        return false;
+    }
+
+    /**
+     * Detect amoCRM search intent.
+     *
+     * Triggers when:
+     *   A) "амо/amo" + any search verb  (explicit AMO reference)
+     *   B) search verb + uppercase product token  (e.g. "знайди X1 BOOST 6K G4")
+     *   C) search verb + fuzzy product signal     (e.g. "де boost 6к г4")
+     */
+    private function isAmoSearch(string $lq): bool
+    {
+        $norm = $this->normalisePower(
+            preg_replace('/[^\p{L}\p{N}\s]/u', ' ', mb_strtolower($lq))
+        );
+
+        $hasAmo  = (bool) preg_match('/\bам[оo]\b|\bamo\b/ui', $norm);
+
+        $verbs   = [
+            'знайди', 'знайт', 'пошук',
+            'покажи', 'показ',
+            'хто', 'де',
+            'є', 'був', 'була',
+            'згадується', 'згадуєт',
+            'писав', 'написав', 'пишуть', 'писали',
+            'search',
+        ];
+        $hasVerb = false;
+        foreach ($verbs as $v) {
+            if (str_contains($norm, $v)) { $hasVerb = true; break; }
+        }
+
+        // A: explicit AMO + verb
+        if ($hasAmo && $hasVerb) return true;
+
+        // B: verb + strict uppercase product token
+        if ($hasVerb && preg_match('/\b[A-Z][A-Z0-9\-]{1,}\s+[A-Z0-9]/', $lq)) return true;
+
+        // C: verb + fuzzy product signal (brand keyword / power unit / model code)
+        if ($hasVerb && $this->looksLikeProduct($norm)) return true;
+
+        return false;
+    }
+
+    /**
+     * Strip intent words, normalise, resolve alias, return canonical search string.
+     */
+    private function extractAmoQuery(string $q): string
+    {
+        $noise = [
+            '/\bв\s+(?:амо|amo)\b\s*/ui',
+            '/\b(?:знайди|знайт\w*|пошук\w*)\b\s*/ui',
+            '/\b(?:покажи|показ\w*)\b\s*/ui',
+            '/\bхто\s+(?:і\s+)?де\b\s*/ui',
+            '/\bхто\b\s*/ui',
+            '/\b(?:де|там)\b\s*/ui',
+            '/\b(?:писав|написав|пишуть|писали|написали)\b\s*/ui',
+            '/\b(?:згадується|згадуєт\w*)\b\s*/ui',
+            '/\bв\s+(?:якому|якій)\s+проект[іиу]\b\s*/ui',
+            '/\bпроект[іиу]?\b\s*/ui',
+            '/\b(?:є|був|була|були)\b\s*/ui',
+            '/\bв\s+обладнанн[іи]\b\s*/ui',
+            '/\bобладнанн[іи]\b\s*/ui',
+            '/\b(?:інвертор|инвертор)\b\s*/ui',
+            '/\b(?:search|find|show)\b\s*/ui',
+            '/\b(?:amo|амо)\b\s*/ui',
+        ];
+
+        $result = $q;
+        foreach ($noise as $p) {
+            $result = preg_replace($p, ' ', $result);
+        }
+        $result = trim(preg_replace('/\s{2,}/', ' ', $result));
+
+        // ── Alias lookup on normalised lowercase result ───────────────────────
+        $normResult = $this->normalisePower(mb_strtolower($result));
+        foreach (self::PRODUCT_ALIASES as $fuzzy => $canonical) {
+            if (str_contains($normResult, $fuzzy)) {
+                Log::debug('AI amo-search: alias matched', ['fuzzy' => $fuzzy, 'canonical' => $canonical]);
+                return $canonical;
+            }
+        }
+
+        // ── Good literal result ───────────────────────────────────────────────
+        if (mb_strlen($result) >= 2) {
+            Log::debug('AI amo-search: extracted', ['raw' => $q, 'result' => $result]);
+            return $result;
+        }
+
+        // ── Fallback 1: longest UPPERCASE token run ───────────────────────────
+        if (preg_match_all('/\b[A-Z][A-Z0-9\-]{1,}(?:\s+[A-Z0-9][A-Z0-9\-]*)+/u', $q, $m)) {
+            $best = collect($m[0])->sortByDesc(fn($s) => mb_strlen($s))->first();
+            if ($best) {
+                Log::debug('AI amo-search: uppercase fallback', ['result' => $best]);
+                return $best;
+            }
+        }
+
+        // ── Fallback 2: last 4 words ──────────────────────────────────────────
+        $last = implode(' ', array_slice(preg_split('/\s+/u', trim($q)), -4));
+        Log::debug('AI amo-search: last-words fallback', ['result' => $last]);
+        return $last ?: $q;
+    }
+
+    private function formatAmoResults(array $results, string $query): string
+    {
+        if (empty($results)) {
+            return "❌ В amoCRM нічого не знайдено по запиту «{$query}»";
+        }
+
+        $n    = count($results);
+        $noun = match(true) {
+            $n === 1          => 'проект',
+            $n >= 2 && $n < 5 => 'проекти',
+            default           => 'проектів',
+        };
+
+        $lines = ["🔎 Знайдено {$n} {$noun} з «{$query}»:"];
+
+        foreach ($results as $i => $r) {
+            $lines[] = '';
+            $lines[] = ($i + 1) . '. 🤝 ' . ($r['entity_name'] ?? '—');
+
+            if (!empty($r['client']))  $lines[] = "👤 Клієнт: {$r['client']}";
+            if (!empty($r['author']))  $lines[] = "🧑‍💼 Менеджер: {$r['author']}";
+            if (!empty($r['text']))    $lines[] = "📦 Контекст: «{$r['text']}»";
+            if (!empty($r['date']))    $lines[] = "📅 {$r['date']}";
+        }
+
+        return implode("\n", $lines);
+    }
+
+    // ── Stock helpers (used by amo-search step) ───────────────────────────────
+
+    /**
+     * Look up solarglass_stock by item_name / item_code.
+     * Returns total qty and per-item breakdown.
+     */
+    private function getStockInfo(string $query): array
+    {
+        try {
+            $rows = DB::table('solarglass_stock')
+                ->where(function ($q) use ($query) {
+                    $q->where('item_name', 'like', "%{$query}%")
+                      ->orWhere('item_code', 'like', "%{$query}%");
+                })
+                ->get(['item_name', 'item_code', 'qty']);
+
+            if ($rows->isEmpty()) {
+                return ['found' => false, 'qty' => 0, 'items' => []];
+            }
+
+            $total = (int) $rows->sum('qty');
+            $items = $rows->map(fn($r) => [
+                'name' => $r->item_name,
+                'code' => $r->item_code,
+                'qty'  => (int) $r->qty,
+            ])->values()->toArray();
+
+            return ['found' => true, 'qty' => $total, 'items' => $items];
+        } catch (\Throwable $e) {
+            Log::warning('AI amo-search: stock lookup failed', ['err' => $e->getMessage()]);
+            return ['found' => false, 'qty' => 0, 'items' => []];
+        }
+    }
+
+    /**
+     * Try to extract a required quantity from amo note texts.
+     * Looks for patterns like "16 шт", "2шт", "потрібно 3 шт".
+     * Returns null if no quantity found.
+     */
+    private function extractRequiredQty(array $amoHits): ?int
+    {
+        foreach ($amoHits as $hit) {
+            $text = $hit['text'] ?? '';
+            if (!$text) continue;
+
+            // "16 шт", "16шт", "16 штук"
+            if (preg_match('/(\d+)\s*шт/ui', $text, $m)) {
+                $qty = (int) $m[1];
+                if ($qty > 0 && $qty < 1000) return $qty; // sanity check
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Format the stock section appended after amo results.
+     */
+    private function formatStockSection(array $stock, ?int $needed): string
+    {
+        $lines = ['', '📦 Склад:'];
+
+        if (!$stock['found']) {
+            $lines[] = '❌ На складі відсутній';
+            return implode("\n", $lines);
+        }
+
+        $available = $stock['qty'];
+        $items     = $stock['items'];
+
+        // Show per-SKU breakdown if multiple rows matched
+        if (count($items) > 1) {
+            foreach ($items as $item) {
+                $lines[] = "• {$item['name']}: {$item['qty']} шт";
+            }
+            $lines[] = "Разом: {$available} шт";
+        } else {
+            $lines[] = "✅ В наявності: {$available} шт";
+        }
+
+        if ($needed !== null) {
+            $diff = $available - $needed;
+            $lines[] = "📋 Потрібно: {$needed} шт";
+            if ($diff >= 0) {
+                $lines[] = "✅ Достатньо для реалізації";
+            } else {
+                $lines[] = "❌ Не вистачає: " . abs($diff) . ' шт';
+                $lines[] = '⚠️ Рекомендація: дозамовити';
+            }
+        }
+
+        return implode("\n", $lines);
     }
 
     // =========================================================================

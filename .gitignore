@@ -30,3 +30,5 @@ nano .gitignore
 !/storage/framework
 !/storage/logs
 bootstrap/cache/
+*.json
+erp-solarglass-*.json

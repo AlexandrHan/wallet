@@ -66,7 +66,7 @@
   const csrf       = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
   const ICONS      = { finance:'💰', salary:'💸', project:'🏗', system:'⚙️', message:'💬', stock:'📦', salary_alert:'💸', finance_alert:'💰', project_alert:'🏗', stock_alert:'📦' };
 
-  let isOpen = false, notifUnread = 0, chatUnread = 0;
+  let isOpen = false, notifUnread = 0;
 
   function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
@@ -79,21 +79,16 @@
   }
 
   function updateBadge() {
-    const total = notifUnread + chatUnread;
-    if (total > 0) { badge.textContent = total > 99 ? '99+' : total; badge.style.display = 'block'; }
-    else           { badge.style.display = 'none'; }
+    if (notifUnread > 0) { badge.textContent = notifUnread > 99 ? '99+' : notifUnread; badge.style.display = 'block'; }
+    else                 { badge.style.display = 'none'; }
   }
 
   async function fetchCount() {
     try {
-      const [nd, cd] = await Promise.all([
-        fetch('/api/notifications/count', { headers:{'Accept':'application/json'} }).then(r=>r.json()),
-        fetch('/api/messages/unread',      { headers:{'Accept':'application/json'} }).then(r=>r.json()),
-      ]);
-      const prevTotal = notifUnread + chatUnread;
-      notifUnread = nd.unread_count ?? 0;
-      chatUnread  = cd.unread_count ?? 0;
-      if ((notifUnread + chatUnread) > prevTotal && prevTotal > 0) {
+      const d = await fetch('/api/notifications/count', { headers:{'Accept':'application/json'} }).then(r=>r.json());
+      const prev = notifUnread;
+      notifUnread = d.unread_count ?? 0;
+      if (notifUnread > prev && prev > 0) {
         try { new Audio('/sounds/moneta.mp3').play(); } catch {}
       }
       updateBadge();
@@ -178,7 +173,15 @@
         if (!n) return;
         notifUnread++;
         updateBadge();
-        try { new Audio('/sounds/moneta.mp3').play(); } catch {}
+        // message-type: play chat sound only when NOT already on the chat page
+        // (on /messages the chat WS listener already plays chat.mp3)
+        if (n.type === 'message') {
+          if (!window.location.pathname.startsWith('/messages')) {
+            try { new Audio('/sounds/chat.mp3').play(); } catch {}
+          }
+        } else {
+          try { new Audio('/sounds/moneta.mp3').play(); } catch {}
+        }
         if (isOpen) {
           const item = document.createElement('div');
           item.className = 'notif-item unread';
@@ -195,20 +198,16 @@
         }
       });
 
-    window.Echo
-      .private(`chat.${authUserId}`)
-      .listen('.NewMessage', () => {
-        if (!window.location.pathname.startsWith('/messages')) {
-          chatUnread++;
-          updateBadge();
-          try { new Audio('/sounds/moneta.mp3').play(); } catch {}
-        }
-      });
   });
 
-  if ('Notification' in window && Notification.permission === 'default') {
-    Notification.requestPermission().catch(() => {});
-  }
 })();
 </script>
+
+{{-- Push enable button — shown by push-notifications.js only when needed --}}
+<button id="sgEnablePushBtn" onclick="window.sgEnablePush && window.sgEnablePush()"
+  style="display:none; align-items:center; gap:7px; background:rgba(91,141,238,0.15); border:1px solid rgba(91,141,238,0.35);
+         color:#7eaaff; border-radius:10px; padding:7px 14px; font-size:13px; font-weight:600;
+         cursor:pointer; margin-right:15px; white-space:nowrap;">
+  🔔 Увімкнути сповіщення
+</button>
 @endauth

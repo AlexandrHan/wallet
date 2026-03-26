@@ -1327,10 +1327,17 @@ Route::post('/entries', function (Request $request) {
 
 
 
-Route::get('/wallets', function () {
+Route::middleware(['web', 'auth'])->get('/wallets', function () {
 
-    $wallets = DB::table('wallets')
-        ->where('is_active', 1)
+    $user  = auth()->user();
+    $query = DB::table('wallets')->where('is_active', 1);
+
+    // manager / worker бачать лише свої гаманці (не бухгалтерські)
+    if (in_array($user->role, ['manager', 'worker']) && $user->actor) {
+        $query->where('owner', $user->actor);
+    }
+
+    $wallets = $query
         ->orderBy('owner')
         ->orderBy('currency')
         ->orderBy('name')
@@ -1361,7 +1368,7 @@ Route::get('/wallets', function () {
 
 
 
-Route::get('/wallets/{walletId}/entries', function (int $walletId) {
+Route::middleware(['web', 'auth'])->get('/wallets/{walletId}/entries', function (int $walletId) {
 
     $wallet = DB::table('wallets')
         ->where('id', $walletId)
@@ -1418,7 +1425,7 @@ Route::get('/wallets/{walletId}/entries', function (int $walletId) {
 
 
 
-Route::delete('/wallets/{walletId}', function (int $walletId) {
+Route::middleware(['web', 'auth'])->delete('/wallets/{walletId}', function (int $walletId) {
 
     $wallet = DB::table('wallets')->where('id', $walletId)->first();
 

@@ -63,6 +63,14 @@ class MessageController extends Controller
             ->whereNull('read_at')
             ->update(['read_at' => now()]);
 
+        // Mark related notifications as read (keeps badge in sync)
+        DB::table('notifications')
+            ->where('user_id', $myId)
+            ->where('type', 'message')
+            ->where('is_read', false)
+            ->whereRaw("JSON_EXTRACT(data, '$.from_user_id') = ?", [$userId])
+            ->update(['is_read' => true]);
+
         $rows = DB::table('messages as m')
             ->where(function ($q) use ($myId, $userId) {
                 $q->where(fn($q2) => $q2->where('m.from_user_id', $myId)->where('m.to_user_id', $userId))

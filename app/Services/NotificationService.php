@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Events\NewNotificationEvent;
+use App\Services\PushService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -50,7 +51,12 @@ class NotificationService
         // Fire push if user has a token
         $pushToken = DB::table('users')->where('id', $userId)->value('push_token');
         if ($pushToken) {
-            $this->sendPush($pushToken, $title, $message);
+            $url   = ($type === 'message') ? '/messages' : '/';
+            $badge = DB::table('notifications')
+                ->where('user_id', $userId)
+                ->where('is_read', false)
+                ->count();
+            (new PushService())->send($pushToken, $title, $message, $url, $type, array_merge($data, ['badge' => $badge]));
         }
 
         return $id;
@@ -104,24 +110,41 @@ class NotificationService
      * Send Firebase Cloud Messaging push notification.
      * Requires FIREBASE_SERVER_KEY in .env
      */
-    public function sendPush(string $token, string $title, string $body): void
-    {
+    public function sendPush(
+        string $token,
+        string $title,
+        string $body,
+        string $type = 'system',
+        array  $data = [],
+        int    $notificationId = 0
+    ): void {
         $key = config('services.firebase.server_key');
         if (!$key) return;
+
+        $url = match($type) {
+            'message' => '/messages',
+            default   => '/',
+        };
 
         try {
             Http::timeout(5)
                 ->withHeaders(['Authorization' => "key={$key}"])
                 ->post('https://fcm.googleapis.com/fcm/send', [
-                    'to'           => $token,
+                    'to'       => $token,
+                    'priority' => 'high',
                     'notification' => [
                         'title' => $title,
                         'body'  => $body,
                         'icon'  => '/img/logo.png',
                         'badge' => '/img/logo.png',
                         'sound' => 'default',
+                        'click_action' => $url,
                     ],
-                    'data' => ['click_action' => 'FLUTTER_NOTIFICATION_CLICK'],
+                    'data' => array_merge([
+                        'url'             => $url,
+                        'type'            => $type,
+                        'notification_id' => (string) $notificationId,
+                    ], array_map('strval', $data)),
                 ]);
         } catch (\Throwable $e) {
             Log::warning('NotificationService: FCM push failed', ['err' => $e->getMessage()]);

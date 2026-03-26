@@ -14,7 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 const AUTH_ACTOR = AUTH_USER.actor; // ← ПОВЕРНУЛИ
 
-if (AUTH_USER.role !== 'accountant' && !AUTH_ACTOR) {
+if (!['accountant', 'manager'].includes(AUTH_USER.role) && !AUTH_ACTOR) {
     alert('Не задано actor для користувача...');
 }
 
@@ -746,8 +746,8 @@ if (AUTH_USER.role === 'accountant') {
   // бухгалтер НЕ тут, його кеші у модалці
   visible = state.wallets.filter(w => w.owner === state.viewOwner);
 
-} else if (AUTH_USER.role === 'worker') {
-  // прораб бачить ТІЛЬКИ свій кеш
+} else if (AUTH_USER.role === 'worker' || AUTH_USER.role === 'manager') {
+  // прораб / менеджер бачить ТІЛЬКИ свій кеш
   visible = state.wallets.filter(w => w.owner === AUTH_USER.actor);
 
 } else {
@@ -792,7 +792,7 @@ visible.forEach(w => {
 
 
   // ================= BANK =================
-  const visibleBanks = (AUTH_USER.role === 'worker' || AUTH_USER.role === 'ntv') ? [] : state.bankAccounts;
+  const visibleBanks = (AUTH_USER.role === 'worker' || AUTH_USER.role === 'ntv' || AUTH_USER.role === 'manager') ? [] : state.bankAccounts;
 
 
 
@@ -1529,7 +1529,7 @@ function convertAmount(amount, from, to){
 
 
 async function loadBankOpsForHolding(){
-  if (AUTH_USER.role === 'worker') return []; // worker банк не бачить
+  if (AUTH_USER.role === 'worker' || AUTH_USER.role === 'manager') return []; // worker/manager банк не бачить
 
   const banks = state.bankAccounts || [];
   const chunks = await Promise.all(
@@ -1643,7 +1643,7 @@ function getHoldingTotal(){
 
   // баланси рахунків (не операції)
   const wallets =
-    (AUTH_USER.role === 'worker')
+    (AUTH_USER.role === 'worker' || AUTH_USER.role === 'manager')
       ? state.wallets.filter(w => w.owner === AUTH_USER.actor)
       : state.wallets;
 
@@ -1651,7 +1651,7 @@ function getHoldingTotal(){
     .filter(w => (w.type || 'cash') === 'cash')
     .reduce((acc,w) => acc + convertAmount(Number(w.balance||0), w.currency||'UAH', base), 0);
 
-  const bankSum = (AUTH_USER.role === 'worker')
+  const bankSum = (AUTH_USER.role === 'worker' || AUTH_USER.role === 'manager')
     ? 0
     : (state.bankAccounts || []).reduce((acc,b) =>
         acc + convertAmount(Number(b.balance||0), b.currency||'UAH', base), 0);

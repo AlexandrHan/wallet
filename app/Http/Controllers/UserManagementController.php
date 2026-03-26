@@ -20,7 +20,7 @@ class UserManagementController extends Controller
         $rules = [
             'name' => 'required|string|max:255',
             'email' => $emailRule,
-            'role' => 'required|in:owner,accountant,ntv,sunfix_manager,sunfix,worker',
+            'role' => 'required|in:owner,accountant,ntv,manager,sunfix_manager,sunfix,worker',
             'actor' => 'nullable|string|max:255',
             'position' => 'nullable|in:foreman,electrician,serviceman_1,serviceman_2',
         ];

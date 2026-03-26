@@ -15,6 +15,9 @@
   @elseif($user->role === 'ntv')
     @include('partials.nav.bottom-ntv')
 
+  @elseif($user->role === 'manager')
+    @include('partials.nav.bottom-manager')
+
   @elseif($user->role === 'sunfix_manager')
     @include('partials.nav.bottom-sunfix-manager')
 

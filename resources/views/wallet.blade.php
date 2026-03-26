@@ -31,6 +31,22 @@
 
   <title>SolarGlass</title>
 
+  @auth
+  <script>
+  window.sgPushConfig = {
+      apiKey:            "{{ config('services.firebase.api_key') }}",
+      authDomain:        "{{ config('services.firebase.auth_domain') }}",
+      projectId:         "{{ config('services.firebase.project_id') }}",
+      messagingSenderId: "{{ config('services.firebase.messaging_sender_id') }}",
+      appId:             "{{ config('services.firebase.app_id') }}",
+      vapidKey:          "{{ config('services.firebase.vapid_key') }}"
+  };
+  </script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js"></script>
+  <script src="/js/push-notifications.js?v={{ filemtime(public_path('js/push-notifications.js')) }}"></script>
+  @endauth
+
 
 
 
@@ -70,7 +86,7 @@
       <span class="tag" id="actorTag" style="display:none"></span>
     </div>
 
-    @if(auth()->user()->role !== 'accountant')
+    @if(!in_array(auth()->user()->role, ['accountant', 'worker', 'manager']))
     <div class="header-center">
       <div class="segmented">
         <button type="button" id="view-h" data-owner="hlushchenko">Глущенко</button>
