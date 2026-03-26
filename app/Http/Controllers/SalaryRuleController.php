@@ -816,7 +816,7 @@ class SalaryRuleController extends Controller
         $year = (int) $data['year'];
         $staffName = $this->userDisplayName($user);
 
-        if ($user->role === 'ntv') {
+        if (in_array($user->role, ['ntv', 'manager'], true)) {
             return response()->json($this->buildManagerYearPayload($user, $year));
         }
 

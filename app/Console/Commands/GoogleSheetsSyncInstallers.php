@@ -91,12 +91,11 @@ class GoogleSheetsSyncInstallers extends Command
         // 1. Exact normalized match
         if ($colCNorm === $clientNameNorm) return true;
 
-        // 2. Any keyword appears inside colC (or vice-versa)
+        // 2. Any keyword appears inside colC
+        // Note: we do NOT check the reverse (colC inside keyword) to avoid false positives,
+        // e.g. "Петров" being a substring of "Петрович" (patronymic).
         foreach ($normalizedKeywords as $kw) {
             if (mb_strlen($kw) >= 4 && mb_strpos($colCNorm, $kw) !== false) return true;
-        }
-        foreach ($normalizedKeywords as $kw) {
-            if (mb_strlen($kw) >= 4 && mb_strpos($kw, $colCNorm) !== false) return true;
         }
 
         // 3. similar_text fallback (≥ 68%)
@@ -154,6 +153,7 @@ class GoogleSheetsSyncInstallers extends Command
             ->where('installation_team', '!=', '')
             ->where('installation_team', '!=', 'Без монтажних робіт')
             ->where('status', '!=', 'completed')
+            ->orderBy('id')
             ->get();
 
         if ($projects->isEmpty()) {
@@ -171,7 +171,20 @@ class GoogleSheetsSyncInstallers extends Command
 
         $sheetCache    = [];   // tabName → rows[]
         $missingSheets = [];
-        $scheduleRows  = [];   // keyed "{project_id}|{team}|{date}" to deduplicate
+        $scheduleRows     = [];   // keyed by client+settlement+team+date to deduplicate
+        $settlementClaims = [];   // {clientKey}|{team} => {settlementNorm => project_id}
+
+        // Pre-compute which client+team combos have multiple projects (for settlement disambiguation).
+        // Strip any ", Settlement" suffix added by previous syncs before grouping.
+        $duplicateGroups = [];
+        foreach ($projects as $p) {
+            $pName = trim((string) $p->client_name);
+            if (preg_match('/^(.+),\s+\S+(?:\s+\S+){0,2}\s*$/su', $pName, $dsm)) {
+                $pName = trim($dsm[1]);
+            }
+            $dKey = mb_strtolower($pName) . '|' . trim((string) $p->installation_team);
+            $duplicateGroups[$dKey][] = $p->id;
+        }
 
         $projectsChecked = 0;
         $projectsUpdated = 0;
@@ -212,9 +225,19 @@ class GoogleSheetsSyncInstallers extends Command
             $dataRows = array_slice($allRows, $startIndex);
 
             // ── 2. Prepare matching data ──────────────────────────────────────
-            $clientName     = trim((string) $project->client_name);
-            $clientNameNorm = $this->normalizeUkr($clientName);
-            $kw             = $this->extractKeywords($clientName);
+            $clientName = trim((string) $project->client_name);
+
+            // Detect settlement suffix previously appended by this sync (e.g. "Овчаренко, Вільха").
+            // Strip it for colC matching — the sheet colC never contains the settlement.
+            $currentSettlement  = null;
+            $matchingClientName = $clientName;
+            if (preg_match('/^(.+),\s+(\S+(?:\s+\S+){0,2})\s*$/su', $clientName, $csm)) {
+                $matchingClientName = trim($csm[1]);
+                $currentSettlement  = trim($csm[2]);
+            }
+
+            $clientNameNorm = $this->normalizeUkr($matchingClientName);
+            $kw             = $this->extractKeywords($matchingClientName);
             $keywords       = $kw['keywords'];
             $normalizedKws  = $kw['normalized'];
 
@@ -248,6 +271,63 @@ class GoogleSheetsSyncInstallers extends Command
                     'client' => $clientName, 'sheet' => $tabName,
                 ]);
                 continue;
+            }
+
+            // ── 3b. Settlement disambiguation (before block grouping) ──────────
+            // When multiple projects share client+team, use colD to split rows by
+            // settlement. Each project is assigned one settlement and sees only those rows.
+            $groupKey     = mb_strtolower($matchingClientName) . '|' . $team;
+            $isDuplicated = count($duplicateGroups[$groupKey] ?? []) > 1;
+
+            if ($isDuplicated || $currentSettlement !== null) {
+                // Compute per-row settlement: inherit last non-empty colD downward.
+                $rowSettlements = [];
+                $lastSett = '';
+                foreach ($allMatchingRows as $ri => $cols) {
+                    $d = trim((string) ($cols[3] ?? ''));
+                    if ($d !== '') $lastSett = $d;
+                    $rowSettlements[$ri] = $lastSett;
+                }
+
+                $allSettlements = array_unique(array_filter(array_values($rowSettlements), fn ($s) => $s !== ''));
+
+                if (!empty($allSettlements)) {
+                    if ($currentSettlement !== null) {
+                        // Already assigned — just filter & register claim.
+                        $targetSettNorm = $this->normalizeUkr($currentSettlement);
+                        if (!isset($settlementClaims[$groupKey][$targetSettNorm])) {
+                            $settlementClaims[$groupKey][$targetSettNorm] = $project->id;
+                        }
+                    } else {
+                        // Claim first unclaimed settlement (projects sorted by id).
+                        $myClaimed    = $settlementClaims[$groupKey] ?? [];
+                        $mySettlement = null;
+                        $targetSettNorm = null;
+                        foreach ($allSettlements as $s) {
+                            $sNorm = $this->normalizeUkr($s);
+                            if (!isset($myClaimed[$sNorm])) {
+                                $mySettlement   = $s;
+                                $targetSettNorm = $sNorm;
+                                break;
+                            }
+                        }
+                        if ($mySettlement === null) {
+                            // All settlements taken — skip this project.
+                            continue;
+                        }
+                        $settlementClaims[$groupKey][$targetSettNorm] = $project->id;
+                        $clientName = $matchingClientName . ', ' . $mySettlement;
+                    }
+
+                    // Filter allMatchingRows to only rows belonging to target settlement.
+                    $filtered = [];
+                    foreach ($allMatchingRows as $ri => $cols) {
+                        if ($this->normalizeUkr($rowSettlements[$ri]) === $targetSettNorm) {
+                            $filtered[] = $cols;
+                        }
+                    }
+                    if (!empty($filtered)) $allMatchingRows = $filtered;
+                }
             }
 
             // ── 4. Group matching rows into consecutive date blocks ───────────
@@ -320,6 +400,14 @@ class GoogleSheetsSyncInstallers extends Command
 
             if ($bestBlock === null) continue;
 
+            // Remove trailing empty-C rows from the selected block as well
+            // (e.g. empty Sat/Sun rows that were appended by context inheritance).
+            while (!empty($bestBlock) && trim((string) (end($bestBlock)[2] ?? '')) === '') {
+                array_pop($bestBlock);
+            }
+
+            if (empty($bestBlock)) continue;
+
             $matchedRows = $bestBlock;
 
             // ── 5. Parse dates from each matched row ──────────────────────────
@@ -374,6 +462,9 @@ class GoogleSheetsSyncInstallers extends Command
                 'updated_at'            => now(),
             ];
 
+            if ($clientName !== trim((string) $project->client_name)) {
+                $update['client_name'] = $clientName;
+            }
             if ($taskNote !== '' && $taskNote !== ($project->installation_team_task_note ?? '')) {
                 $update['installation_team_task_note'] = $taskNote;
             }
@@ -389,8 +480,20 @@ class GoogleSheetsSyncInstallers extends Command
 
             // ── 8. Build schedule entries (one per actual work day) ───────────
             if (Schema::hasTable('project_schedule_entries')) {
+                // Key by client name (normalized) + team + date to deduplicate
+                // when multiple projects share the same client name.
+                // Among duplicates we keep the entry with the lowest project_id
+                // (first encountered in the ordered project list).
+                $clientKey = mb_strtolower(trim($clientName));
+
                 foreach ($workDays as $wd) {
-                    $key = "{$project->id}|installation_team|{$team}|{$wd['date']}";
+                    $key = "{$clientKey}|installation_team|{$team}|{$wd['date']}";
+
+                    // Skip if a lower-id project already claimed this slot
+                    if (isset($scheduleRows[$key]) && $scheduleRows[$key]['project_id'] < $project->id) {
+                        continue;
+                    }
+
                     $description = $wd['description'];
                     if ($wd['notes'] !== '') {
                         $description .= ($description ? "\n" : '') . 'Примітки: ' . $wd['notes'];

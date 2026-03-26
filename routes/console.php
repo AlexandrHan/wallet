@@ -16,7 +16,7 @@ Schedule::call(function () {
             'ukrgasbank_sggroup',
             config('services.ukrgasbank.token')
         );
-})->everyMinute();
+})->everyTenMinutes();
 
 Schedule::command('amocrm:sync-deals')
     ->everyThirtyMinutes()

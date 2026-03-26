@@ -441,7 +441,7 @@ async function loadWallets() {
     setTimeout(async () => {
       try {
 
-        if (AUTH_USER.role !== 'worker' && !state.bankAccounts.length) {
+        if (!['worker', 'manager'].includes(AUTH_USER.role) && !state.bankAccounts.length) {
 
           const requests = [
             '/api/bank/accounts',

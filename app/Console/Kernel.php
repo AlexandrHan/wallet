@@ -47,9 +47,10 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping();
 
         // 🟡 GOOGLE SHEETS — електрики (кожну годину)
-        $schedule->command('sheets:sync-electricians')
-            ->hourly()
-            ->withoutOverlapping();
+        // (вже зареєстровано в routes/console.php — тут закоментовано щоб не дублювати)
+        // $schedule->command('sheets:sync-electricians')
+        //     ->hourly()
+        //     ->withoutOverlapping();
 
     }
 

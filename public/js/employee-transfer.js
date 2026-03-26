@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // ── Helpers ──────────────────────────────────────────────────
   async function apiFetch(url, opts = {}) {
     const res = await fetch(url, {
-      headers: { 'X-CSRF-TOKEN': CSRF, 'Content-Type': 'application/json', ...(opts.headers || {}) },
+      headers: { 'X-CSRF-TOKEN': CSRF, 'Content-Type': 'application/json', 'Accept': 'application/json', ...(opts.headers || {}) },
       ...opts,
     });
     return res;

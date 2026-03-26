@@ -1,24 +1,21 @@
 @php
-  $current = '/'.trim(request()->path(), '/');
+  $path = request()->path();
 
-  $activeHome  = ($current === '/');
-  $activeStock = str_starts_with($current, '/solar-glass');
-  $activeMsgs  = str_starts_with($current, '/messages');
+  $isActive = function(string $prefix) use ($path): bool {
+    $prefix = trim($prefix, '/');
+    return $path === $prefix || str_starts_with($path, $prefix . '/');
+  };
 
-  $tabs = [
-    ['href'=>'/',             'icon'=>'💼', 'label'=>'Гаманець', 'active'=>$activeHome],
-    ['href'=>'/solar-glass',  'icon'=>'🌞', 'label'=>'Склад',    'active'=>$activeStock],
-    ['href'=>'/messages',     'icon'=>'💬', 'label'=>'Чат',      'active'=>$activeMsgs],
-  ];
+  $activeWallet  = ($path === '/');
+  $activeStock   = $isActive('solar-glass');
+  $activeSalary  = $isActive('salary');
 @endphp
 
 <nav class="tg-bottom-nav">
   <div class="tg-bottom-left">
-    @foreach($tabs as $t)
-      <a class="tg-tab {{ $t['active'] ? 'is-active' : '' }}" href="{{ $t['href'] }}">
-        {!! $t['icon'] !!}<span>{{ $t['label'] }}</span>
-      </a>
-    @endforeach
+    <a class="tg-tab {{ $activeWallet ? 'is-active' : '' }}" href="/">💼<span>Гаманець</span></a>
+    <a class="tg-tab {{ $activeStock  ? 'is-active' : '' }}" href="/solar-glass">🔆<span>Склад</span></a>
+    <a class="tg-tab {{ $activeSalary ? 'is-active' : '' }}" href="/salary/my">💰<span>Зарплатня</span></a>
   </div>
 
   <div class="tg-fab-wrap">
@@ -37,12 +34,9 @@
   </div>
 
   <div class="tg-menu__content">
-    <a class="tg-menu__item" href="/messages" style="font-size:15px; font-weight:600; padding:14px 18px; margin-bottom:14px; border-bottom:1px solid rgba(255,255,255,0.06);">💬 Чат</a>
-
-    <a class="tg-menu__item" style="margin-bottom:15px;" href="/">🏦 Мій гаманець</a>
-
-    <a class="tg-menu__item" style="margin-bottom:15px;" href="/solar-glass">🌞 Залишки SolarGlass</a>
-
+    <a class="tg-menu__item" style="margin-bottom:15px;" href="/">💼 Гаманець</a>
+    <a class="tg-menu__item" style="margin-bottom:15px;" href="/solar-glass">🔆 Склад Солар Гласс</a>
+    <a class="tg-menu__item" style="margin-bottom:15px;" href="/salary/my">💰 Зарплатня</a>
     <a class="tg-menu__item" href="/profile">👤 Профіль</a>
   </div>
 

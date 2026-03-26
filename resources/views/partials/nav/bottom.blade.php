@@ -24,6 +24,9 @@
   @elseif($user->role === 'sunfix')
     @include('partials.nav.bottom-sunfix-service')
 
+  @elseif($user->role === 'manager')
+    @include('partials.nav.bottom-manager')
+
   {{-- 👇 ось головне --}}
   @elseif($user->role === 'worker' && $user->position === 'foreman')
     @include('partials.nav.bottom-prorab')

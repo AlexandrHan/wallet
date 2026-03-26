@@ -16,6 +16,7 @@ use App\Http\Controllers\EmployeeTransferController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\MessageController;
 use App\Services\GoogleSheetsService;
+use App\Services\NameMatcher;
 
 
 
@@ -601,12 +602,11 @@ $runAutomationProjectSync = function (
     $taskNoteField = $options['task_note_field'] ?? null;
     $serviceTableAvailable = Schema::hasTable('service_requests');
 
-    $normalizeName = function ($value): string {
-        $value = mb_strtolower((string) $value);
-        $value = preg_replace('/[^\p{L}\p{N}]+/u', ' ', $value);
-        $value = preg_replace('/\s+/u', ' ', (string) $value);
-        return trim((string) $value);
-    };
+    $syncLabel     = $assignmentValue ?? $assignmentField;
+    $normalizeName = fn ($value): string => NameMatcher::normalize((string) $value);
+
+    Log::info('[auto-sync] START', ['executor' => $syncLabel, 'rows' => count($rows)]);
+
     $extractTaskMeta = function (string $taskNote): array {
         $meta = [
             'D' => '',
@@ -672,56 +672,7 @@ $runAutomationProjectSync = function (
         }
     };
 
-    $compactName = function ($value) use ($normalizeName): string {
-        return str_replace(' ', '', $normalizeName($value));
-    };
-
-    $scoreNameMatch = function (string $needle, string $haystack) use ($normalizeName, $compactName): float {
-        $needleNorm = $normalizeName($needle);
-        $haystackNorm = $normalizeName($haystack);
-
-        if ($needleNorm === '' || $haystackNorm === '') {
-            return 0.0;
-        }
-
-        if (str_contains($haystackNorm, $needleNorm)) {
-            return 100.0;
-        }
-
-        $needleCompact = $compactName($needleNorm);
-        $haystackCompact = $compactName($haystackNorm);
-
-        if ($needleCompact !== '' && $haystackCompact !== '' &&
-            str_contains($haystackCompact, $needleCompact)
-        ) {
-            return 96.0;
-        }
-
-        similar_text($needleCompact, $haystackCompact, $mainPercent);
-        $best = (float) $mainPercent;
-
-        foreach (preg_split('/\s+/u', $haystackNorm) ?: [] as $token) {
-            $token = trim((string) $token);
-            if ($token === '') {
-                continue;
-            }
-
-            similar_text($needleNorm, $token, $tokenPercent);
-            if ($tokenPercent > $best) {
-                $best = (float) $tokenPercent;
-            }
-
-            $tokenCompact = $compactName($token);
-            if ($tokenCompact !== '') {
-                similar_text($needleCompact, $tokenCompact, $tokenCompactPercent);
-                if ($tokenCompactPercent > $best) {
-                    $best = (float) $tokenCompactPercent;
-                }
-            }
-        }
-
-        return $best;
-    };
+    $scoreNameMatch = fn (string $needle, string $haystack): float => NameMatcher::score($needle, $haystack);
 
     $projectColumns = ['id', 'client_name', $assignmentField];
     if ($noteField) {
@@ -865,8 +816,22 @@ $runAutomationProjectSync = function (
                 $project = $bestCandidate;
             } else {
                 $notFound[] = $candidateName;
+                Log::warning('[auto-sync] NOT FOUND', [
+                    'executor'   => $syncLabel,
+                    'name'       => $candidateName,
+                    'best_score' => round($bestScore, 1),
+                ]);
                 continue;
             }
+
+            Log::info('[auto-sync] MATCHED', [
+                'executor'    => $syncLabel,
+                'sheet_name'  => $candidateName,
+                'project_id'  => $project->id,
+                'client_name' => $project->client_name,
+                'score'       => round($bestScore, 1),
+                'date'        => $date,
+            ]);
 
             $update = [
                 $dateField => $date,
@@ -938,6 +903,17 @@ $runAutomationProjectSync = function (
             DB::table('project_schedule_entries')->insert(array_values($scheduleRows));
         }
     }
+
+    Log::info('[auto-sync] DONE', [
+        'executor'        => $syncLabel,
+        'received'        => count($rows),
+        'checked'         => $checked,
+        'updated'         => $updated,
+        'service_created' => $serviceCreated,
+        'service_updated' => $serviceUpdated,
+        'skipped'         => array_values(array_unique($skipped)),
+        'not_found'       => array_values(array_unique($notFound)),
+    ]);
 
     return response()->json([
         'ok' => true,
