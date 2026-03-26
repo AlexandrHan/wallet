@@ -42,6 +42,7 @@ class GoogleSheetsSyncElectricians extends Command
             ->whereNotNull('electrician')
             ->where('electrician', '!=', '')
             ->where('electrician', '!=', 'Без монтажних робіт')
+            ->orderBy('id')
             ->get();
 
         if ($projects->isEmpty()) {
@@ -61,6 +62,21 @@ class GoogleSheetsSyncElectricians extends Command
         $missingSheets    = [];
         $scheduleRows     = [];
         $serviceOnlyPairs = [];
+        $settlementClaims = [];   // {clientLow}|{electrician} => {settlementLow => project_id}
+
+        // Pre-compute duplicate groups: same client_name + electrician → multiple projects.
+        // Strip any ", Settlement" suffix added by previous syncs before grouping.
+        $duplicateGroups = [];
+        foreach ($projects as $p) {
+            $pName = trim((string) $p->client_name);
+            if (preg_match('/^(.+),\s+\S+(?:\s+\S+){0,2}\s*$/su', $pName, $dsm)) {
+                $pName = trim($dsm[1]);
+            }
+            $dKey = mb_strtolower($pName) . '|' . trim((string) $p->electrician);
+            $duplicateGroups[$dKey][] = $p->id;
+        }
+
+        $settNorm = fn (string $s) => mb_strtolower(trim($s));
 
         $projectsChecked  = 0;
         $projectsUpdated  = 0;
@@ -99,39 +115,103 @@ class GoogleSheetsSyncElectricians extends Command
             }
 
             $clientName = trim((string) $project->client_name);
-            $clientLow  = mb_strtolower($clientName);
-            $matchedRow = null;
-            $fallbackRow = null;
+
+            // Strip settlement suffix previously added by this sync (e.g. "Петренко, Канів").
+            $currentSettlement  = null;
+            $matchingClientName = $clientName;
+            if (preg_match('/^(.+),\s+(\S+(?:\s+\S+){0,2})\s*$/su', $clientName, $csm)) {
+                $matchingClientName = trim($csm[1]);
+                $currentSettlement  = trim($csm[2]);
+            }
+            $matchingLow = mb_strtolower($matchingClientName);
+
+            // Collect ALL matching rows for this client.
+            $allMatchedRows  = [];
+            $allFallbackRows = [];
 
             foreach (array_slice($sheetRows, $startIndex) as $cols) {
                 $colC = trim((string) ($cols[2] ?? ''));
                 if ($colC === '') continue;
                 if (in_array(mb_strtolower($colC), $skipWords, true)) continue;
-                if (mb_strtolower($colC) !== $clientLow) continue;
+                if (mb_strtolower($colC) !== $matchingLow) continue;
 
                 $hasWork = trim((string) ($cols[4] ?? '')) !== ''
                         || trim((string) ($cols[5] ?? '')) !== '';
-                if ($hasWork) { $matchedRow = $cols; break; }
-                if ($fallbackRow === null) $fallbackRow = $cols;
+                if ($hasWork) $allMatchedRows[] = $cols;
+                else $allFallbackRows[] = $cols;
             }
-            if ($matchedRow === null) $matchedRow = $fallbackRow;
+            if (empty($allMatchedRows)) $allMatchedRows = $allFallbackRows;
 
-            if ($matchedRow === null) {
+            // similar_text fallback
+            if (empty($allMatchedRows)) {
                 $bestScore = 0.0;
+                $bestRow   = null;
                 foreach (array_slice($sheetRows, $startIndex) as $cols) {
                     $colC = trim((string) ($cols[2] ?? ''));
                     if ($colC === '') continue;
                     if (in_array(mb_strtolower($colC), $skipWords, true)) continue;
-                    similar_text($clientLow, mb_strtolower($colC), $pct);
-                    if ($pct > $bestScore) { $bestScore = (float) $pct; $matchedRow = $cols; }
+                    similar_text($matchingLow, mb_strtolower($colC), $pct);
+                    if ($pct > $bestScore) { $bestScore = (float) $pct; $bestRow = $cols; }
                 }
-                if ($bestScore < 72.0) $matchedRow = null;
+                if ($bestScore >= 72.0) $allMatchedRows = [$bestRow];
             }
 
-            if ($matchedRow === null) {
+            if (empty($allMatchedRows)) {
                 Log::info('sheets:sync-electricians: client not found on sheet',
                     ['client' => $clientName, 'sheet' => $surname]);
                 continue;
+            }
+
+            // Settlement disambiguation: when multiple projects share client+electrician,
+            // use colD to assign each project to a distinct row.
+            $groupKey     = $matchingLow . '|' . $electrician;
+            $isDuplicated = count($duplicateGroups[$groupKey] ?? []) > 1;
+            $matchedRow   = $allMatchedRows[0];
+
+            if ($isDuplicated || $currentSettlement !== null) {
+                $rowSettlements = array_map(fn ($cols) => trim((string) ($cols[3] ?? '')), $allMatchedRows);
+                $allSettlements = array_unique(array_filter($rowSettlements, fn ($s) => $s !== ''));
+
+                if (!empty($allSettlements)) {
+                    if ($currentSettlement !== null) {
+                        // Already assigned — filter to this settlement's row.
+                        $targetNorm = $settNorm($currentSettlement);
+                        if (!isset($settlementClaims[$groupKey][$targetNorm])) {
+                            $settlementClaims[$groupKey][$targetNorm] = $project->id;
+                        }
+                        foreach ($allMatchedRows as $ri => $cols) {
+                            if ($settNorm($rowSettlements[$ri]) === $targetNorm) {
+                                $matchedRow = $cols;
+                                break;
+                            }
+                        }
+                    } else {
+                        // Claim first unclaimed settlement.
+                        $myClaimed    = $settlementClaims[$groupKey] ?? [];
+                        $mySettlement = null;
+                        $myNorm       = null;
+                        foreach ($allSettlements as $s) {
+                            $sn = $settNorm($s);
+                            if (!isset($myClaimed[$sn])) { $mySettlement = $s; $myNorm = $sn; break; }
+                        }
+                        if ($mySettlement === null) {
+                            // All settlements taken — clear stale date and skip.
+                            DB::table('sales_projects')->where('id', $project->id)->update([
+                                'electric_work_start_date' => null,
+                                'updated_at'               => now(),
+                            ]);
+                            continue;
+                        }
+                        $settlementClaims[$groupKey][$myNorm] = $project->id;
+                        $clientName = $matchingClientName . ', ' . $mySettlement;
+                        foreach ($allMatchedRows as $ri => $cols) {
+                            if ($settNorm($rowSettlements[$ri]) === $myNorm) {
+                                $matchedRow = $cols;
+                                break;
+                            }
+                        }
+                    }
+                }
             }
 
             $colB = trim((string) ($matchedRow[1] ?? ''));
@@ -152,6 +232,9 @@ class GoogleSheetsSyncElectricians extends Command
 
             if ($colE !== '') {
                 $update = ['electric_work_start_date' => $date, 'updated_at' => now()];
+                if ($clientName !== trim((string) $project->client_name)) {
+                    $update['client_name'] = $clientName;
+                }
                 if ($colE !== ($project->electrician_task_note ?? '')) {
                     $update['electrician_task_note'] = $colE;
                 }

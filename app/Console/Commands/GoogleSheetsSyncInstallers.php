@@ -312,7 +312,13 @@ class GoogleSheetsSyncInstallers extends Command
                             }
                         }
                         if ($mySettlement === null) {
-                            // All settlements taken — skip this project.
+                            // All settlements taken — clear stale schedule data so the
+                            // project no longer appears in the schedule view.
+                            DB::table('sales_projects')->where('id', $project->id)->update([
+                                'panel_work_start_date' => null,
+                                'panel_work_days'       => 0,
+                                'updated_at'            => now(),
+                            ]);
                             continue;
                         }
                         $settlementClaims[$groupKey][$targetSettNorm] = $project->id;
