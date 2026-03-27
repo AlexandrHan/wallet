@@ -56,7 +56,7 @@ class NotificationService
                 ->where('user_id', $userId)
                 ->where('is_read', false)
                 ->count();
-            (new PushService())->send($pushToken, $title, $message, $url, $type, array_merge($data, ['badge' => $badge]));
+            (new PushService())->send($pushToken, $title, $message, $url, $type, array_merge($data, ['badge' => $badge, 'notification_id' => $id]));
         }
 
         return $id;

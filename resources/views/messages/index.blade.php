@@ -816,9 +816,10 @@ header { position: fixed; z-index: 200; }
       const m = e.message;
       if (!m) return;
       if (m.from_user_id === currentUid) {
+        // Own message echoed back — just append, no sound
         appendMessage(m, false);
       } else {
-        // badge on the sidebar contact row
+        // Incoming message — badge + sound
         const row = document.querySelector(`.msg-contact[data-uid="${m.from_user_id}"]`);
         if (row) {
           let badge = row.querySelector('.msg-c-badge');
@@ -830,8 +831,9 @@ header { position: fixed; z-index: 200; }
           badge.textContent = parseInt(badge.textContent || '0') + 1;
           row.classList.add('has-unread');
         }
+        console.log('[Chat] WS NewMessage from uid=' + m.from_user_id + ' — playing chat.mp3');
+        window._sgPlaySound && window._sgPlaySound('/sounds/chat.mp3');
       }
-      try { new Audio('/sounds/chat.mp3').play(); } catch {}
     });
   }
 

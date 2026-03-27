@@ -88,9 +88,7 @@
       const d = await fetch('/api/notifications/count', { headers:{'Accept':'application/json'} }).then(r=>r.json());
       const prev = notifUnread;
       notifUnread = d.unread_count ?? 0;
-      if (notifUnread > prev && prev > 0) {
-        try { new Audio('/sounds/moneta.mp3').play(); } catch {}
-      }
+      // Sound is played only by the WebSocket handler — polling only updates badge
       updateBadge();
     } catch {}
   }
@@ -175,12 +173,19 @@
         updateBadge();
         // message-type: play chat sound only when NOT already on the chat page
         // (on /messages the chat WS listener already plays chat.mp3)
+        const onMsgPage = window.location.pathname.startsWith('/messages');
+        console.log('[Notif] WS event type=' + n.type + ' onMsgPage=' + onMsgPage + ' id=' + n.id);
+        // Store notification ID so FCM foreground handler can skip the same event
+        window._sgLastNotifId = n.id;
         if (n.type === 'message') {
-          if (!window.location.pathname.startsWith('/messages')) {
-            try { new Audio('/sounds/chat.mp3').play(); } catch {}
+          // On /messages page the subscribeToChat WS listener already handles chat.mp3
+          if (!onMsgPage) {
+            console.log('[Notif] Playing chat.mp3 from notif-bell WS');
+            window._sgPlaySound && window._sgPlaySound('/sounds/chat.mp3');
           }
         } else {
-          try { new Audio('/sounds/moneta.mp3').play(); } catch {}
+          console.log('[Notif] Playing moneta.mp3 from notif-bell WS type=' + n.type);
+          window._sgPlaySound && window._sgPlaySound('/sounds/moneta.mp3');
         }
         if (isOpen) {
           const item = document.createElement('div');

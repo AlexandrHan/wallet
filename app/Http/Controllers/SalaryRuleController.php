@@ -846,22 +846,6 @@ class SalaryRuleController extends Controller
             ]);
         }
 
-        if ($user->role === 'worker') {
-            $rule = Schema::hasTable('salary_rules')
-                ? SalaryRule::query()
-                    ->where('staff_group', 'installation_team')
-                    ->where('staff_name', $staffName)
-                    ->first()
-                : null;
-
-            if ($rule) {
-                return response()->json([
-                    'view_type' => 'installer',
-                    'staff_name' => $staffName,
-                ]);
-            }
-        }
-
         return response()->json([
             'view_type' => 'unsupported',
             'message' => 'Для вашої ролі персональна зарплатня ще не налаштована.',

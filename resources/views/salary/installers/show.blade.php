@@ -8,7 +8,7 @@
 @section('content')
 <main class="">
   <div class="card" style="margin-bottom:15px;">
-    <a href="/salary/installers" style="display:block; font-weight:800; font-size:18px; text-align:center; text-decoration:none; color:inherit;">
+    <a href="{{ isset($installerName) ? '/salary/my' : '/salary/installers' }}" style="display:block; font-weight:800; font-size:18px; text-align:center; text-decoration:none; color:inherit;">
       🛠 <span id="salaryInstallerNameTitle">Монтажна бригада</span>
     </a>
   </div>
@@ -282,7 +282,7 @@ document.addEventListener('DOMContentLoaded', async function () {
   if (!root) return;
 
   const query = new URLSearchParams(window.location.search);
-  const TEAM_NAME = String(query.get('name') || '').trim();
+  const TEAM_NAME = @json($installerName ?? null) ?? String(query.get('name') || '').trim();
 
   const titleEl = document.getElementById('salaryInstallerNameTitle');
   if (titleEl) titleEl.textContent = TEAM_NAME || 'Монтажна бригада';

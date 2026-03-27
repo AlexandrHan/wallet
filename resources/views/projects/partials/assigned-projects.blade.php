@@ -6,6 +6,27 @@
         text-align: center;
       }
     }
+    .acc-section { margin-bottom: 10px; }
+    .acc-header {
+      width: 100%; display: flex; align-items: center; gap: 10px;
+      background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.13);
+      border-radius: 12px; padding: 13px 16px; cursor: pointer;
+      color: inherit; font-size: 15px; font-weight: 600; text-align: left;
+      transition: background .15s;
+    }
+    .acc-header:active { background: rgba(255,255,255,.12); }
+    .acc-header--open { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+    .acc-title { flex: 1; }
+    .acc-count {
+      background: rgba(255,255,255,.18); border-radius: 20px;
+      padding: 2px 10px; font-size: 13px; font-weight: 700; min-width: 26px; text-align: center;
+    }
+    .acc-chevron { font-size: 11px; opacity: .65; }
+    .acc-body {
+      border: 1px solid rgba(255,255,255,.13); border-top: none;
+      border-radius: 0 0 12px 12px; padding: 10px;
+    }
+    .acc-empty { padding: 10px 4px; opacity: .55; font-size: 14px; }
   </style>
 
   <div class="projects-title-card">
@@ -38,10 +59,12 @@ document.addEventListener('DOMContentLoaded', async function () {
   const SCHEDULE_DURATION_FIELD = @json($scheduleDurationField ?? null);
   const SCHEDULE_DATES_KEY = @json($scheduleDatesKey ?? null);
   const RANGE_DAYS = @json($rangeDays ?? 7);
+  const ACCORDION_MODE = @json($accordionMode ?? false);
   const REFRESH_MS = 8000;
   const WEEKDAY_LABELS = ['Неділя', 'Понеділок', 'Вівторок', 'Середа', 'Четвер', "П'ятниця", 'Субота'];
 
-  let savedOpen = {}; // cardKey → { bodyVisible, openSectionIndexes[] }
+  let savedOpen = {};          // cardKey → { bodyVisible, openSectionIndexes[] }
+  let savedAccordionState = {}; // accKey → open (bool), persists across refreshes
 
   function captureOpenState() {
     savedOpen = {};
@@ -728,6 +751,11 @@ document.addEventListener('DOMContentLoaded', async function () {
           if (grouped.has(todayStr)) {
             grouped.get(todayStr).push({ ...project, _isOverdue: true });
           }
+        } else if (project.construction_status === 'has_deficiencies') {
+          // Always pin defective projects to today so installer sees them highlighted in red
+          if (grouped.has(todayStr)) {
+            grouped.get(todayStr).push(project);
+          }
         } else {
           unscheduled.push({ ...project, _scheduledDate: project[SCHEDULE_FIELD] });
         }
@@ -806,12 +834,193 @@ document.addEventListener('DOMContentLoaded', async function () {
 
   const DONE_STATUSES = new Set(['waiting_quality_check', 'salary_pending']);
 
+  function renderAccordionProjects(projects) {
+    const schedule  = [];
+    const pending   = [];
+    const defective = [];
+    const done      = [];
+
+    projects.forEach(project => {
+      const cs = String(project?.construction_status || '');
+      if (cs === 'salary_pending' || cs === 'salary_paid') {
+        done.push(project);
+      } else if (cs === 'has_deficiencies') {
+        defective.push(project);
+      } else if (project?.installation_completed_at || cs === 'waiting_quality_check' || cs === 'deficiencies_fixed') {
+        pending.push(project);
+      } else {
+        schedule.push(project);
+      }
+    });
+
+    function byStartDate(a, b) {
+      const da = String(a?.panel_work_start_date || '9999-99-99');
+      const db = String(b?.panel_work_start_date || '9999-99-99');
+      if (da !== db) return da.localeCompare(db);
+      return String(a?.client_name || '').localeCompare(String(b?.client_name || ''), 'uk');
+    }
+    function byCompletedDesc(a, b) {
+      return String(b?.installation_completed_at || '0').localeCompare(String(a?.installation_completed_at || '0'));
+    }
+
+    schedule.sort(byStartDate);
+    pending.sort(byCompletedDesc);
+    defective.sort(byCompletedDesc);
+    done.sort(byCompletedDesc);
+
+    // Render "Графік будівництва" body with date/weekday headers
+    function fillScheduleBody(bodyEl, items) {
+      if (!items.length) {
+        bodyEl.innerHTML = `<div class="acc-empty">Немає проектів</div>`;
+        return;
+      }
+      const days = getWeekRange();
+      const grouped = new Map(days.map(day => [day.key, []]));
+      const unscheduled = [];
+
+      items.forEach(project => {
+        const explicitDates = Array.isArray(project?.[SCHEDULE_DATES_KEY]) ? project[SCHEDULE_DATES_KEY] : [];
+        const normalizedKeys = new Set();
+
+        explicitDates.forEach(rawDate => {
+          const date = parseProjectDate(rawDate);
+          if (!date) return;
+          const key = date.toISOString().slice(0, 10);
+          if (!grouped.has(key) || normalizedKeys.has(key)) return;
+          normalizedKeys.add(key);
+          grouped.get(key).push(project);
+        });
+
+        if (normalizedKeys.size > 0) return;
+
+        const startDate = parseProjectDate(project?.[SCHEDULE_FIELD]);
+        if (!startDate) { unscheduled.push(project); return; }
+
+        const duration = parseProjectDuration(project);
+        for (let offset = 0; offset < duration; offset++) {
+          const d = new Date(startDate);
+          d.setDate(startDate.getDate() + offset);
+          const key = d.toISOString().slice(0, 10);
+          if (!grouped.has(key) || normalizedKeys.has(key)) continue;
+          normalizedKeys.add(key);
+          grouped.get(key).push(project);
+        }
+        if (normalizedKeys.size === 0) {
+          unscheduled.push({ ...project, _scheduledDate: project[SCHEDULE_FIELD] });
+        }
+      });
+
+      days.forEach(day => {
+        const dayProjects = (grouped.get(day.key) || []).sort((a, b) =>
+          String(a.client_name || '').localeCompare(String(b.client_name || ''), 'uk')
+        );
+        if (!dayProjects.length) return;
+        const dayDiv = document.createElement('div');
+        dayDiv.style.marginBottom = '16px';
+        dayDiv.innerHTML =
+          `<div class="project-day-heading" style="margin-bottom:10px;">` +
+          `<span style="font-weight:800;font-size:15px;color:${day.isWeekend ? '#ff6b6b' : 'inherit'};">${esc(day.dateLabel)}</span>` +
+          `<span style="font-weight:900;font-size:17px;color:${day.isWeekend ? '#ff6b6b' : 'inherit'};"> ${esc(day.weekdayLabel)}</span>` +
+          `</div>`;
+        dayProjects.forEach((project, i) => {
+          const card = makeCard(project, `acc-sched-${project.id}-${day.key}`);
+          card.style.marginBottom = i < dayProjects.length - 1 ? '12px' : '0';
+          dayDiv.appendChild(card);
+        });
+        bodyEl.appendChild(dayDiv);
+      });
+
+      if (unscheduled.length > 0) {
+        const noDateDiv = document.createElement('div');
+        noDateDiv.style.marginTop = '8px';
+        const noDateLabel = document.createElement('div');
+        noDateLabel.style.cssText = 'opacity:.55;font-size:13px;margin-bottom:8px;';
+        noDateLabel.textContent = 'Без дати будівництва';
+        noDateDiv.appendChild(noDateLabel);
+        unscheduled
+          .sort((a, b) => String(a.client_name || '').localeCompare(String(b.client_name || ''), 'uk'))
+          .forEach((project, i) => {
+            const card = makeCard(project, `acc-unsched-${project.id}`);
+            card.style.marginBottom = i < unscheduled.length - 1 ? '12px' : '0';
+            noDateDiv.appendChild(card);
+          });
+        bodyEl.appendChild(noDateDiv);
+      }
+    }
+
+    // Order: Завершені → Очікують → Потребують → Графік (open by default)
+    const sections = [
+      { key: 'done',      label: '✅ Завершені',                projects: done,      defaultOpen: false, isSchedule: false },
+      { key: 'pending',   label: '⏳ Очікують підтвердження',   projects: pending,   defaultOpen: false, isSchedule: false },
+      { key: 'defective', label: '⚠️ Потребують виправлення',   projects: defective, defaultOpen: false, isSchedule: false },
+      { key: 'schedule',  label: '📁 Графік будівництва',       projects: schedule,  defaultOpen: true,  isSchedule: true  },
+    ];
+
+    captureOpenState();
+    container.innerHTML = '';
+
+    sections.forEach(({ key, label, projects: items, defaultOpen, isSchedule }) => {
+      // Preserve accordion open/closed state across auto-refreshes
+      const open = savedAccordionState.hasOwnProperty(key) ? savedAccordionState[key] : defaultOpen;
+
+      const section = document.createElement('div');
+      section.className = 'acc-section';
+
+      const header = document.createElement('button');
+      header.type = 'button';
+      header.className = 'acc-header' + (open ? ' acc-header--open' : '');
+      header.innerHTML =
+        `<span class="acc-title">${esc(label)}</span>` +
+        `<span class="acc-count">${items.length}</span>` +
+        `<span class="acc-chevron">${open ? '▼' : '▶'}</span>`;
+
+      header.addEventListener('click', () => {
+        const body = header.nextElementSibling;
+        const closing = body.style.display !== 'none';
+        body.style.display = closing ? 'none' : 'block';
+        header.querySelector('.acc-chevron').textContent = closing ? '▶' : '▼';
+        header.classList.toggle('acc-header--open', !closing);
+        // Persist state so next auto-refresh respects user's choice
+        savedAccordionState[key] = !closing;
+      });
+
+      const body = document.createElement('div');
+      body.className = 'acc-body';
+      body.style.display = open ? 'block' : 'none';
+
+      if (isSchedule) {
+        fillScheduleBody(body, items);
+      } else if (items.length === 0) {
+        body.innerHTML = `<div class="acc-empty">Немає проектів</div>`;
+      } else {
+        items.forEach((project, i) => {
+          const card = makeCard(project, `acc-${key}-${project.id}`);
+          card.style.marginBottom = i < items.length - 1 ? '12px' : '0';
+          body.appendChild(card);
+        });
+      }
+
+      section.appendChild(header);
+      section.appendChild(body);
+      container.appendChild(section);
+    });
+
+    restoreOpenState();
+  }
+
   function renderProjects(projects) {
-    const filtered = projects
+    const base = projects
       .filter(project => !project?.is_retail)
       .filter(project => matchesAssignment(project?.[MATCH_FIELD]))
-      .filter(project => String(project.status || '') !== 'completed')
-      .filter(project => !project?.installation_completed_at)
+      .filter(project => String(project.status || '') !== 'completed');
+
+    if (ACCORDION_MODE) {
+      renderAccordionProjects(base);
+      return;
+    }
+
+    const filtered = base
+      .filter(project => !project?.installation_completed_at || project?.construction_status === 'has_deficiencies')
       .filter(project => !DONE_STATUSES.has(project?.construction_status));
 
     if (SCHEDULE_FIELD) {

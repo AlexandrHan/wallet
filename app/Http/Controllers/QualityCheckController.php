@@ -450,6 +450,31 @@ class QualityCheckController extends Controller
             DB::table('sales_projects')->where('id', $check->project_id)->update($projectUpdate);
         });
 
+        // Notify installers on this project
+        $project = DB::table('sales_projects')->where('id', $check->project_id)->first();
+        if ($project && $deficiencies) {
+            $actorMap = [
+                'kryzhanovskyi' => 'Крижановський',
+                'kukuiaka'      => 'Кукуяка',
+                'shevchenko'    => 'Шевченко',
+            ];
+            $teamName = mb_strtolower(trim((string) ($project->installation_team ?? '')));
+            $notifService = app(\App\Services\NotificationService::class);
+            foreach ($actorMap as $actor => $ukName) {
+                if (mb_strtolower($ukName) === $teamName) {
+                    $installer = DB::table('users')->where('actor', $actor)->first();
+                    if ($installer) {
+                        $body = "⚠️ Виявлено недоліки\n\n"
+                            . "📍 Проект: {$project->client_name}\n"
+                            . "📝 Коментар: {$deficiencies}\n\n"
+                            . "Потрібно виправити та повторно завершити.";
+                        $notifService->send((int) $installer->id, '⚠️ Виявлено недоліки', $body, 'system');
+                    }
+                    break;
+                }
+            }
+        }
+
         return response()->json(['ok' => true]);
     }
 
@@ -484,12 +509,26 @@ class QualityCheckController extends Controller
                 'updated_at' => now(),
             ]);
             DB::table('sales_projects')->where('id', $id)->update([
-                'construction_status' => 'deficiencies_fixed',
+                'construction_status' => 'waiting_quality_check',
                 'updated_at'          => now(),
             ]);
         });
 
-        return response()->json(['ok' => true, 'construction_status' => 'deficiencies_fixed']);
+        $project = DB::table('sales_projects')->where('id', $id)->first();
+        if ($project) {
+            $notifService = app(\App\Services\NotificationService::class);
+            $foremen = DB::table('users')->whereIn('role', ['owner', 'manager'])->get();
+            foreach ($foremen as $foreman) {
+                $notifService->send(
+                    (int) $foreman->id,
+                    '🔧 Недоліки виправлено',
+                    "🔧 Недоліки виправлено\n\n📍 Проект: {$project->client_name}\n\nПотрібно повторно перевірити.",
+                    'system'
+                );
+            }
+        }
+
+        return response()->json(['ok' => true, 'construction_status' => 'waiting_quality_check']);
     }
 
     /**
@@ -841,12 +880,14 @@ class QualityCheckController extends Controller
         }
 
         // ── Mark accruals paid (store proportional actual amounts) ────────────
-        // Distribute usdToPay and uahTotal proportionally by accrual amount.
-        $totalAccrued = max((float) $pending->sum('amount'), 0.0001);
+        // Distribute only the salary portion proportionally (bonus is a separate record).
+        $salaryUsdPaid = $usdToPay - $bonusUsd; // salary part in USD
+        $salaryUahPaid = $uahTotal  - $bonusUah; // salary part in UAH
+        $totalAccrued  = max((float) $pending->sum('amount'), 0.0001);
         foreach ($pending as $accrual) {
-            $ratio        = (float) $accrual->amount / $totalAccrued;
-            $accrualUsd   = round($usdToPay  * $ratio, 2);
-            $accrualUah   = round($uahTotal   * $ratio, 2);
+            $ratio      = (float) $accrual->amount / $totalAccrued;
+            $accrualUsd = round($salaryUsdPaid * $ratio, 2);
+            $accrualUah = round($salaryUahPaid * $ratio, 2);
             DB::table('salary_accruals')->where('id', $accrual->id)->update([
                 'status'     => 'paid',
                 'paid_by'    => $owner->id,
@@ -856,6 +897,30 @@ class QualityCheckController extends Controller
                 'paid_uah'   => $accrualUah > 0 ? $accrualUah : null,
                 'paid_rate'  => $rate,
                 'updated_at' => $now,
+            ]);
+        }
+
+        // ── Bonus accrual record (shows in installer salary history) ──────────
+        if ($bonusAmount > 0) {
+            $bonusPaidUsd = $bonusCurrency === 'USD' ? $bonusAmount : null;
+            $bonusPaidUah = $bonusCurrency === 'UAH' ? $bonusAmount : null;
+            DB::table('salary_accruals')->insert([
+                'project_id'  => $pending->first()->project_id,
+                'user_id'     => $userId,
+                'staff_group' => $pending->first()->staff_group,
+                'staff_name'  => $staffName,
+                'amount'      => $bonusAmount,
+                'currency'    => $bonusCurrency,
+                'details'     => 'Премія',
+                'status'      => 'paid',
+                'paid_by'     => $owner->id,
+                'paid_at'     => $now,
+                'entry_id'    => $firstEntryId,
+                'paid_usd'    => $bonusPaidUsd,
+                'paid_uah'    => $bonusPaidUah,
+                'paid_rate'   => $bonusCurrency === 'UAH' ? $rate : null,
+                'created_at'  => $now,
+                'updated_at'  => $now,
             ]);
         }
 

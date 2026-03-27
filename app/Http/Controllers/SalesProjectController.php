@@ -447,7 +447,26 @@ class SalesProjectController extends Controller
                 ->groupBy('project_id')
             : collect();
 
-        $projects = $projects->map(function ($project) use ($userNames, $amoComplectationByProjectId, $transfersByProjectId, $amoStatusByProjectId, $qcByProject, $attachmentsByProject, $scheduleEntriesByProject) {
+        // Pre-check schema columns once (outside map) to avoid ~15k redundant schema queries per request
+        $col = [
+            'advance_amount'           => Schema::hasColumn('sales_projects', 'advance_amount'),
+            'is_retail'                => Schema::hasColumn('sales_projects', 'is_retail'),
+            'phone_number'             => Schema::hasColumn('sales_projects', 'phone_number'),
+            'electric_work_days'       => Schema::hasColumn('sales_projects', 'electric_work_days'),
+            'panel_work_days'          => Schema::hasColumn('sales_projects', 'panel_work_days'),
+            'delivered_inverter'       => Schema::hasColumn('sales_projects', 'delivered_inverter'),
+            'delivered_bms'            => Schema::hasColumn('sales_projects', 'delivered_bms'),
+            'delivered_battery'        => Schema::hasColumn('sales_projects', 'delivered_battery'),
+            'delivered_panels'         => Schema::hasColumn('sales_projects', 'delivered_panels'),
+            'electrician_note'         => Schema::hasColumn('sales_projects', 'electrician_note'),
+            'electrician_task_note'    => Schema::hasColumn('sales_projects', 'electrician_task_note'),
+            'installation_team_note'   => Schema::hasColumn('sales_projects', 'installation_team_note'),
+            'installation_team_task_note' => Schema::hasColumn('sales_projects', 'installation_team_task_note'),
+            'construction_status'      => Schema::hasColumn('sales_projects', 'construction_status'),
+            'installation_completed_at'=> Schema::hasColumn('sales_projects', 'installation_completed_at'),
+        ];
+
+        $projects = $projects->map(function ($project) use ($userNames, $amoComplectationByProjectId, $transfersByProjectId, $amoStatusByProjectId, $qcByProject, $attachmentsByProject, $scheduleEntriesByProject, $col) {
 
             $transfers = $transfersByProjectId->get($project->id, collect());
 
@@ -480,7 +499,7 @@ class SalesProjectController extends Controller
 
             $paid = $advanceTotal;
             $totalAmt = (float) $project->total_amount;
-            $advanceAmt = Schema::hasColumn('sales_projects', 'advance_amount')
+            $advanceAmt = $col['advance_amount']
                 ? (float) ($project->advance_amount ?? 0)
                 : 0.0;
             $remaining = max(0, $totalAmt - $paid);
@@ -529,58 +548,38 @@ class SalesProjectController extends Controller
                 'remaining_amount' => $remaining,
                 'is_paid' => $isPaid,
                 'currency' => $project->currency,
-                'is_retail' => Schema::hasColumn('sales_projects', 'is_retail')
-                    ? (bool)$project->is_retail
-                    : false,
+                'is_retail' => $col['is_retail'] ? (bool)$project->is_retail : false,
                 'status' => $project->status,
                 'amo_stage_id' => $amoStatusByProjectId->get($project->id) ? (int) $amoStatusByProjectId->get($project->id) : null,
                 'telegram_group_link' => $project->telegram_group_link,
                 'geo_location_link' => $project->geo_location_link,
-                'phone_number' => Schema::hasColumn('sales_projects', 'phone_number')
-                    ? $project->phone_number
-                    : null,
+                'phone_number' => $col['phone_number'] ? $project->phone_number : null,
                 'has_green_tariff' => (bool)$project->has_green_tariff,
                 'electric_work_start_date' => $project->electric_work_start_date,
-                'electric_work_days' => Schema::hasColumn('sales_projects', 'electric_work_days')
-                    ? $project->electric_work_days
-                    : 1,
+                'electric_work_days' => $col['electric_work_days'] ? $project->electric_work_days : 1,
                 'panel_work_start_date' => $project->panel_work_start_date,
-                'panel_work_days' => Schema::hasColumn('sales_projects', 'panel_work_days')
-                    ? $project->panel_work_days
-                    : 1,
+                'panel_work_days' => $col['panel_work_days'] ? $project->panel_work_days : 1,
                 'inverter' => $project->inverter,
-                'delivered_inverter' => Schema::hasColumn('sales_projects', 'delivered_inverter') ? $project->delivered_inverter : null,
+                'delivered_inverter' => $col['delivered_inverter'] ? $project->delivered_inverter : null,
                 'bms' => $project->bms,
-                'delivered_bms' => Schema::hasColumn('sales_projects', 'delivered_bms') ? $project->delivered_bms : null,
+                'delivered_bms' => $col['delivered_bms'] ? $project->delivered_bms : null,
                 'battery_name' => $project->battery_name,
                 'battery_qty' => $project->battery_qty,
-                'delivered_battery' => Schema::hasColumn('sales_projects', 'delivered_battery') ? $project->delivered_battery : null,
+                'delivered_battery' => $col['delivered_battery'] ? $project->delivered_battery : null,
                 'panel_name' => $project->panel_name,
                 'panel_qty' => $project->panel_qty,
-                'delivered_panels' => Schema::hasColumn('sales_projects', 'delivered_panels') ? $project->delivered_panels : null,
+                'delivered_panels' => $col['delivered_panels'] ? $project->delivered_panels : null,
                 'electrician' => $project->electrician,
                 'electric_schedule_dates' => $electricScheduleDates,
-                'electrician_note' => Schema::hasColumn('sales_projects', 'electrician_note')
-                    ? $project->electrician_note
-                    : null,
-                'electrician_task_note' => Schema::hasColumn('sales_projects', 'electrician_task_note')
-                    ? $project->electrician_task_note
-                    : null,
+                'electrician_note' => $col['electrician_note'] ? $project->electrician_note : null,
+                'electrician_task_note' => $col['electrician_task_note'] ? $project->electrician_task_note : null,
                 'installation_team' => $project->installation_team,
                 'installer_schedule_dates' => $installerScheduleDates,
                 'installer_schedule_entries' => $installerScheduleEntries,
-                'installation_team_note' => Schema::hasColumn('sales_projects', 'installation_team_note')
-                    ? $project->installation_team_note
-                    : null,
-                'installation_team_task_note' => Schema::hasColumn('sales_projects', 'installation_team_task_note')
-                    ? $project->installation_team_task_note
-                    : null,
-                'construction_status' => Schema::hasColumn('sales_projects', 'construction_status')
-                    ? $project->construction_status
-                    : null,
-                'installation_completed_at' => Schema::hasColumn('sales_projects', 'installation_completed_at')
-                    ? $project->installation_completed_at
-                    : null,
+                'installation_team_note' => $col['installation_team_note'] ? $project->installation_team_note : null,
+                'installation_team_task_note' => $col['installation_team_task_note'] ? $project->installation_team_task_note : null,
+                'construction_status' => $col['construction_status'] ? $project->construction_status : null,
+                'installation_completed_at' => $col['installation_completed_at'] ? $project->installation_completed_at : null,
                 'extra_works' => $project->extra_works,
                 'defects_note' => $project->defects_note,
                 'defects_photo_url' => $project->defects_photo_path

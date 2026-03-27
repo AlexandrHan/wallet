@@ -3225,6 +3225,8 @@ function playSound(a, volume = 0.9) {
     a.volume = volume;
     a.currentTime = 0;
     a.play().catch(()=>{});
+    // Inform shared dedup so notif-bell won't double-play within 2s
+    if (window._sgBumpSound) window._sgBumpSound();
   } catch {}
 }
 

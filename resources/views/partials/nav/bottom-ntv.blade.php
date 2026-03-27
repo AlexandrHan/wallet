@@ -3,12 +3,12 @@
 
   $activeWallet = ($current === '/');
   $activeSales  = str_starts_with($current, '/finance');
-  $activeStock  = str_starts_with($current, '/stock');
+  $activeStock  = str_starts_with($current, '/solar-glass') || str_starts_with($current, '/equipment-orders');
 
   $tabs = [
-    ['href'=>'/',        'icon'=>'💼', 'label'=>'Гаманець', 'active'=>$activeWallet],
-    ['href'=>'/finance', 'icon'=>'📈', 'label'=>'Продажі',  'active'=>$activeSales],
-    ['href'=>'/stock',   'icon'=>'📦', 'label'=>'Склад',    'active'=>$activeStock],
+    ['href'=>'/',            'icon'=>'💼', 'label'=>'Гаманець', 'active'=>$activeWallet],
+    ['href'=>'/finance',     'icon'=>'📈', 'label'=>'Продажі',  'active'=>$activeSales],
+    ['href'=>'/solar-glass', 'icon'=>'📦', 'label'=>'Склад',    'active'=>$activeStock],
   ];
 @endphp
 
@@ -50,9 +50,9 @@
 
         <a class="tg-menu__item" style="margin-bottom:15px;" href="/finance">🧾 Сторінка продажів</a>
 
-        <a class="tg-menu__item" style="margin-bottom:15px;" href="/stock">📦 Склад SunFix</a>
+        <a class="tg-menu__item" style="margin-bottom:15px;" href="/solar-glass">📦 Склад SolarGlass</a>
 
-        <a class="tg-menu__item" style="margin-bottom:15px;" href="/solar-glass">🌞 Залишки SolarGlass</a>
+        <a class="tg-menu__item" style="margin-bottom:15px;" href="/equipment-orders">📋 Залишки</a>
 
         <a class="tg-menu__item" style="margin-bottom:15px;" href="/salary/my">💰 Зарплатня</a>
 

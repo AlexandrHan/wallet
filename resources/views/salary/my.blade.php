@@ -239,6 +239,7 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
       }
 
+
       root.innerHTML = `
         <div class="card">
           <div style="font-weight:800; margin-bottom:6px;">Моя зарплатня</div>

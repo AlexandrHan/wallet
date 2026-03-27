@@ -371,8 +371,21 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
 
         return view('salary.foreman.show');
     })->name('salary.foreman.show');
-    Route::view('/salary/my', 'salary.my')
-        ->name('salary.my');
+    Route::get('/salary/my', function () {
+        $user = auth()->user();
+        if ($user && $user->role === 'worker') {
+            $actorMap = [
+                'kryzhanovskyi' => 'Крижановський',
+                'kukuiaka'      => 'Кукуяка',
+                'shevchenko'    => 'Шевченко',
+            ];
+            $actor = mb_strtolower(trim((string) ($user->actor ?? '')));
+            if (isset($actorMap[$actor])) {
+                return view('salary.installers.show', ['installerName' => $actorMap[$actor]]);
+            }
+        }
+        return view('salary.my');
+    })->name('salary.my');
     Route::get('/projects/my-installation', function () {
         $user = auth()->user();
         if (
@@ -1580,6 +1593,39 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         return view('projects.project');
     });
 
+    // Lightweight status summary for /projects page status blocks
+    Route::middleware(['auth'])->get('/api/projects/status-summary', function () {
+        $DELIVERY_STAGE = 69593834; // Здача проекту замовнику — both electrical + panel done
+
+        $rows = DB::table('sales_projects')
+            ->leftJoin('amocrm_deal_map', 'amocrm_deal_map.wallet_project_id', '=', 'sales_projects.id')
+            ->select(
+                'sales_projects.id',
+                'sales_projects.client_name',
+                'sales_projects.construction_status',
+                'sales_projects.installation_completed_at',
+                'sales_projects.installation_team',
+                'sales_projects.electrician',
+                'sales_projects.is_retail',
+                'sales_projects.status',
+                'amocrm_deal_map.amo_status_id as amo_stage_id'
+            )
+            ->where('sales_projects.status', '!=', 'completed')
+            ->where('sales_projects.is_retail', 0)
+            ->where(function ($q) use ($DELIVERY_STAGE) {
+                $q->whereIn('sales_projects.construction_status', [
+                    'has_deficiencies',
+                    'waiting_quality_check',
+                    'deficiencies_fixed',
+                    'salary_pending',
+                    'salary_paid',
+                ])->orWhere('amocrm_deal_map.amo_status_id', $DELIVERY_STAGE);
+            })
+            ->get();
+
+        return response()->json($rows);
+    });
+
     // ── Quality Check Workflow ────────────────────────────────────────────────
     Route::middleware(['auth'])->group(function () {
         // Worker: mark project construction as done
@@ -1624,7 +1670,9 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
             [\App\Http\Controllers\QualityCheckController::class, 'wallets']);
     });
 
-    Route::middleware(['auth', 'only.owner'])->get('/equipment-orders', function () {
+    Route::middleware(['auth'])->get('/equipment-orders', function () {
+        $user = auth()->user();
+        if (!$user || !in_array($user->role, ['owner', 'ntv'], true)) abort(403);
         return view('projects.equipment-orders');
     });
 
@@ -1661,7 +1709,9 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         return response()->json(['ok' => true]);
     });
 
-    Route::middleware(['auth', 'only.owner'])->get('/api/equipment-orders', function () {
+    Route::middleware(['auth'])->get('/api/equipment-orders', function () {
+        $user = auth()->user();
+        if (!$user || !in_array($user->role, ['owner', 'ntv'], true)) return response()->json(['error' => 'Forbidden'], 403);
         $kompl = 69586234;
 
         $projects = \Illuminate\Support\Facades\DB::table('sales_projects as sp')

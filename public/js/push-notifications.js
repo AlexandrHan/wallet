@@ -35,8 +35,22 @@
   let messaging = null;
   let swReg     = null;
 
-  // ── Register SW + init messaging (no permission needed) ───────────────────
+  // ── Register SW + init messaging ──────────────────────────────────────────
   async function boot() {
+    // ── Handle denied / iOS-non-standalone BEFORE registering SW ──────────
+    if (Notification.permission === 'denied') {
+      showPushBtn('denied');
+      console.log('[Push] Permission denied — showing guidance');
+      return;
+    }
+
+    if (isIOS && !isStandalone) {
+      // iOS Safari without PWA: Web Push requires Add to Home Screen
+      showPushBtn('ios');
+      console.log('[Push] iOS non-standalone — showing PWA hint');
+      return;
+    }
+
     try {
       swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
       await navigator.serviceWorker.ready;
@@ -54,15 +68,32 @@
       return;
     }
 
-    // Foreground handler
+    // Foreground handler — fires when app is open/focused
     messaging.onMessage((payload) => {
       const data       = payload.data ?? {};
       const targetPath = data.url || '/';
       const badgeCount = Number(data.badge) || 0;
-      console.log('[Push] Foreground message', payload);
-      if (window.location.pathname.startsWith(targetPath) && targetPath !== '/') return;
-      const soundFile = (data.type === 'message') ? '/sounds/chat.mp3' : '/sounds/moneta.mp3';
-      try { new Audio(soundFile).play(); } catch {}
+      const notifId    = Number(data.notification_id) || 0;
+      console.log('[Push] Foreground message type=' + (data.type || '?') + ' notif_id=' + notifId, payload);
+
+      // Skip if already on the target page (WS handler already plays sound)
+      const onTargetPage = window.location.pathname.startsWith(targetPath) && targetPath !== '/';
+
+      // Dedup sound only — WS already played it, but we still need to show the notification
+      const wsAlreadyPlayed = notifId && notifId === window._sgLastNotifId;
+
+      if (!onTargetPage && !wsAlreadyPlayed) {
+        const soundFile = (data.type === 'message') ? '/sounds/chat.mp3' : '/sounds/moneta.mp3';
+        console.log('[Push] Playing sound from FCM foreground:', soundFile);
+        if (window._sgPlaySound) {
+          window._sgPlaySound(soundFile);
+        } else {
+          try { new Audio(soundFile).play(); } catch {}
+        }
+      } else {
+        console.log('[Push] Sound skipped — onTargetPage=' + onTargetPage + ' wsAlreadyPlayed=' + wsAlreadyPlayed);
+      }
+
       if (badgeCount > 0 && 'setAppBadge' in navigator) {
         navigator.setAppBadge(badgeCount).catch(() => {});
       }
@@ -76,21 +107,18 @@
       }
     });
 
-    // If already granted — silently refresh token
+    // ── Permission check ──────────────────────────────────────────────────
     if (Notification.permission === 'granted') {
+      // Always re-save token so stale tokens are refreshed on each session
+      localStorage.removeItem('sg_push_token');
       await saveToken();
       hidePushBtn();
       return;
     }
 
-    // Show button if permission not yet decided
+    // Default (not yet asked) — show enable button
     if (Notification.permission === 'default') {
-      // On iOS non-standalone — hide button (push won't work anyway)
-      if (isIOS && !isStandalone) {
-        hidePushBtn();
-        return;
-      }
-      showPushBtn();
+      showPushBtn('default');
     }
   }
 
@@ -111,7 +139,7 @@
     console.log('[Push] Token received:', token.substring(0, 20) + '…');
 
     const saved = localStorage.getItem('sg_push_token');
-    if (saved === token) { console.log('[Push] Token unchanged'); return; }
+    if (saved === token) { console.log('[Push] Token unchanged, re-sending to sync'); }
 
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
     try {
@@ -130,10 +158,45 @@
   }
 
   // ── Button helpers ────────────────────────────────────────────────────────
-  function showPushBtn() {
+  function showPushBtn(state) {
     const btn = document.getElementById('sgEnablePushBtn');
-    if (btn) btn.style.display = 'flex';
+    if (!btn) return;
+
+    if (state === 'denied') {
+      btn.innerHTML = '🔕 Сповіщення заблоковані';
+      btn.title     = 'Щоб увімкнути: Налаштування браузера → Сповіщення → Дозволити';
+      btn.onclick   = () => alert(
+        'Сповіщення заблоковані браузером.\n\n' +
+        'Щоб увімкнути:\n' +
+        '• Chrome: 🔒 у рядку адреси → Сповіщення → Дозволити\n' +
+        '• Safari: Налаштування → Сайти → Сповіщення'
+      );
+      btn.style.display = 'flex';
+      btn.style.opacity = '0.6';
+      return;
+    }
+
+    if (state === 'ios') {
+      btn.innerHTML = '📲 Додайте на головний екран';
+      btn.title     = 'Для сповіщень на iPhone: Поділитись → Додати на головний екран';
+      btn.onclick   = () => alert(
+        'Push сповіщення на iPhone потребують PWA:\n\n' +
+        '1. Натисніть кнопку "Поділитись" (□↑) в Safari\n' +
+        '2. Виберіть "Додати на головний екран"\n' +
+        '3. Відкрийте додаток з головного екрану\n' +
+        '4. Натисніть "🔔 Увімкнути сповіщення"'
+      );
+      btn.style.display = 'flex';
+      return;
+    }
+
+    // default state — normal enable button
+    btn.innerHTML = '🔔 Увімкнути сповіщення';
+    btn.onclick   = window.sgEnablePush;
+    btn.style.display = 'flex';
+    btn.style.opacity = '1';
   }
+
   function hidePushBtn() {
     const btn = document.getElementById('sgEnablePushBtn');
     if (btn) btn.style.display = 'none';
@@ -150,7 +213,10 @@
       console.warn('[Push] requestPermission failed:', e.message);
       return;
     }
-    if (perm !== 'granted') return;
+    if (perm !== 'granted') {
+      showPushBtn('denied');
+      return;
+    }
     console.log('[Push] Permission granted');
     await saveToken();
     hidePushBtn();
@@ -162,12 +228,11 @@
     if ('clearAppBadge' in navigator) navigator.clearAppBadge().catch(() => {});
   }
 
-  // Clear badge when app comes into focus
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') clearBadge();
   });
   window.addEventListener('focus', clearBadge);
-  clearBadge(); // clear on initial load
+  clearBadge();
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', boot);

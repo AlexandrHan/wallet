@@ -277,6 +277,10 @@ function setBonusCurrency(cur) {
     usdBtn.style.background = 'transparent';
     usdBtn.style.opacity = '.5';
   }
+  // Sync usdPaidInput: USD bonus → include in USD payment; UAH bonus → revert to salary only
+  const bonus = Math.max(0, parseFloat(document.getElementById('bonusAmountInput').value) || 0);
+  document.getElementById('usdPaidInput').value =
+    cur === 'USD' ? Math.round(_payModalSalaryUsd + bonus) : Math.round(_payModalSalaryUsd);
   updatePayCalc();
 }
 
@@ -413,7 +417,14 @@ async function paySalary() {
 // ── Events ────────────────────────────────────────────────────────────────
 
 document.getElementById('usdPaidInput').addEventListener('input', updatePayCalc);
-document.getElementById('bonusAmountInput').addEventListener('input', updatePayCalc);
+document.getElementById('bonusAmountInput').addEventListener('input', () => {
+  // USD bonus: include it in the USD payment automatically
+  if (_bonusCurrency === 'USD') {
+    const bonus = Math.max(0, parseFloat(document.getElementById('bonusAmountInput').value) || 0);
+    document.getElementById('usdPaidInput').value = Math.round(_payModalSalaryUsd + bonus);
+  }
+  updatePayCalc();
+});
 document.getElementById('bonusCurrencyUsd').addEventListener('click', () => setBonusCurrency('USD'));
 document.getElementById('bonusCurrencyUah').addEventListener('click', () => setBonusCurrency('UAH'));
 

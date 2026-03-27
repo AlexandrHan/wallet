@@ -20,6 +20,7 @@
   'scheduleDatesKey' => 'installer_schedule_dates',
   'emptyText' => 'У вас поки немає проєктів, де ви вказані як монтажна бригада.',
   'rangeDays' => 31,
+  'accordionMode' => true,
 ])
 
 @include('partials.nav.bottom')

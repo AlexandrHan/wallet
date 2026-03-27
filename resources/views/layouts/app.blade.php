@@ -51,6 +51,85 @@
             vapidKey:          "{{ config('services.firebase.vapid_key') }}"
         };
         </script>
+
+        {{-- ── Shared sound system ──────────────────────────────────────────────
+             Pre-loads + unlocks audio on first user gesture.
+             window._sgPlaySound(src) — plays with 2s dedup to prevent
+             double-play when both WebSocket and FCM push arrive for the same event.
+        --}}
+        <audio id="_sg_snd_chat"   src="/sounds/chat.mp3"   preload="auto" style="display:none"></audio>
+        <audio id="_sg_snd_moneta" src="/sounds/moneta.mp3" preload="auto" style="display:none"></audio>
+        <script>(function () {
+          let _unlocked = false;
+          let _lastAt   = 0;
+          const _pool   = {};
+
+          function _elem(src) {
+            if (!_pool[src]) {
+              const id = src.includes('chat') ? '_sg_snd_chat'
+                       : src.includes('moneta') ? '_sg_snd_moneta'
+                       : null;
+              _pool[src] = (id && document.getElementById(id)) || new Audio(src);
+            }
+            return _pool[src];
+          }
+
+          function _unlock() {
+            if (_unlocked) return;
+            _unlocked = true;
+            ['_sg_snd_chat', '_sg_snd_moneta'].forEach(id => {
+              const a = document.getElementById(id);
+              if (!a) return;
+              try {
+                a.muted = true;
+                a.play().then(() => { a.pause(); a.currentTime = 0; a.muted = false; })
+                         .catch(() => { a.muted = false; });
+              } catch {}
+            });
+            console.log('[Sound] audio unlocked');
+          }
+
+          ['click', 'keydown'].forEach(ev => document.addEventListener(ev, _unlock, { once: true }));
+          document.addEventListener('touchstart', _unlock, { once: true, passive: true });
+
+          window._sgLastSoundAt = 0;
+          window._sgLastNotifId = 0;
+
+          // External code (wallet.js) can call this to inform dedup it played a sound
+          window._sgBumpSound = function () {
+            _lastAt = Date.now();
+            window._sgLastSoundAt = _lastAt;
+          };
+
+          window._sgPlaySound = function (src, vol) {
+            const now = Date.now();
+            // 2-second dedup: prevents double-play when WS + FCM arrive for same event
+            if (now - _lastAt < 2000) {
+              console.log('[Sound] dedup skip (' + Math.round((now - _lastAt)/100)/10 + 's ago):', src);
+              return;
+            }
+            _lastAt = now;
+            window._sgLastSoundAt = now;
+            const caller = new Error().stack?.split('\n')[2]?.trim() ?? '?';
+            console.log('[Sound] PLAY:', src, '| from:', caller);
+            const a = _elem(src);
+            if (!a) return;
+            try {
+              a.volume = vol ?? 0.85;
+              a.currentTime = 0;
+              a.play().catch(e => {
+                // Autoplay still blocked — likely no user gesture yet
+                console.warn('[Sound] blocked:', e.message, '— unlock on next gesture');
+                _lastAt = 0; // allow retry
+              });
+            } catch (e) {
+              console.warn('[Sound] error:', e.message);
+              _lastAt = 0;
+            }
+          };
+        })();
+        </script>
+
         <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
         <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js"></script>
         <script src="/js/push-notifications.js?v={{ filemtime(public_path('js/push-notifications.js')) }}"></script>

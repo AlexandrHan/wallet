@@ -367,9 +367,17 @@ async function loadConstructionProjects() {
     teamSelect.appendChild(bm);
   }
 
-  const r = await fetch('/api/sales-projects?layer=projects');
-  const projects = await r.json();
+  // Load main list + lightweight status summary in parallel
+  const [rMain, rStatus] = await Promise.all([
+    fetch('/api/sales-projects?layer=projects'),
+    fetch('/api/projects/status-summary'),
+  ]);
+  const projects = await rMain.json();
+  const statusProjects = rStatus.ok ? await rStatus.json() : [];
+
   const visibleProjects = [...projects].filter(p => !p.is_retail);
+  const allVisibleProjects = statusProjects; // already filtered server-side
+
   const sortedProjects = visibleProjects.sort((a, b) => {
     const aHasDefects = a.construction_status === 'has_deficiencies' || a.construction_status === 'deficiencies_fixed' || String(a.defects_note || '').trim() !== '';
     const bHasDefects = b.construction_status === 'has_deficiencies' || b.construction_status === 'deficiencies_fixed' || String(b.defects_note || '').trim() !== '';
@@ -381,6 +389,226 @@ async function loadConstructionProjects() {
     return String(a.client_name || '').localeCompare(String(b.client_name || ''), 'uk', { sensitivity: 'base' });
   });
   container.innerHTML = '';
+
+  // ── Статусні блоки (зверху) ──────────────────────────────────────────────
+  (function renderStatusBlocks(projects) {
+    const UA_MONTHS = ['Січень','Лютий','Березень','Квітень','Травень','Червень',
+                       'Липень','Серпень','Вересень','Жовтень','Листопад','Грудень'];
+
+    const DELIVERY_STAGE = 69593834; // Здача проекту замовнику — обидва монтажі завершені
+
+    const needsFix  = projects.filter(p => p.construction_status === 'has_deficiencies');
+    const needsConf = projects.filter(p =>
+      p.installation_completed_at &&
+      (p.construction_status === 'waiting_quality_check' || p.construction_status === 'deficiencies_fixed')
+    );
+    // Завершені = salary_pending/paid + projects in final AmoCRM delivery stage (both electrical + panels done)
+    const approvedIds = new Set();
+    const approved  = projects.filter(p => {
+      const isApproved = p.construction_status === 'salary_pending' || p.construction_status === 'salary_paid';
+      const isDelivery = Number(p.amo_stage_id) === DELIVERY_STAGE;
+      if ((isApproved && p.installation_completed_at) || isDelivery) {
+        if (!approvedIds.has(p.id)) { approvedIds.add(p.id); return true; }
+      }
+      return false;
+    });
+
+    // Sort helpers
+    const byDateDesc = (a, b) =>
+      String(b.installation_completed_at || '0').localeCompare(String(a.installation_completed_at || '0'));
+
+    needsFix.sort(byDateDesc);
+    needsConf.sort(byDateDesc);
+    approved.sort(byDateDesc);
+
+    // Simple row for each project
+    function makeRow(p) {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;justify-content:space-between;align-items:flex-start;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07);gap:8px;';
+      const dateStr = p.installation_completed_at
+        ? new Date(p.installation_completed_at).toLocaleDateString('uk-UA', { day:'2-digit', month:'2-digit', year:'numeric' })
+        : '';
+      const teamStr = [p.installation_team, p.electrician].filter(Boolean).join(' / ');
+      row.innerHTML =
+        `<div>` +
+          `<div style="font-size:14px;font-weight:600;">${esc(p.client_name || '—')}</div>` +
+          `<div style="font-size:11px;opacity:.55;">${esc(teamStr)}</div>` +
+        `</div>` +
+        `<div style="font-size:12px;opacity:.65;white-space:nowrap;">${esc(dateStr)}</div>`;
+      return row;
+    }
+
+    // Generic accordion builder
+    function makeAccordion(label, count, defaultOpen) {
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'margin-bottom:10px;';
+
+      const header = document.createElement('button');
+      header.type = 'button';
+      header.style.cssText = [
+        'width:100%;display:flex;align-items:center;gap:10px;',
+        'background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.13);',
+        'border-radius:12px;padding:12px 16px;cursor:pointer;',
+        'color:inherit;font-size:14px;font-weight:600;text-align:left;',
+        defaultOpen ? 'border-bottom-left-radius:0;border-bottom-right-radius:0;' : '',
+      ].join('');
+      header.innerHTML =
+        `<span style="flex:1;">${esc(label)}</span>` +
+        `<span style="background:rgba(255,255,255,.18);border-radius:20px;padding:2px 10px;font-size:12px;font-weight:700;">${count}</span>` +
+        `<span style="font-size:11px;opacity:.65;">${defaultOpen ? '▼' : '▶'}</span>`;
+
+      const body = document.createElement('div');
+      body.style.cssText = [
+        'border:1px solid rgba(255,255,255,.13);border-top:none;',
+        'border-radius:0 0 12px 12px;padding:10px 12px;',
+        defaultOpen ? '' : 'display:none;',
+      ].join('');
+
+      header.addEventListener('click', () => {
+        const closing = body.style.display !== 'none';
+        body.style.display = closing ? 'none' : 'block';
+        header.querySelector('span:last-child').textContent = closing ? '▶' : '▼';
+        const r = closing ? '12px' : '0';
+        header.style.borderBottomLeftRadius = r;
+        header.style.borderBottomRightRadius = r;
+      });
+
+      wrap.appendChild(header);
+      wrap.appendChild(body);
+      return { wrap, body };
+    }
+
+    // Render "Потребують виправлення"
+    if (needsFix.length > 0) {
+      const { wrap, body } = makeAccordion('⚠️ Потребують виправлення', needsFix.length, true);
+      needsFix.forEach(p => body.appendChild(makeRow(p)));
+      container.appendChild(wrap);
+    }
+
+    // Render "Очікують підтвердження"
+    if (needsConf.length > 0) {
+      const { wrap, body } = makeAccordion('⏳ Очікують підтвердження', needsConf.length, true);
+      needsConf.forEach(p => body.appendChild(makeRow(p)));
+      container.appendChild(wrap);
+    }
+
+    // Render "Завершені" with year → month nesting
+    if (approved.length > 0) {
+      const { wrap: doneWrap, body: doneBody } = makeAccordion('✅ Завершені', approved.length, false);
+
+      // Group by year → month
+      const byYear = new Map();
+      approved.forEach(p => {
+        const d = new Date(p.installation_completed_at || Date.now());
+        const y = d.getFullYear();
+        const m = d.getMonth(); // 0-11
+        if (!byYear.has(y)) byYear.set(y, new Map());
+        if (!byYear.get(y).has(m)) byYear.get(y).set(m, []);
+        byYear.get(y).get(m).push(p);
+      });
+
+      // Sort years desc, months desc
+      const sortedYears = [...byYear.keys()].sort((a, b) => b - a);
+      sortedYears.forEach((year, yi) => {
+        const monthMap = byYear.get(year);
+        const yearTotal = [...monthMap.values()].reduce((s, arr) => s + arr.length, 0);
+        const yearOpen = yi === 0; // first (most recent) year open
+
+        const yearWrap = document.createElement('div');
+        yearWrap.style.cssText = 'margin-bottom:8px;';
+
+        const yearHeader = document.createElement('button');
+        yearHeader.type = 'button';
+        yearHeader.style.cssText = [
+          'width:100%;display:flex;align-items:center;gap:8px;',
+          'background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);',
+          'border-radius:8px;padding:9px 12px;cursor:pointer;',
+          'color:inherit;font-size:13px;font-weight:700;text-align:left;',
+          yearOpen ? 'border-bottom-left-radius:0;border-bottom-right-radius:0;' : '',
+        ].join('');
+        yearHeader.innerHTML =
+          `<span style="flex:1;">${year}</span>` +
+          `<span style="opacity:.6;font-size:12px;">${yearTotal}</span>` +
+          `<span style="font-size:10px;opacity:.55;">${yearOpen ? '▼' : '▶'}</span>`;
+
+        const yearBody = document.createElement('div');
+        yearBody.style.cssText = [
+          'border:1px solid rgba(255,255,255,.1);border-top:none;',
+          'border-radius:0 0 8px 8px;padding:6px 8px;',
+          yearOpen ? '' : 'display:none;',
+        ].join('');
+
+        yearHeader.addEventListener('click', () => {
+          const closing = yearBody.style.display !== 'none';
+          yearBody.style.display = closing ? 'none' : 'block';
+          yearHeader.querySelector('span:last-child').textContent = closing ? '▶' : '▼';
+          const r = closing ? '8px' : '0';
+          yearHeader.style.borderBottomLeftRadius = r;
+          yearHeader.style.borderBottomRightRadius = r;
+        });
+
+        const sortedMonths = [...monthMap.keys()].sort((a, b) => b - a);
+        sortedMonths.forEach((month, mi) => {
+          const monthProjects = monthMap.get(month)
+            .slice()
+            .sort((a, b) => String(b.installation_completed_at || '').localeCompare(String(a.installation_completed_at || '')));
+          const monthOpen = yearOpen && mi === 0;
+
+          const mWrap = document.createElement('div');
+          mWrap.style.cssText = 'margin-bottom:6px;';
+
+          const mHeader = document.createElement('button');
+          mHeader.type = 'button';
+          mHeader.style.cssText = [
+            'width:100%;display:flex;align-items:center;gap:8px;',
+            'background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);',
+            'border-radius:6px;padding:7px 10px;cursor:pointer;',
+            'color:inherit;font-size:13px;font-weight:600;text-align:left;',
+            monthOpen ? 'border-bottom-left-radius:0;border-bottom-right-radius:0;' : '',
+          ].join('');
+          mHeader.innerHTML =
+            `<span style="flex:1;">${UA_MONTHS[month]}</span>` +
+            `<span style="opacity:.6;font-size:12px;">${monthProjects.length}</span>` +
+            `<span style="font-size:10px;opacity:.55;">${monthOpen ? '▼' : '▶'}</span>`;
+
+          const mBody = document.createElement('div');
+          mBody.style.cssText = [
+            'border:1px solid rgba(255,255,255,.08);border-top:none;',
+            'border-radius:0 0 6px 6px;padding:6px 8px;',
+            monthOpen ? '' : 'display:none;',
+          ].join('');
+
+          mHeader.addEventListener('click', () => {
+            const closing = mBody.style.display !== 'none';
+            mBody.style.display = closing ? 'none' : 'block';
+            mHeader.querySelector('span:last-child').textContent = closing ? '▶' : '▼';
+            const r = closing ? '6px' : '0';
+            mHeader.style.borderBottomLeftRadius = r;
+            mHeader.style.borderBottomRightRadius = r;
+          });
+
+          monthProjects.forEach(p => mBody.appendChild(makeRow(p)));
+
+          mWrap.appendChild(mHeader);
+          mWrap.appendChild(mBody);
+          yearBody.appendChild(mWrap);
+        });
+
+        yearWrap.appendChild(yearHeader);
+        yearWrap.appendChild(yearBody);
+        doneBody.appendChild(yearWrap);
+      });
+
+      container.appendChild(doneWrap);
+    }
+
+    // Separator before main list
+    if (needsFix.length + needsConf.length + approved.length > 0) {
+      const sep = document.createElement('div');
+      sep.style.cssText = 'height:1px;background:rgba(255,255,255,.08);margin:6px 0 14px;';
+      container.appendChild(sep);
+    }
+  })(allVisibleProjects);
 
   // Кнопка Згорнути/Розкрити всі групи
   const toggleAllBtn = document.createElement('button');
