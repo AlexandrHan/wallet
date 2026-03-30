@@ -11,7 +11,7 @@
   </button>
 
   <div id="notifPanel"
-    style="position:absolute; top:calc(100% + 8px); right:0; width:320px; max-height:440px;
+    style="position:absolute; top:calc(100% + 8px); right:0; width:320px; max-height:100vh;
            background:#021709ef; border:1px solid rgba(255,255,255,0.08); border-radius:16px;
            box-shadow:0 12px 40px rgba(0,0,0,0.7); z-index:9999; overflow:hidden;
            flex-direction:column; display:none; color:#e8eaf0;">
@@ -153,13 +153,24 @@
   });
 
   fetchCount();
+  // Polling кожні 15с — тільки badge + панель, БЕЗ звуку (звук тільки від WebSocket)
+  setInterval(async () => {
+    try {
+      const d = await fetch('/api/notifications/count', { headers:{'Accept':'application/json'} }).then(r=>r.json());
+      const serverCount = d.unread_count ?? 0;
+      const hadNew = serverCount > notifUnread;
+      notifUnread = serverCount;
+      if (hadNew && isOpen) loadPanel();
+      updateBadge();
+    } catch {}
+  }, 15000);
 
   // ── WebSocket ────────────────────────────────────────────────────────────
   const authUserId = {{ auth()->id() }};
 
   function waitForEcho(cb, tries = 0) {
     if (window.Echo) { cb(); return; }
-    if (tries > 20)  { setInterval(fetchCount, 30000); return; }
+    if (tries > 20)  { return; } // fallback вже є через setInterval вище
     setTimeout(() => waitForEcho(cb, tries + 1), 300);
   }
 
@@ -173,18 +184,14 @@
         updateBadge();
         // message-type: play chat sound only when NOT already on the chat page
         // (on /messages the chat WS listener already plays chat.mp3)
-        const onMsgPage = window.location.pathname.startsWith('/messages');
-        console.log('[Notif] WS event type=' + n.type + ' onMsgPage=' + onMsgPage + ' id=' + n.id);
-        // Store notification ID so FCM foreground handler can skip the same event
+        // Store notification ID so FCM foreground handler can skip duplicate sound
         window._sgLastNotifId = n.id;
         if (n.type === 'message') {
           // On /messages page the subscribeToChat WS listener already handles chat.mp3
-          if (!onMsgPage) {
-            console.log('[Notif] Playing chat.mp3 from notif-bell WS');
+          if (!window.location.pathname.startsWith('/messages')) {
             window._sgPlaySound && window._sgPlaySound('/sounds/chat.mp3');
           }
         } else {
-          console.log('[Notif] Playing moneta.mp3 from notif-bell WS type=' + n.type);
           window._sgPlaySound && window._sgPlaySound('/sounds/moneta.mp3');
         }
         if (isOpen) {
@@ -199,7 +206,7 @@
           list.prepend(item);
         }
         if (Notification?.permission === 'granted') {
-          new Notification(n.title, { body: n.message, icon: '/img/logo.png' });
+          new Notification(n.title, { body: n.message, icon: '/img/logo.png', tag: 'sg-notif-' + n.id });
         }
       });
 

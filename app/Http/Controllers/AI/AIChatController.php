@@ -11,6 +11,7 @@ use App\Services\AmoSearchService;
 use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -308,6 +309,13 @@ class AIChatController extends Controller
             '/\b(?:інвертор|инвертор)\b\s*/ui',
             '/\b(?:search|find|show)\b\s*/ui',
             '/\b(?:amo|амо)\b\s*/ui',
+            // Strip "клієнта/замовника" prefix before name
+            '/\bклієнта?\b\s*/ui',
+            '/\bзамовника?\b\s*/ui',
+            // Strip tail phrases like "і скажи скільки він ще винен"
+            '/\s+і\s+скажи\s+.+$/sui',
+            '/\s+і\s+покажи\s+.+$/sui',
+            '/\s+і\s+скільки\s+.+$/sui',
         ];
 
         $result = $q;
@@ -475,6 +483,54 @@ class AIChatController extends Controller
     {
         $lq  = mb_strtolower($q);
         $orig = $q;
+
+        // ── Clarification follow-up ───────────────────────────────────────────
+        // If there's a pending clarification in cache and the message looks like
+        // a selection ("1", "другий", phone snippet, name fragment) → resolve it.
+        $clarKey = 'ai_clarification_' . (auth()->id() ?? 'anon');
+        $clarCtx = Cache::get($clarKey);
+
+        if ($clarCtx && !empty($clarCtx['candidates'])) {
+            if ($this->looksLikeClarificationResponse($lq)) {
+                $resolved = $this->resolveClarification($lq, $clarCtx);
+
+                if ($resolved !== null) {
+                    Cache::forget($clarKey);
+                    Log::channel('ai')->info('AI clarification resolved', [
+                        'uid'        => auth()->id(),
+                        'input'      => mb_substr($lq, 0, 100),
+                        'query_type' => $clarCtx['query_type'] ?? '?',
+                        'original_q' => mb_substr($clarCtx['original_q'] ?? '', 0, 100),
+                    ]);
+                    return $resolved;
+                }
+
+                // Unclear follow-up — show list again with reminder
+                return $this->buildClarificationPrompt($clarCtx['candidates'], $clarCtx['original_q'])
+                    . "\n\n_Напишіть номер (1, 2, 3…) або уточніть телефон / рядок з імені._";
+            }
+        }
+
+        // ── Client / project lookup by name ───────────────────────────────────
+        // Triggers when question clearly targets a specific client or project.
+        // Two signal groups:
+        //   A) Explicit client keywords: "клієнт", "замовник", "знайди", "пошукай"
+        //   B) Project-info keywords + preposition + potential name
+        $isExplicitClient = $this->matches($lq, ['клієнт', 'замовник', 'знайди', 'пошукай']);
+        $isProjectInfoQ   = $this->matches($lq, ['інвертор', 'аванс', 'яка сума', 'що по'])
+            && (bool) preg_match('/\b(?:у|в|для|по)\s+[а-яіїєґА-ЯІЇЄҐ]{3,}/u', $q);
+        // C) Debt/financial keywords followed directly by a name (no preposition needed)
+        // e.g. "скільки винен Бен", "аванс Бен", "борг Коліснику"
+        $isDebtByName     = $this->matches($lq, ['винен', 'винна', 'аванс', 'борг', 'заборгованість'])
+            && (bool) preg_match('/(?:винен|винна|аванс|борг|заборгованість)\s+([А-ЯІЇЄҐа-яіїєґ]{3,})/ui', $q);
+
+        if ($isExplicitClient || $isProjectInfoQ || $isDebtByName) {
+            $clientName = $this->extractClientName($q);
+            if ($clientName) {
+                $clientResult = $this->clientProjectInfo($clientName, $lq, $clarKey);
+                if ($clientResult !== null) return $clientResult;
+            }
+        }
 
         // ── Wallet balances ───────────────────────────────────────────────────
         // Exclude client-debt context so "скільки грошей винні клієнти" doesn't match here
@@ -1331,6 +1387,318 @@ class AIChatController extends Controller
         // Lone word at end that looks like a surname (≥4 chars, after salary keyword in sentence)
         if (preg_match('/(?:зарплат|нарахуван|заробіток|ставк)\S*\s+.*?\s+([а-яіїєґА-ЯІЇЄҐ][а-яіїєґА-ЯІЇЄҐ\'-]{3,})$/u', $q, $m)) {
             return $m[1];
+        }
+        return null;
+    }
+
+    /**
+     * Extract a client name from a question about a project.
+     *
+     * Handles:
+     *   "знайди клієнта Петров Сергій"  → "Петров Сергій"
+     *   "який інвертор у Петрова"        → "Петрова"
+     *   "яка сума у Іваненка"            → "Іваненка"
+     *   "що по Ткаченку"                 → "Ткаченку"
+     */
+    private function extractClientName(string $q): ?string
+    {
+        // Pattern A: after "клієнта/замовника" — capture 1-2 Ukrainian words
+        if (preg_match('/(?:клієнта?|клієнту|замовника?)\s+([А-ЯІЇЄҐа-яіїєґ][А-ЯІЇЄҐа-яіїєґ\'-]{2,}(?:\s+[А-ЯІЇЄҐа-яіїєґ][А-ЯІЇЄҐа-яіїєґ\'-]{2,})?)/u', $q, $m)) {
+            return trim($m[1]);
+        }
+        // Pattern B: "знайди/покажи/пошукай" + optional "клієнта" + uppercase-starting name
+        if (preg_match('/(?:знайди|покажи|пошукай|пошук)\w*\s+(?:клієнта?\s+|замовника?\s+)?([А-ЯІЇЄҐ][А-ЯІЇЄҐа-яіїєґ\'-]{2,}(?:\s+[А-ЯІЇЄҐ][А-ЯІЇЄҐа-яіїєґ\'-]{2,})?)/u', $q, $m)) {
+            return trim($m[1]);
+        }
+        // Pattern C: "знайди клієнта" + any-case name (lowercase input)
+        if (preg_match('/(?:знайди|пошукай)\w*\s+(?:клієнта?\s+)?([а-яіїєґ][а-яіїєґ\'-]{3,}(?:\s+[а-яіїєґ][а-яіїєґ\'-]{3,})?)/u', mb_strtolower($q), $m)) {
+            $word = trim($m[1]);
+            $skip = ['клієнт', 'проект', 'замовник', 'інвертор', 'аванс', 'сума'];
+            if (!in_array($word, $skip, true)) return $word;
+        }
+        // Pattern D: preposition "у/в/для/по" + Ukrainian word ≥3 chars total
+        if (preg_match('/\b(?:у|в|для)\s+([А-ЯІЇЄҐа-яіїєґ][А-ЯІЇЄҐа-яіїєґ\'-]{2,})\b/u', $q, $m)) {
+            $word = trim($m[1]);
+            $stopWords = ['мене', 'тебе', 'нього', 'неї', 'нас', 'вас', 'яких',
+                          'цьому', 'цього', 'якому', 'якій', 'якого', 'всіх'];
+            if (!in_array(mb_strtolower($word), $stopWords, true)) {
+                return $word;
+            }
+        }
+        // Pattern E: "що по [word]" (not stock/finance context)
+        if (preg_match('/що\s+(?:там\s+)?по\s+([А-ЯІЇЄҐа-яіїєґ][А-ЯІЇЄҐа-яіїєґ\'-]{3,})/u', $q, $m)) {
+            $word = trim($m[1]);
+            $skipPo = ['складу', 'складі', 'витратах', 'зарплаті', 'рахунках', 'проектах', 'обладнанню'];
+            if (!in_array(mb_strtolower($word), $skipPo, true)) return $word;
+        }
+        // Pattern F: debt/financial keyword + name without preposition
+        // e.g. "скільки винен Бен", "аванс Бен", "борг Коліснику"
+        if (preg_match('/(?:винен|винна|аванс|борг|заборгованість)\s+([А-ЯІЇЄҐа-яіїєґ][А-ЯІЇЄҐа-яіїєґ\'-]{2,}(?:\s+[А-ЯІЇЄҐа-яіїєґ][А-ЯІЇЄҐа-яіїєґ\'-]{2,})?)/ui', $q, $m)) {
+            return trim($m[1]);
+        }
+        return null;
+    }
+
+    /**
+     * Look up a client project by name in sales_projects.
+     *
+     * Rules:
+     *   0 results  → return null (pass to SQL agent)
+     *   1 result   → return formatted answer immediately
+     *   2+ results → clarification mode: store candidates in cache, return selection prompt
+     */
+    private function clientProjectInfo(string $rawName, string $lq, string $clarKey = ''): ?string
+    {
+        // Build search stem: strip common Ukrainian genitive endings
+        // Note: SQLite LOWER() does not support Cyrillic — search without it
+        $raw  = trim($rawName);
+        $cap  = mb_strtoupper(mb_substr($raw, 0, 1)) . mb_substr($raw, 1);
+        $norm = mb_strtolower($raw);
+        // Genitive stem: strip trailing endings (Петрова→Петров, Іваненка→Іваненк)
+        $stem = (string) preg_replace('/(?:ові|ого|ьої|ієї|єць)$/u', '', $cap);
+        if ($stem === $cap) {
+            $stem = (string) preg_replace('/[ауяієї]$/u', '', $cap);
+        }
+        if (mb_strlen($stem) < 3) $stem = $cap;
+
+        try {
+            $rows = DB::table('sales_projects')
+                ->where(function ($q) use ($stem, $cap, $norm) {
+                    $q->where('client_name', 'like', "%{$stem}%")
+                      ->orWhere('client_name', 'like', "%{$cap}%")
+                      ->orWhere('client_name', 'like', "%{$norm}%");
+                })
+                ->whereNull('cancelled_at')
+                ->select([
+                    'id', 'client_name', 'phone_number',
+                    'total_amount', 'advance_amount', 'remaining_amount', 'currency',
+                    'inverter', 'panel_name', 'panel_qty', 'battery_name', 'battery_qty',
+                    'status', 'construction_status', 'created_at',
+                ])
+                ->orderByDesc('created_at')
+                ->limit(5)
+                ->get();
+        } catch (\Throwable) {
+            return null;
+        }
+
+        if ($rows->isEmpty()) return null;
+
+        $queryType = $this->detectClientQueryType($lq);
+
+        // ── Single result → answer immediately ───────────────────────────────
+        if ($rows->count() === 1) {
+            return $this->formatSingleClientAnswer($rows->first(), $queryType);
+        }
+
+        // ── Multiple results → clarification mode ────────────────────────────
+        $candidates = $rows->map(fn($r) => (array) $r)->values()->toArray();
+
+        if ($clarKey) {
+            Cache::put($clarKey, [
+                'candidates' => $candidates,
+                'query_type' => $queryType,
+                'original_q' => $lq,
+            ], now()->addMinutes(10));
+        }
+
+        Log::channel('ai')->info('AI clarification_mode', [
+            'uid'             => auth()->id(),
+            'extracted_client'=> $rawName,
+            'candidates_count'=> count($candidates),
+            'query_type'      => $queryType,
+            'original_q'      => mb_substr($lq, 0, 100),
+            'resolved'        => false,
+        ]);
+
+        return $this->buildClarificationPrompt($candidates, $lq);
+    }
+
+    /**
+     * Detect what type of info the user wants about a client project.
+     */
+    private function detectClientQueryType(string $lq): string
+    {
+        if ($this->matches($lq, ['інвертор']))                                 return 'inverter';
+        if ($this->matches($lq, ['аванс', 'передопл', 'передплат', 'вніс', 'оплатив'])) return 'advance';
+        if ($this->matches($lq, ['яка сума', 'скільки коштує', 'вартість', 'ціна', 'сума'])) return 'amount';
+        if ($this->matches($lq, ['обладнання', 'панел', 'батарей', 'акб']))    return 'equipment';
+        return 'full';
+    }
+
+    /**
+     * Format the answer for a single matched project according to query type.
+     */
+    private function formatSingleClientAnswer(object $p, string $queryType): string
+    {
+        $statusMap = [
+            'has_deficiencies'   => '❌ Є недоліки',
+            'deficiencies_fixed' => '🟡 Виправлено',
+            'salary_paid'        => '✅ Зарплата виплачена',
+        ];
+        $cur = $p->currency ?? '';
+
+        $parts = match ($queryType) {
+            'inverter' => [
+                "⚡ Інвертор: " . ($p->inverter ?: '—'),
+            ],
+            'advance' => [
+                "💵 Аванс: " . ($p->advance_amount ? number_format((float)$p->advance_amount, 0, '.', ' ') : '0') . " {$cur}",
+                "📋 Залишок: " . ($p->remaining_amount ? number_format((float)$p->remaining_amount, 0, '.', ' ') : '—') . " {$cur}",
+            ],
+            'amount' => [
+                "💰 Сума: " . ($p->total_amount ? number_format((float)$p->total_amount, 0, '.', ' ') : '—') . " {$cur}",
+            ],
+            'equipment' => array_filter([
+                $p->inverter     ? "⚡ Інвертор: {$p->inverter}"                           : null,
+                $p->panel_name   ? "☀️ Панелі: {$p->panel_name} × {$p->panel_qty}"        : null,
+                $p->battery_name ? "🔋 АКБ: {$p->battery_name} × {$p->battery_qty}"       : null,
+            ]),
+            default => array_filter([
+                $p->total_amount    ? "💰 Сума: " . number_format((float)$p->total_amount, 0, '.', ' ') . " {$cur}"   : null,
+                $p->advance_amount  ? "💵 Аванс: " . number_format((float)$p->advance_amount, 0, '.', ' ')
+                                    . " | Залишок: " . number_format((float)($p->remaining_amount ?? 0), 0, '.', ' ')
+                                    . " {$cur}"                                                                         : null,
+                $p->inverter        ? "⚡ Інвертор: {$p->inverter}"                        : null,
+                $p->panel_name      ? "☀️ Панелі: {$p->panel_name} × {$p->panel_qty}"     : null,
+                $p->battery_name    ? "🔋 АКБ: {$p->battery_name} × {$p->battery_qty}"    : null,
+                $p->phone_number    ? "📞 Тел: {$p->phone_number}"                         : null,
+                $p->construction_status
+                    ? "📊 Стан: " . ($statusMap[$p->construction_status] ?? $p->construction_status) : null,
+            ]),
+        };
+
+        $parts = array_values(array_filter($parts));
+        if (empty($parts)) return "👤 **{$p->client_name}** — даних не знайдено.";
+
+        return "👤 **{$p->client_name}**\n" . implode("\n", $parts);
+    }
+
+    /**
+     * Build a numbered clarification prompt from candidate rows.
+     */
+    private function buildClarificationPrompt(array $candidates, string $originalQ): string
+    {
+        $lines = ["🔍 Знайдено кілька варіантів. Уточніть, будь ласка:\n"];
+
+        foreach ($candidates as $i => $c) {
+            $n    = $i + 1;
+            $name = $c['client_name'] ?? '—';
+
+            $hints = [];
+            if (!empty($c['phone_number'])) {
+                $hints[] = "тел. …" . mb_substr(preg_replace('/\D/', '', $c['phone_number'] ?? ''), -4);
+            }
+            if (!empty($c['inverter'])) {
+                $hints[] = $c['inverter'];
+            }
+            if (!empty($c['total_amount'])) {
+                $hints[] = number_format((float)$c['total_amount'], 0, '.', ' ') . ' ' . ($c['currency'] ?? '');
+            }
+            if (!empty($c['created_at'])) {
+                $hints[] = "від " . mb_substr((string)$c['created_at'], 0, 10); // "2025-04-15"
+            }
+            if (!empty($c['id'])) {
+                $hints[] = "ID#{$c['id']}";
+            }
+
+            $hint  = $hints ? ' — ' . implode(', ', $hints) : '';
+            $lines[] = "{$n}. {$name}{$hint}";
+        }
+
+        $lines[] = "\nНапишіть номер або уточніть телефон / інвертор / суму.";
+        return implode("\n", $lines);
+    }
+
+    /**
+     * Return true if the message looks like a clarification selection response.
+     * Triggers on: digit, ordinal words, phone fragment, short name hint.
+     */
+    private function looksLikeClarificationResponse(string $lq): bool
+    {
+        // Single digit or "перший"/"другий"/"третій" etc.
+        if (preg_match('/^\s*\d\s*$/', $lq))                                  return true;
+        if (preg_match('/\b(?:перш|друг|трет|четверт|п\'ят)[а-яіїє]*/u', $lq)) return true;
+        // Short message ≤ 30 chars that has a digit or Cyrillic name token
+        if (mb_strlen(trim($lq)) <= 30 && preg_match('/\d|[А-ЯІЇЄҐа-яіїєґ]{4,}/u', $lq)) return true;
+        return false;
+    }
+
+    /**
+     * Try to resolve a clarification: match the user's reply to one candidate.
+     * Returns formatted answer on success, null if ambiguous.
+     */
+    private function resolveClarification(string $lq, array $ctx): ?string
+    {
+        $candidates = $ctx['candidates'];
+        $queryType  = $ctx['query_type'] ?? 'full';
+        $total      = count($candidates);
+
+        // 1. Numeric index: "1", "2", "другий", "перший" …
+        $idx = $this->parseSelectionIndex($lq, $total);
+        if ($idx !== null) {
+            return $this->formatSingleClientAnswer((object)$candidates[$idx], $queryType);
+        }
+
+        // 2. Phone digits fragment (≥4 consecutive digits)
+        if (preg_match('/\d{4,}/', $lq, $dm)) {
+            $fragment = $dm[0];
+            foreach ($candidates as $c) {
+                $digits = preg_replace('/\D/', '', $c['phone_number'] ?? '');
+                if ($digits && str_contains($digits, $fragment)) {
+                    return $this->formatSingleClientAnswer((object)$c, $queryType);
+                }
+            }
+        }
+
+        // 3. Name fragment ≥4 chars that matches exactly one candidate
+        $words = array_filter(
+            preg_split('/\s+/u', trim($lq)) ?: [],
+            fn($w) => mb_strlen($w) >= 4
+        );
+        $matched = [];
+        foreach ($candidates as $i => $c) {
+            $cname = mb_strtolower($c['client_name'] ?? '');
+            foreach ($words as $word) {
+                if (str_contains($cname, mb_strtolower($word))) {
+                    $matched[$i] = $c;
+                    break;
+                }
+            }
+        }
+        if (count($matched) === 1) {
+            return $this->formatSingleClientAnswer((object)reset($matched), $queryType);
+        }
+
+        return null;
+    }
+
+    /**
+     * Parse ordinal / digit selection from user reply.
+     * Returns 0-based index or null.
+     */
+    private function parseSelectionIndex(string $lq, int $total): ?int
+    {
+        // Plain digit
+        if (preg_match('/^\s*(\d+)\s*$/', $lq, $m)) {
+            $n = (int)$m[1];
+            return ($n >= 1 && $n <= $total) ? $n - 1 : null;
+        }
+        // Digit inside a short phrase: "варіант 2", "номер 3", "2й"
+        if (preg_match('/(?:варіант|номер|пункт|number)?\s*(\d+)/u', $lq, $m)) {
+            $n = (int)$m[1];
+            if ($n >= 1 && $n <= $total) return $n - 1;
+        }
+        // Ukrainian ordinals
+        $ordinals = [
+            'перш'  => 1, 'перша' => 1, 'перший' => 1, 'першого' => 1,
+            'друг'  => 2, 'другий'=> 2, 'друга'  => 2, 'другого' => 2,
+            'трет'  => 3, 'третій'=> 3, 'третя'  => 3, 'третього'=> 3,
+            'четверт' => 4,
+            'п\'ят'   => 5, 'пʼят' => 5,
+        ];
+        foreach ($ordinals as $word => $n) {
+            if (str_contains($lq, $word) && $n <= $total) return $n - 1;
         }
         return null;
     }

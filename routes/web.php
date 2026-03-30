@@ -446,8 +446,11 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         Route::post('/cash-transfers', [\App\Http\Controllers\CashTransferController::class, 'store']);
 
         Route::post('/cash-transfers/{id}/accept', [\App\Http\Controllers\CashTransferController::class, 'accept']);
+        Route::post('/cash-transfers/{id}/correct-currency', [\App\Http\Controllers\SalesProjectController::class, 'correctTransferCurrency']);
+        Route::post('/cash-transfers/{id}/cancel-advance', [\App\Http\Controllers\SalesProjectController::class, 'cancelAdvance']);
 
         Route::post('/sales-projects', [\App\Http\Controllers\SalesProjectController::class, 'store']);
+        Route::delete('/sales-projects/{id}', [\App\Http\Controllers\SalesProjectController::class, 'destroy'])->middleware('only.owner');
 
         Route::get('/sales-projects', [\App\Http\Controllers\SalesProjectController::class, 'index']);
 
@@ -1816,13 +1819,15 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
                 // Тип моделі → завжди "Hybrid" для HYB/NEO/LITE/Hybrid
                 $type = 'Hybrid'; // всі відомі варіанти = Hybrid
 
-                // Потужність: 6.0, 8.0, 12K, 10kw, 6k тощо
+                // Потужність: 6.0, 8.0, 12K, 10kw, 6k, або просто число перед HV/LV
                 $power = null;
                 // Спочатку десяткова: 6.0, 8.0 (без K)
                 if (preg_match('/\b(\d+)\.(\d+)\s*(?:-|k(?:w)?)?\b/i', $s, $pm)) {
                     $kw = (int)$pm[1]; // 6.0 → 6, 8.0 → 8
                 } elseif (preg_match('/\b(\d+)\s*k(?:w)?\b/i', $s, $pm)) {
                     $kw = (int)$pm[1];
+                } elseif (preg_match('/\b(\d+)\s+(?:HV|LV)\b/i', $s, $pm)) {
+                    $kw = (int)$pm[1]; // "15 HV", "30 HV" → 15, 30
                 } else {
                     $kw = null;
                 }

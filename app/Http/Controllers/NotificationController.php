@@ -60,7 +60,7 @@ class NotificationController extends Controller
     /** POST /api/push-token  { token } — save FCM token */
     public function savePushToken(Request $request): JsonResponse
     {
-        $request->validate(['token' => ['required', 'string', 'max:512']]);
+        $request->validate(['token' => ['required', 'string', 'max:4096']]);
         DB::table('users')
             ->where('id', auth()->id())
             ->update(['push_token' => $request->input('token')]);

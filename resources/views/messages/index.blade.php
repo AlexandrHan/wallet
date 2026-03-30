@@ -197,6 +197,30 @@ header { position: fixed; z-index: 200; }
   white-space: nowrap;
 }
 
+/* System contact */
+.msg-contact--system {
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  margin-bottom: 4px;
+}
+.msg-c-avatar--system {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+  background: rgba(74,127,165,0.15);
+  border: 1.5px solid rgba(74,127,165,0.4);
+}
+
+/* Read-only input when system chat open */
+#msgInput.readonly {
+  pointer-events: none;
+  opacity: 0;
+  height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
 /* Empty contacts */
 .msg-contacts-empty {
   padding: 40px 20px;
@@ -340,6 +364,34 @@ header { position: fixed; z-index: 200; }
   padding: 3px 12px;
   margin: 10px 0 6px;
   letter-spacing: 0.3px;
+}
+
+/* System notification items */
+.msg-system-item {
+  align-self: stretch;
+  background: rgba(74,127,165,0.08);
+  border: 1px solid rgba(74,127,165,0.2);
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin: 4px 0;
+}
+.msg-system-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #7eaaff;
+  margin-bottom: 4px;
+  letter-spacing: 0.2px;
+}
+.msg-system-body {
+  font-size: 13px;
+  color: rgba(255,255,255,0.75);
+  line-height: 1.5;
+}
+.msg-system-time {
+  font-size: 10px;
+  color: rgba(255,255,255,0.25);
+  margin-top: 5px;
+  text-align: right;
 }
 
 /* Jump to bottom button */
@@ -541,6 +593,40 @@ header { position: fixed; z-index: 200; }
 
       {{-- Contact list --}}
       <div id="msgContactList">
+
+        {{-- ── Системні повідомлення (завжди першим) ── --}}
+        @php
+          $sysTimeLabel = $systemUser->last_at
+            ? \Carbon\Carbon::parse($systemUser->last_at)->diffForHumans(null, true, true)
+            : '';
+          $sysPreview = $systemUser->last_message
+            ? preg_replace('/^\[.*?\]\n/', '', $systemUser->last_message)
+            : null;
+        @endphp
+        <div class="msg-contact msg-contact--system {{ $systemUser->unread_count > 0 ? 'has-unread' : '' }}"
+             data-uid="{{ $systemUser->id }}"
+             onclick="openChat({{ $systemUser->id }}, 'Системні повідомлення', '#4a7fa5', '⚙️', true)"
+             role="button" tabindex="0">
+          <div class="msg-c-avatar msg-c-avatar--system">⚙️</div>
+          <div class="msg-c-info">
+            <div class="msg-c-name">
+              Системні повідомлення
+              @if($systemUser->unread_count > 0)
+              <span class="msg-c-badge">{{ $systemUser->unread_count }}</span>
+              @endif
+            </div>
+            @if($sysPreview)
+            <div class="msg-c-preview">{{ $sysPreview }}</div>
+            @else
+            <div class="msg-c-preview" style="font-style:italic; opacity:.5;">Немає повідомлень</div>
+            @endif
+          </div>
+          @if($sysTimeLabel)
+          <div class="msg-c-time">{{ $sysTimeLabel }}</div>
+          @endif
+        </div>
+
+        {{-- ── Звичайні користувачі ── --}}
         @forelse($users as $u)
         @php
           $avatarBg  = $palette[$u->id % count($palette)];
@@ -690,7 +776,9 @@ header { position: fixed; z-index: 200; }
   });
 
   /* ── open conversation ──────────────────────────────── */
-  window.openChat = function (uid, name, avatarBg, initials) {
+  const SYSTEM_UID = {{ \App\Services\NotificationService::SYSTEM_USER_ID }};
+
+  window.openChat = function (uid, name, avatarBg, initials, isSystem = false) {
     currentUid = uid;
     unreadBelow = 0;
 
@@ -708,20 +796,35 @@ header { position: fixed; z-index: 200; }
       chatHeader.style.display = 'flex';
       document.getElementById('msgChatName').textContent = name;
       const chatAvatar = document.getElementById('msgChatAvatar');
-      chatAvatar.style.background = (avatarBg ?? '#5b8dee') + '20';
-      chatAvatar.style.color      = avatarBg ?? '#5b8dee';
-      chatAvatar.style.border     = '1.5px solid ' + (avatarBg ?? '#5b8dee') + '40';
-      chatAvatar.textContent      = initials ?? name.charAt(0);
+      if (isSystem) {
+        chatAvatar.style.background = 'rgba(74,127,165,0.15)';
+        chatAvatar.style.color      = '#4a7fa5';
+        chatAvatar.style.border     = '1.5px solid rgba(74,127,165,0.4)';
+        chatAvatar.textContent      = '⚙️';
+        chatAvatar.style.fontSize   = '20px';
+      } else {
+        chatAvatar.style.background = (avatarBg ?? '#5b8dee') + '20';
+        chatAvatar.style.color      = avatarBg ?? '#5b8dee';
+        chatAvatar.style.border     = '1.5px solid ' + (avatarBg ?? '#5b8dee') + '40';
+        chatAvatar.textContent      = initials ?? name.charAt(0);
+        chatAvatar.style.fontSize   = '';
+      }
     }
 
-    // Show chat UI
+    // Show chat UI, hide/show input depending on system mode
     document.getElementById('msgEmpty').style.display   = 'none';
     document.getElementById('msgHistory').style.display = 'flex';
-    document.getElementById('msgInput').style.display   = 'flex';
+    const inputEl = document.getElementById('msgInput');
+    if (isSystem) {
+      inputEl.classList.add('readonly');
+    } else {
+      inputEl.classList.remove('readonly');
+      inputEl.style.display = 'flex';
+      document.getElementById('msgText').focus();
+    }
 
     loadHistory();
-    subscribeToChat(uid);
-    document.getElementById('msgText').focus();
+    if (!isSystem) subscribeToChat(uid);
   };
 
   /* ── load history ───────────────────────────────────── */
@@ -747,6 +850,8 @@ header { position: fixed; z-index: 200; }
       return;
     }
 
+    const isSystemChat = currentUid === SYSTEM_UID;
+
     let lastDate = null;
     const html = msgs.map(m => {
       const mine  = m.from_user_id === meId;
@@ -756,6 +861,20 @@ header { position: fixed; z-index: 200; }
         divider = `<div class="msg-date-divider">${mDate}</div>`;
         lastDate = mDate;
       }
+
+      if (isSystemChat) {
+        // Системне повідомлення: розбиваємо [Заголовок]\nТекст
+        const raw   = m.message || '';
+        const match = raw.match(/^\[(.+?)\]\n([\s\S]*)$/);
+        const title = match ? match[1] : '';
+        const body  = match ? match[2] : raw;
+        return divider + `<div class="msg-system-item">
+          ${title ? `<div class="msg-system-title">${esc(title)}</div>` : ''}
+          <div class="msg-system-body">${esc(body).replace(/\n/g,'<br>')}</div>
+          <div class="msg-system-time">${timeStr(m.created_at)}</div>
+        </div>`;
+      }
+
       return divider + `<div class="${mine ? 'msg-mine-wrap' : 'msg-their-wrap'}">
         <div class="msg-bubble ${mine ? 'mine' : 'theirs'}">${esc(m.message).replace(/\n/g,'<br>')}</div>
         <div class="msg-time" style="text-align:${mine ? 'right' : 'left'}">${timeStr(m.created_at)}</div>
@@ -831,7 +950,6 @@ header { position: fixed; z-index: 200; }
           badge.textContent = parseInt(badge.textContent || '0') + 1;
           row.classList.add('has-unread');
         }
-        console.log('[Chat] WS NewMessage from uid=' + m.from_user_id + ' — playing chat.mp3');
         window._sgPlaySound && window._sgPlaySound('/sounds/chat.mp3');
       }
     });

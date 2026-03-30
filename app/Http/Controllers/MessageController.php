@@ -15,13 +15,16 @@ class MessageController extends Controller
     /** GET /messages — chat UI */
     public function index()
     {
+        $myId = auth()->id();
+
+        // Regular users (exclude self and system user)
         $users = DB::table('users')
-            ->where('id', '!=', auth()->id())
+            ->where('id', '!=', $myId)
+            ->where('role', '!=', 'system')
             ->orderBy('name')
             ->get(['id', 'name', 'role', 'avatar_path']);
 
-        // Attach unread count per user
-        $myId   = auth()->id();
+        // Unread count per sender
         $unread = DB::table('messages')
             ->where('to_user_id', $myId)
             ->whereNull('read_at')
@@ -48,7 +51,21 @@ class MessageController extends Controller
         // Sort: users with recent messages first
         $users = $users->sortByDesc('last_at')->values();
 
-        return view('messages.index', compact('users'));
+        // System messages — always first
+        $sysId      = \App\Services\NotificationService::SYSTEM_USER_ID;
+        $sysUnread  = $unread[$sysId] ?? 0;
+        $sysLastMsg = $lastMsg[$sysId] ?? null;
+        $systemUser = (object) [
+            'id'           => $sysId,
+            'name'         => 'Системні повідомлення',
+            'role'         => 'system',
+            'avatar_path'  => null,
+            'unread_count' => $sysUnread,
+            'last_message' => $sysLastMsg ? mb_substr($sysLastMsg->message, 0, 60) : null,
+            'last_at'      => $sysLastMsg?->created_at,
+        ];
+
+        return view('messages.index', compact('users', 'systemUser'));
     }
 
     /** GET /api/messages/{userId} — conversation history */
@@ -95,6 +112,11 @@ class MessageController extends Controller
         $toId    = (int) $request->input('to_user_id');
         $text    = trim($request->input('message'));
         $me      = auth()->user();
+
+        // Системному юзеру не можна писати
+        if ($toId === \App\Services\NotificationService::SYSTEM_USER_ID) {
+            return response()->json(['error' => 'readonly'], 403);
+        }
 
         $id = DB::table('messages')->insertGetId([
             'from_user_id' => $myId,

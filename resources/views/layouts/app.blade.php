@@ -86,7 +86,6 @@
                          .catch(() => { a.muted = false; });
               } catch {}
             });
-            console.log('[Sound] audio unlocked');
           }
 
           ['click', 'keydown'].forEach(ev => document.addEventListener(ev, _unlock, { once: true }));
@@ -103,29 +102,16 @@
 
           window._sgPlaySound = function (src, vol) {
             const now = Date.now();
-            // 2-second dedup: prevents double-play when WS + FCM arrive for same event
-            if (now - _lastAt < 2000) {
-              console.log('[Sound] dedup skip (' + Math.round((now - _lastAt)/100)/10 + 's ago):', src);
-              return;
-            }
+            if (now - _lastAt < 2000) return; // dedup: WS + FCM same event
             _lastAt = now;
             window._sgLastSoundAt = now;
-            const caller = new Error().stack?.split('\n')[2]?.trim() ?? '?';
-            console.log('[Sound] PLAY:', src, '| from:', caller);
             const a = _elem(src);
             if (!a) return;
             try {
               a.volume = vol ?? 0.85;
               a.currentTime = 0;
-              a.play().catch(e => {
-                // Autoplay still blocked — likely no user gesture yet
-                console.warn('[Sound] blocked:', e.message, '— unlock on next gesture');
-                _lastAt = 0; // allow retry
-              });
-            } catch (e) {
-              console.warn('[Sound] error:', e.message);
-              _lastAt = 0;
-            }
+              a.play().catch(e => { _lastAt = 0; }); // allow retry if blocked
+            } catch { _lastAt = 0; }
           };
         })();
         </script>

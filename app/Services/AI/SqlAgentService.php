@@ -20,14 +20,17 @@ class SqlAgentService
     // -------------------------------------------------------------------------
     private const SCHEMA = <<<'S'
 SQLite tables (SolarGlass ERP):
-sales_projects(id,client_name,total_amount,currency,status,construction_status,defects_note,panel_qty,battery_qty,electrician,installation_team,created_at,closed_at)
-  -- construction_status: has_deficiencies|deficiencies_fixed|salary_paid|NULL; no deleted_at column
+sales_projects(id,client_name,phone_number,total_amount,advance_amount,remaining_amount,currency,status,construction_status,defects_note,inverter,panel_name,panel_qty,battery_name,battery_qty,electrician,installation_team,created_at,closed_at,cancelled_at)
+  -- construction_status: has_deficiencies|deficiencies_fixed|salary_paid|NULL
+  -- For Ukrainian client names always use LIKE: WHERE LOWER(client_name) LIKE '%keyword%'
+  -- Names may be in genitive form (e.g. "Петрова" -> search '%петров%', "Іваненка" -> '%іваненк%')
+  -- Skip cancelled projects: WHERE cancelled_at IS NULL
 entries(id,wallet_id,posting_date,entry_type,amount,title,comment,created_at)
   -- entry_type: income|expense|reversal
 wallets(id,name,currency,type,is_active)
   -- no balance column; compute: SUM(CASE WHEN entry_type='income' THEN amount ELSE -amount END)
 solarglass_stock(id,item_code,item_name,qty)
-salary_accruals(id,project_id,user_id,staff_name,amount,currency,status,paid_at,created_at)
+salary_accruals(id,project_id,user_id,staff_name,staff_group,amount,currency,status,paid_at,created_at)
   -- status: pending|paid
 quality_checks(id,project_id,status,deficiencies,created_at)
   -- status: pending|has_deficiencies|deficiencies_fixed|approved
@@ -129,7 +132,7 @@ S;
                 'model'  => $model,
                 'stream' => false,
                 'messages' => [
-                    ['role' => 'system', 'content' => 'Return ONLY a SQLite SELECT statement. No explanation, no markdown. Return NULL if unsure.'],
+                    ['role' => 'system', 'content' => 'You are a SQLite expert for a Ukrainian ERP. Return ONLY a SELECT statement. No explanation, no markdown, no backticks. Return NULL if unsure. For Ukrainian names use LIKE: WHERE LOWER(client_name) LIKE \'%keyword%\'. Names may be in genitive case — strip last 1-2 chars for the search stem. Always exclude cancelled: WHERE cancelled_at IS NULL.'],
                     ['role' => 'user',   'content' => self::SCHEMA . "\n\nQuestion: {$question}\nSQL:"],
                 ],
             ]);
@@ -266,6 +269,12 @@ S;
             'qty'                  => 'К-сть',
             'item_code'            => 'Код',
             'item_name'            => 'Назва',
+            'inverter'             => 'Інвертор',
+            'panel_name'           => 'Панелі (модель)',
+            'battery_name'         => 'АКБ (модель)',
+            'phone_number'         => 'Телефон',
+            'remaining_amount'     => 'Залишок оплати',
+            'advance_amount'       => 'Аванс',
             'staff_name'           => 'Співробітник',
             'staff_group'          => 'Група',
             'entry_type'           => 'Тип',

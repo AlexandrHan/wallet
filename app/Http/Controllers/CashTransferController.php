@@ -101,13 +101,14 @@ class CashTransferController extends Controller
                     'updated_at'   => now(),
                 ]);
 
-                // 2️⃣ Додаємо income в кеш
+                // 2️⃣ Додаємо income в кеш власника (позначаємо як зовнішню — від НТВ)
                 DB::table('entries')->insert([
                     'wallet_id'    => $wallet->id,
                     'entry_type'   => 'income',
                     'amount'       => $transfer->amount,
                     'comment'      => 'Аванс: ' . (\App\Models\SalesProject::find($transfer->project_id)->client_name ?? ''),
                     'posting_date' => date('Y-m-d'),
+                    'source'       => 'ntv_transfer',
                     'created_at'   => now(),
                     'updated_at'   => now(),
                 ]);

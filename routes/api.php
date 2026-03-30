@@ -1380,6 +1380,7 @@ Route::middleware(['web', 'auth'])->get('/wallets/{walletId}/entries', function 
                 'receipt_path'     => $e->receipt_path,
                 'receipt_url'      => $e->receipt_path ? Storage::disk('public')->url($e->receipt_path) : null,
                 'cash_transfer_id' => isset($e->cash_transfer_id) ? (int)$e->cash_transfer_id : null,
+                'source'           => $e->source ?? null,
             ];
 
         });
@@ -1437,97 +1438,149 @@ if (!function_exists('erpCashAccount')) {
 
 
 
-Route::put('/entries/{id}', function (int $id, \Illuminate\Http\Request $request) {
-
-    $entry = DB::table('entries')->where('id', $id)->first();
-
-    if (! $entry) {
-        return response()->json(['message' => 'Entry not found'], 404);
-    }
-
-    // ❌ Заборона редагування не сьогоднішніх
-    if ($entry->posting_date !== now()->toDateString()) {
+// ── Хелпер: перевірка що операція від НТВ і запит від owner ─────────────────
+if (!function_exists('denyIfNtvTransfer')) {
+function denyIfNtvTransfer($entry, $user): ?\Illuminate\Http\JsonResponse {
+    if (($entry->source ?? '') === 'ntv_transfer' && optional($user)->role === 'owner') {
         return response()->json([
-            'message' => 'Редагування дозволено тільки в день створення'
+            'message' => 'Ця операція отримана від НТВ і не може бути змінена. Використовуйте коригуючу операцію.'
         ], 403);
     }
+    return null;
+}
+} // end if !function_exists('denyIfNtvTransfer')
 
-    $data = $request->validate([
-        'amount'  => 'required|numeric|min:0.01',
-        'comment' => 'nullable|string',
-    ]);
+// ── Хелпер: сповіщення Hlushchenko про зміни в операціях ─────────────────────
+if (!function_exists('notifyHlushchenko')) {
+function notifyHlushchenko(string $title, string $body, array $data = []): void {
+    $actor = optional(auth()->user())->actor;
+    if ($actor === 'hlushchenko') return; // не сповіщати самого себе
 
-    DB::table('entries')
-        ->where('id', $id)
-        ->update([
-            'amount'     => $data['amount'],
-            'comment'    => $data['comment'],
-            'updated_at' => now(),
+    $hlushchenko = DB::table('users')->where('actor', 'hlushchenko')->first(['id']);
+    if (!$hlushchenko) return;
+
+    // Дедуплікація: пропускаємо якщо таке саме сповіщення вже є за останні 30 секунд
+    $duplicate = DB::table('notifications')
+        ->where('user_id', $hlushchenko->id)
+        ->where('title', $title)
+        ->where('message', $body)
+        ->where('created_at', '>=', now()->subSeconds(30))
+        ->exists();
+    if ($duplicate) return;
+
+    try {
+        app(\App\Services\NotificationService::class)->send(
+            (int) $hlushchenko->id,
+            $title,
+            $body,
+            'system',
+            $data
+        );
+    } catch (\Throwable $e) {
+        \Illuminate\Support\Facades\Log::error('notifyHlushchenko: ' . $e->getMessage());
+    }
+}
+} // end if !function_exists('notifyHlushchenko')
+
+Route::middleware(['web', 'auth'])->group(function () {
+
+    Route::put('/entries/{id}', function (int $id, \Illuminate\Http\Request $request) {
+
+        $entry = DB::table('entries')->where('id', $id)->first();
+
+        if (! $entry) {
+            return response()->json(['message' => 'Entry not found'], 404);
+        }
+
+        if ($denied = denyIfNtvTransfer($entry, auth()->user())) return $denied;
+
+        // ❌ Заборона редагування не сьогоднішніх
+        if ($entry->posting_date !== now()->toDateString()) {
+            return response()->json([
+                'message' => 'Редагування дозволено тільки в день створення'
+            ], 403);
+        }
+
+        $data = $request->validate([
+            'amount'  => 'required|numeric|min:0.01',
+            'comment' => 'nullable|string',
         ]);
 
-    return response()->json(['ok' => true]);
-});
+        $oldAmount  = (float) $entry->amount;
+        $newAmount  = (float) $data['amount'];
+        $wallet     = DB::table('wallets')->where('id', $entry->wallet_id)->first(['name', 'currency']);
+        $currency   = $wallet->currency ?? '?';
+        $walletName = $wallet->name ?? "#{$entry->wallet_id}";
 
+        DB::table('entries')
+            ->where('id', $id)
+            ->update([
+                'amount'        => $newAmount,
+                'comment'       => $data['comment'],
+                'erp_synced_at' => null,
+                'updated_at'    => now(),
+            ]);
 
+        $user = auth()->user();
+        notifyHlushchenko(
+            '⚠️ Зміна фінансової операції',
+            implode("\n", [
+                "👤 Хто: {$user->name}",
+                "📍 Гаманець: {$walletName}",
+                "🔧 Дія: Редагування суми",
+                "💰 Було: " . number_format($oldAmount, 2, '.', ' ') . " {$currency}",
+                "💰 Стало: " . number_format($newAmount, 2, '.', ' ') . " {$currency}",
+                "📅 Час: " . now()->format('d.m.Y H:i'),
+            ]),
+            ['entry_id' => $id]
+        );
 
-Route::delete('/entries/{id}', function (int $id) {
+        return response()->json(['ok' => true]);
+    });
 
-    $entry = DB::table('entries')->where('id', $id)->first();
+    Route::delete('/entries/{id}', function (int $id) {
 
-    if (! $entry) {
-        return response()->json(['message' => 'Entry not found'], 404);
-    }
+        $entry = DB::table('entries')->where('id', $id)->first();
 
-    // /////❌ Заборона видалення не сьогоднішніх
-    if ($entry->posting_date !== now()->toDateString()) {
-        return response()->json([
-            'message' => 'Видалення дозволено тільки в день створення'
-        ], 403);
-    }
+        if (! $entry) {
+            return response()->json(['message' => 'Entry not found'], 404);
+        }
 
-    DB::table('entries')->where('id', $id)->delete();
+        if ($denied = denyIfNtvTransfer($entry, auth()->user())) return $denied;
 
-    return response()->json(['ok' => true]);
-});
+        // ❌ Заборона видалення не сьогоднішніх
+        if ($entry->posting_date !== now()->toDateString()) {
+            return response()->json([
+                'message' => 'Видалення дозволено тільки в день створення'
+            ], 403);
+        }
 
+        $amount     = (float) $entry->amount;
+        $entryType  = $entry->entry_type;
+        $comment    = $entry->comment ?? '';
+        $wallet     = DB::table('wallets')->where('id', $entry->wallet_id)->first(['name', 'currency']);
+        $currency   = $wallet->currency ?? '?';
+        $walletName = $wallet->name ?? "#{$entry->wallet_id}";
 
-Route::put('/entries/{id}', function (Request $request, int $id) {
+        DB::table('entries')->where('id', $id)->delete();
 
-    $entry = DB::table('entries')->where('id', $id)->first();
-    if (!$entry) {
-        return response('Not found', 404);
-    }
+        $user = auth()->user();
+        notifyHlushchenko(
+            '❌ Видалено фінансову операцію',
+            implode("\n", array_filter([
+                "👤 Хто: {$user->name}",
+                "📍 Гаманець: {$walletName}",
+                "🔧 Тип: " . ($entryType === 'income' ? 'Дохід' : 'Витрата'),
+                "💰 Сума: " . number_format($amount, 2, '.', ' ') . " {$currency}",
+                ($comment ? "📝 Коментар: {$comment}" : null),
+                "📅 Час: " . now()->format('d.m.Y H:i'),
+            ])),
+            ['entry_id' => $id]
+        );
 
-    // ❌ НЕ МОЖНА редагувати не сьогоднішні
-    if ($entry->posting_date !== date('Y-m-d')) {
-        return response('Редагування заборонено', 403);
-    }
+        return response()->json(['ok' => true]);
+    });
 
-    DB::table('entries')->where('id', $id)->update([
-        'amount'        => $request->amount,
-        'comment'       => $request->comment,
-        'erp_synced_at' => null, // ⬅️ ОБОВʼЯЗКОВО
-        'updated_at'    => now(),
-    ]);
-
-    return ['ok' => true];
-}); 
-
-
-Route::delete('/entries/{id}', function (int $id) {
-
-    $entry = DB::table('entries')->where('id', $id)->first();
-    if (!$entry) {
-        return response('Not found', 404);
-    }
-
-    if ($entry->posting_date !== date('Y-m-d')) {
-        return response('Видалення заборонено', 403);
-    }
-
-    DB::table('entries')->where('id', $id)->delete();
-
-    return ['ok' => true];
 });
 
 

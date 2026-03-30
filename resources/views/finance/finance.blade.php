@@ -75,6 +75,28 @@
   </div>
 </div>
 
+{{-- ── Модалка виправлення валюти ─────────────────────────────── --}}
+<div id="correctCurrencyModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); align-items:center; justify-content:center; z-index:1000;">
+  <div style="background:#111; padding:20px; border-radius:10px; width:320px;">
+    <div style="font-weight:600; margin-bottom:4px;">✏️ Виправити валюту</div>
+    <div id="correctCurrencyOldInfo" style="font-size:12px; opacity:.65; margin-bottom:14px;"></div>
+
+    <label style="font-size:12px; opacity:.75; display:block; margin-bottom:4px;">Правильна сума</label>
+    <input id="correctAmount" type="number" class="btn" placeholder="Сума" step="0.01" min="0.01"
+      style="width:100%; margin-bottom:10px;">
+
+    <label style="font-size:12px; opacity:.75; display:block; margin-bottom:4px;">Правильна валюта</label>
+    <select id="correctCurrency" class="btn" style="width:100%; margin-bottom:16px;">
+      <option value="USD">USD</option>
+      <option value="UAH">UAH</option>
+      <option value="EUR">EUR</option>
+    </select>
+
+    <button id="saveCorrectBtn" class="btn" style="width:100%; margin-bottom:8px; background:#1a5c2e;">Зберегти виправлення</button>
+    <button id="closeCorrectBtn" class="btn" style="width:100%; background:#333;">Скасувати</button>
+  </div>
+</div>
+
 <div id="advanceModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); align-items:center; justify-content:center;">
   <div style="background:#111; padding:20px; border-radius:10px; width:320px;">
 
@@ -105,6 +127,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   const AUTH_USER = @json(auth()->user());
   const IS_OWNER = AUTH_USER && AUTH_USER.role === 'owner';
+  const IS_HLUSHCHENKO = AUTH_USER && AUTH_USER.actor === 'hlushchenko';
   const LEAD_MANAGER_OPTIONS = @json($leadManagers);
 
   const formatMoney = (value, currency) => {
@@ -124,7 +147,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const v = localStorage.getItem(OPEN_KEY);
     return v ? Number(v) : null;
   };
-  const POLL_MS = 4000;
+  const POLL_MS = 20000;
   let isProjectsLoading = false;
   let pendingRefresh = false;
   let projectsPollTimer = null;
@@ -141,8 +164,9 @@ document.addEventListener('DOMContentLoaded', function () {
     const focusSel = focusedClass ? [focusedEl.selectionStart, focusedEl.selectionEnd] : null;
 
     const openId = getOpenProject();
-    const isPaidOpen = localStorage.getItem(OPEN_PAID_KEY) === '1';
-    const isActiveOpen = localStorage.getItem(OPEN_ACTIVE_KEY) === '1';
+    const isPaidOpen   = localStorage.getItem(OPEN_PAID_KEY) === '1';
+    // Default: секція "Проавансовані" відкрита, якщо користувач явно не закрив ('0')
+    const isActiveOpen = localStorage.getItem(OPEN_ACTIVE_KEY) !== '0';
     const paidQuery = (localStorage.getItem(SEARCH_PAID_KEY) || '').trim();
     const activeQuery = (localStorage.getItem(SEARCH_ACTIVE_KEY) || '').trim();
     container.innerHTML = '';
@@ -162,9 +186,15 @@ document.addEventListener('DOMContentLoaded', function () {
       const remaining = toNum(p.remaining_amount);
       return total > 0 && paid >= total && remaining <= 0;
     };
+    const hasPending = (p) => (p.transfers || []).some(t => t.status === 'pending');
     const allActiveProjects = (projects || [])
       .filter(p => !isPaidProject(p))
-      .sort(byName);
+      .sort((a, b) => {
+        const ap = hasPending(a) ? 1 : 0;
+        const bp = hasPending(b) ? 1 : 0;
+        if (bp !== ap) return bp - ap; // pending — вгорі
+        return byName(a, b);           // решта — за алфавітом
+      });
     const allPaidProjects = (projects || [])
       .filter(p => isPaidProject(p))
       .sort(byName);
@@ -237,41 +267,63 @@ document.addEventListener('DOMContentLoaded', function () {
             const todayFormatted = today.toLocaleDateString('uk-UA');
             const isToday = t.created_at.startsWith(todayFormatted);
 
+            const isCancelled = t.status === 'cancelled';
+            // "Виправити валюту" — лише для активних (не cancelled)
+            const canCorrect = !isCancelled && (t.status === 'pending' || IS_OWNER);
+            // "Скасувати" — лише pending
+            const canCancel  = t.status === 'pending';
+
             const statusBlock = t.status === 'accepted'
               ? `— ✅ Прийнято`
+              : isCancelled
+              ? `— <span style="color:#888;">🔴 Не активно</span>`
               : `
                   — ⏳ В очікуванні
                   ${canAccept ? `
-                    <button 
+                    <button
                       class="btn accept-advance-btn"
                       data-id="${t.id}"
                       style="margin-top:6px; width:100%;">
                       ✔ Прийняти
                     </button>
                   ` : ''}
-                  ${isToday ? `
-                      <button 
-                        class="btn edit-advance-btn hidden-edit-btn"
-                        data-id="${t.id}"
-                        data-amount="${t.amount}"
-                        style="margin-top:6px; width:100%; background:#333; display:none;">
-                        ✏️ Редагувати
-                      </button>
-                  ` : ''} 
+                  ${canCancel ? `
+                    <button
+                      class="btn cancel-advance-btn"
+                      data-id="${t.id}"
+                      data-amount="${t.amount}"
+                      data-currency="${t.currency}"
+                      style="margin-top:4px; width:100%; background:#4a1a1a; font-size:12px;">
+                      ❌ Скасувати
+                    </button>
+                  ` : ''}
                 `;
 
+            const correctBtn = canCorrect ? `
+              <button
+                class="btn correct-currency-btn"
+                data-id="${t.id}"
+                data-amount="${t.amount}"
+                data-currency="${t.currency}"
+                data-status="${t.status}"
+                style="margin-top:6px; width:100%; background:#2a3a55; font-size:12px;">
+                ✏️ Виправити валюту
+              </button>
+            ` : '';
+
             return `
-              <div 
+              <div
                 class="advance-card"
                 data-transfer-id="${t.id}"
-                style="margin-top:5px; padding:8px; background:#111; border-radius:6px; cursor:pointer;">
+                style="margin-top:5px; padding:8px; background:#111; border-radius:6px; cursor:pointer; ${isCancelled ? 'opacity:.45;' : ''}">
                 <div>
                   ${formatMoney(t.amount, t.currency)} ${statusBlock}
                 </div>
                 <div style="font-size:12px; opacity:.6;">
                   ${t.created_at}
                 </div>
-                ${convertedInfo}
+                ${isCancelled ? '' : convertedInfo}
+                ${correctBtn}
               </div>
             `;
         }).join('');
@@ -361,6 +413,14 @@ document.addEventListener('DOMContentLoaded', function () {
               ${transferButtonsHtml}
             ` : ``}
 
+            ${IS_HLUSHCHENKO ? `
+              <hr style="margin-top:16px;">
+              <button class="btn delete-project-btn" data-id="${p.id}" data-name="${p.client_name.replace(/"/g,'&quot;')}"
+                style="width:100%; background:#8b1a1a; color:#fff; margin-top:8px;">
+                🗑 Видалити проект
+              </button>
+            ` : ``}
+
           </div>
         `;
 
@@ -373,6 +433,8 @@ document.addEventListener('DOMContentLoaded', function () {
         if (isOpen) {
           details.style.display = 'none';
           localStorage.removeItem(OPEN_KEY);
+          // Refresh data now that the card is closed (may have been deferred during polling)
+          window.refreshSalesProjects?.();
         } else {
           details.style.display = 'block';
           rememberOpenProject(p.id);
@@ -383,6 +445,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const details = card.querySelector('.project-details');
         if (details) details.style.display = 'block';
       }
+
 
       return card;
     }
@@ -495,6 +558,11 @@ document.addEventListener('DOMContentLoaded', function () {
     return fetch('/api/sales-projects?layer=finance')
       .then(r => r.json())
       .then(projects => {
+        // Do not rebuild DOM during background polls if the user has a card open —
+        // it would visually close the card. Refresh will happen when the card closes.
+        if (silent && getOpenProject()) {
+          return; // не встановлюємо pendingRefresh — інакше .finally одразу запускає ще один рендер
+        }
         renderProjects(projects);
       })
       .catch(err => {
@@ -800,6 +868,132 @@ document.addEventListener('click', function(e){
   });
 });
 
+
+// ===== Виправлення валюти авансу =====
+(function () {
+  const modal    = document.getElementById('correctCurrencyModal');
+  const oldInfo  = document.getElementById('correctCurrencyOldInfo');
+  const amountEl = document.getElementById('correctAmount');
+  const curEl    = document.getElementById('correctCurrency');
+  const saveBtn  = document.getElementById('saveCorrectBtn');
+  const closeBtn = document.getElementById('closeCorrectBtn');
+  let currentTransferId = null;
+
+  document.addEventListener('click', function (e) {
+    const btn = e.target.closest('.correct-currency-btn');
+    if (!btn) return;
+
+    currentTransferId = btn.dataset.id;
+    const oldAmount   = btn.dataset.amount;
+    const oldCurrency = btn.dataset.currency;
+    const status      = btn.dataset.status;
+
+    oldInfo.textContent = `Поточно: ${Number(oldAmount).toLocaleString('uk-UA')} ${oldCurrency} (${status === 'accepted' ? 'Прийнято' : 'В очікуванні'})`;
+    amountEl.value = oldAmount;
+
+    // Pre-select the other common currency
+    const options = ['USD', 'UAH', 'EUR'];
+    curEl.value = options.find(c => c !== oldCurrency) || oldCurrency;
+
+    modal.style.display = 'flex';
+  });
+
+  closeBtn.addEventListener('click', () => { modal.style.display = 'none'; currentTransferId = null; });
+  modal.addEventListener('click', e => { if (e.target === modal) { modal.style.display = 'none'; currentTransferId = null; } });
+
+  saveBtn.addEventListener('click', function () {
+    if (!currentTransferId) return;
+
+    const newAmount   = parseFloat(amountEl.value);
+    const newCurrency = curEl.value;
+
+    if (!newAmount || newAmount <= 0) {
+      alert('Введіть правильну суму');
+      return;
+    }
+
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Збереження…';
+
+    fetch(`/api/cash-transfers/${currentTransferId}/correct-currency`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+      },
+      body: JSON.stringify({ new_currency: newCurrency, new_amount: newAmount })
+    })
+    .then(r => r.json())
+    .then(res => {
+      if (res.ok) {
+        modal.style.display = 'none';
+        currentTransferId = null;
+        window.refreshSalesProjects?.();
+      } else {
+        alert(res.error || 'Помилка виправлення');
+      }
+    })
+    .catch(() => alert('Помилка мережі'))
+    .finally(() => {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Зберегти виправлення';
+    });
+  });
+})();
+
+// ===== Скасувати помилковий аванс =====
+document.addEventListener('click', function(e){
+  const btn = e.target.closest('.cancel-advance-btn');
+  if(!btn) return;
+
+  const id       = btn.dataset.id;
+  const amount   = btn.dataset.amount;
+  const currency = btn.dataset.currency;
+
+  if(!confirm(`Скасувати аванс ${Number(amount).toLocaleString('uk-UA')} ${currency}?\nБаланс буде автоматично скоригований.`)) return;
+
+  btn.disabled = true;
+
+  fetch(`/api/cash-transfers/${id}/cancel-advance`, {
+    method: 'POST',
+    headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content }
+  })
+  .then(r => r.json())
+  .then(res => {
+    if(res.ok){
+      window.refreshSalesProjects?.();
+    } else {
+      alert(res.error || 'Помилка скасування');
+      btn.disabled = false;
+    }
+  })
+  .catch(() => { alert('Помилка мережі'); btn.disabled = false; });
+});
+
+document.addEventListener('click', function(e){
+  if(!e.target.classList.contains('delete-project-btn')) return;
+
+  const id   = e.target.dataset.id;
+  const name = e.target.dataset.name;
+
+  if(!confirm(`Видалити проект "${name}"?\nЦю дію неможливо скасувати.`)) return;
+
+  fetch(`/api/sales-projects/${id}`, {
+    method: 'DELETE',
+    headers: {
+      'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+    }
+  })
+  .then(r => r.json())
+  .then(res => {
+    if(res.ok){
+      window.refreshSalesProjects?.();
+    } else {
+      alert(res.error || 'Помилка видалення');
+    }
+  })
+  .catch(() => alert('Помилка мережі'));
+});
 
 (() => {
   ///////////////////////////////////////////////////////////////

@@ -259,6 +259,7 @@ class SalesProjectController extends Controller
             'is_retail'        => (bool)($data['is_retail'] ?? false),
             'created_by'       => auth()->id(),
             'status'           => 'active',
+            'source_layer'     => 'finance',
         ]);
 
         // Якщо є аванс — створюємо pending transfer (старе/необов’язкове, залишаю як у тебе)
@@ -355,23 +356,30 @@ class SalesProjectController extends Controller
 
         $layer = trim((string) $request->query('layer', ''));
 
-        $projectsQuery = SalesProject::query();
+        $projectsQuery = SalesProject::query()->where('sales_projects.status', '!=', 'cancelled');
         if ($layer === 'finance') {
-            $projectsQuery->where(function ($q) {
-                $q->where('source_layer', 'finance')
-                    ->orWhereNull('source_layer');
-            });
+            // Show projects that are either:
+            // 1. Manually created (source_layer='finance', no amo link yet)
+            // 2. Synced from AmoCRM and currently in a finance stage
+            if ($amoComplectationByProjectId->isNotEmpty() && !empty($financeStageIds)) {
+                $projectsQuery
+                    ->leftJoin('amo_complectation_projects', 'amo_complectation_projects.wallet_project_id', '=', 'sales_projects.id')
+                    ->where(function ($q) use ($financeStageIds) {
+                        // Has amo link in a finance stage
+                        $q->whereIn('amo_complectation_projects.status_id', $financeStageIds)
+                          // OR no amo link but explicitly created in finance layer
+                          ->orWhere(function ($q2) {
+                              $q2->whereNull('amo_complectation_projects.wallet_project_id')
+                                 ->where('sales_projects.source_layer', 'finance');
+                          });
+                    })
+                    ->select('sales_projects.*');
+            } else {
+                // Fallback: amo table empty or no finance stage IDs configured — show only explicitly tagged
+                $projectsQuery->where('sales_projects.source_layer', 'finance');
+            }
         } elseif ($layer === 'projects') {
             $projectsQuery->where('source_layer', 'projects');
-        }
-
-        // Join amo_complectation_projects for finance layer, restricted to finance stages only.
-        // Stages 142 (Успішно реалізовано) and 143 (Закрито) are intentionally excluded.
-        if ($layer === 'finance' && $amoComplectationByProjectId->isNotEmpty()) {
-            $projectsQuery
-                ->join('amo_complectation_projects', 'amo_complectation_projects.wallet_project_id', '=', 'sales_projects.id')
-                ->whereIn('amo_complectation_projects.status_id', $financeStageIds)
-                ->select('sales_projects.*');
         }
 
         // Worker mode: only load this worker's assigned, non-completed projects
@@ -1113,6 +1121,416 @@ class SalesProjectController extends Controller
                 'status' => $project->status,
             ],
         ]);
+    }
+
+    public function cancelAdvance($id): \Illuminate\Http\JsonResponse
+    {
+        $transfer = DB::table('cash_transfers')->where('id', $id)->first();
+        if (!$transfer) {
+            return response()->json(['error' => 'Аванс не знайдено'], 404);
+        }
+        if ($transfer->status !== 'pending') {
+            return response()->json(['error' => 'Скасувати можна лише аванс у статусі "В очікуванні"'], 422);
+        }
+
+        // Гаманець де осіли гроші (pending → from_wallet НТВ)
+        $walletId = $transfer->from_wallet_id;
+        if (!$walletId) {
+            return response()->json(['error' => 'Гаманець не знайдено'], 422);
+        }
+
+        $user = auth()->user();
+        $now  = now();
+
+        DB::transaction(function () use ($transfer, $walletId, $user, $now) {
+            // Знайти оригінальний income entry
+            $originalEntry = DB::table('entries')
+                ->where('wallet_id', $walletId)
+                ->where('entry_type', 'income')
+                ->where('amount', $transfer->amount)
+                ->whereNull('reversal_of_id')
+                ->whereNotExists(function ($q) {
+                    $q->from('entries as rev')
+                      ->whereColumn('rev.reversal_of_id', 'entries.id');
+                })
+                ->orderByDesc('created_at')
+                ->first(['id']);
+
+            // Створити reversal expense
+            DB::table('entries')->insert([
+                'wallet_id'      => $walletId,
+                'entry_type'     => 'expense',
+                'amount'         => $transfer->amount,
+                'comment'        => 'Скасування помилкового авансу',
+                'posting_date'   => $now->format('Y-m-d'),
+                'reversal_of_id' => $originalEntry?->id,
+                'created_by'     => $user->id,
+                'created_at'     => $now,
+                'updated_at'     => $now,
+            ]);
+
+            // Скасувати transfer
+            DB::table('cash_transfers')
+                ->where('id', $transfer->id)
+                ->update([
+                    'status'       => 'cancelled',
+                    'cancelled_at' => $now,
+                    'cancelled_by' => $user->id,
+                ]);
+        });
+
+        // Сповіщення Hlushchenko — якщо дію виконав не він
+        if ($user->actor !== 'hlushchenko') {
+            $project = $transfer->project_id
+                ? DB::table('sales_projects')->where('id', $transfer->project_id)->first(['client_name'])
+                : null;
+
+            $notifTitle = '❌ Скасовано аванс';
+            $notifBody  = implode("\n", [
+                "👤 Хто: {$user->name}",
+                "📍 Проект: " . ($project->client_name ?? '—'),
+                "💰 Сума: " . number_format((float) $transfer->amount, 0, '.', ' ') . ' ' . $transfer->currency,
+                "📅 Час: {$now->format('d.m.Y H:i')}",
+                "",
+                "Аванс був анульований через коригуючу операцію.",
+            ]);
+
+            $hlushchenko = DB::table('users')->where('actor', 'hlushchenko')->first(['id']);
+            if ($hlushchenko) {
+                try {
+                    app(\App\Services\NotificationService::class)->send(
+                        (int) $hlushchenko->id,
+                        $notifTitle,
+                        $notifBody,
+                        'system',
+                        ['transfer_id' => $transfer->id, 'project_id' => $transfer->project_id]
+                    );
+                } catch (\Throwable $e) {
+                    \Log::error('cancelAdvance: notification failed: ' . $e->getMessage());
+                }
+            }
+        }
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function correctTransferCurrency(Request $request, $id): \Illuminate\Http\JsonResponse
+    {
+        $data = $request->validate([
+            'new_currency' => ['required', 'in:USD,UAH,EUR'],
+            'new_amount'   => ['required', 'numeric', 'min:0.01'],
+        ]);
+
+        $transfer = DB::table('cash_transfers')->where('id', $id)->first();
+        if (!$transfer) {
+            return response()->json(['error' => 'Аванс не знайдено'], 404);
+        }
+        if ($transfer->status === 'cancelled') {
+            return response()->json(['error' => 'Аванс вже скасовано'], 422);
+        }
+
+        $newCurrency = $data['new_currency'];
+        $newAmount   = (float) $data['new_amount'];
+        $oldCurrency = $transfer->currency;
+        $oldAmount   = (float) $transfer->amount;
+
+        if ($newCurrency === $oldCurrency && abs($newAmount - $oldAmount) < 0.0001) {
+            return response()->json(['error' => 'Нова валюта або сума повинна відрізнятись від оригінальної'], 422);
+        }
+
+        // ── Визначити гаманець з оригінальною помилкою ───────────────────────
+        //   pending → гроші в НТВ (from_wallet_id)
+        //   accepted → гроші у власника (to_wallet_id)
+        $sourceWalletId = $transfer->status === 'accepted'
+            ? $transfer->to_wallet_id
+            : $transfer->from_wallet_id;
+
+        if (!$sourceWalletId) {
+            return response()->json(['error' => 'Гаманець не знайдено'], 422);
+        }
+
+        $sourceWallet = DB::table('wallets')->where('id', $sourceWalletId)->first();
+        if (!$sourceWallet) {
+            return response()->json(['error' => 'Гаманець не знайдено'], 422);
+        }
+
+        // ── Знайти оригінальний income entry (захист від повторного виправлення)
+        $originalEntry = DB::table('entries')
+            ->where('wallet_id', $sourceWalletId)
+            ->where('entry_type', 'income')
+            ->where('amount', $oldAmount)
+            ->whereNull('reversal_of_id')
+            ->whereNull('correction_of_id')
+            ->orderByDesc('created_at')
+            ->first(['id', 'amount', 'comment']);
+
+        if (!$originalEntry) {
+            return response()->json(['error' => 'Оригінальний запис не знайдено'], 422);
+        }
+
+        // Перевірка: вже існує correction для цього entry?
+        $alreadyCorrected = DB::table('entries')
+            ->where('correction_of_id', $originalEntry->id)
+            ->exists();
+
+        if ($alreadyCorrected) {
+            return response()->json(['error' => 'Цей аванс вже був виправлений'], 422);
+        }
+
+        // ── Знайти або створити гаманець для правильної валюти (той самий owner)
+        $targetWallet = DB::table('wallets')
+            ->where('owner', $sourceWallet->owner)
+            ->where('currency', $newCurrency)
+            ->where('type', $sourceWallet->type)
+            ->first();
+
+        if (!$targetWallet) {
+            $targetWalletId = DB::table('wallets')->insertGetId([
+                'name'       => 'КЕШ ' . strtoupper($sourceWallet->owner) . ' (' . $newCurrency . ')',
+                'currency'   => $newCurrency,
+                'type'       => $sourceWallet->type,
+                'owner'      => $sourceWallet->owner,
+                'is_active'  => 1,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            $targetWallet = (object) ['id' => $targetWalletId];
+        }
+
+        $user = auth()->user();
+        $now  = now();
+
+        DB::transaction(function () use (
+            $transfer, $originalEntry, $sourceWalletId, $targetWallet,
+            $oldCurrency, $oldAmount, $newCurrency, $newAmount, $user, $now
+        ) {
+            // ── 1. Reversal: expense зі старого гаманця ───────────────────────
+            DB::table('entries')->insert([
+                'wallet_id'      => $sourceWalletId,
+                'entry_type'     => 'expense',
+                'amount'         => $oldAmount,
+                'comment'        => "Reversal: помилкова валюта (було {$oldCurrency})",
+                'posting_date'   => $now->format('Y-m-d'),
+                'reversal_of_id' => $originalEntry->id,
+                'created_by'     => $user->id,
+                'created_at'     => $now,
+                'updated_at'     => $now,
+            ]);
+
+            // ── 2. Correction: income у правильний гаманець ───────────────────
+            DB::table('entries')->insert([
+                'wallet_id'       => $targetWallet->id,
+                'entry_type'      => 'income',
+                'amount'          => $newAmount,
+                'comment'         => "Correction: виправлення валюти з {$oldCurrency} на {$newCurrency}",
+                'posting_date'    => $now->format('Y-m-d'),
+                'correction_of_id' => $originalEntry->id,
+                'created_by'      => $user->id,
+                'created_at'      => $now,
+                'updated_at'      => $now,
+            ]);
+
+            // ── 3. Скасувати старий transfer, створити новий ──────────────────
+            DB::table('cash_transfers')
+                ->where('id', $transfer->id)
+                ->update([
+                    'status'       => 'cancelled',
+                    'cancelled_at' => $now,
+                    'cancelled_by' => $user->id,
+                ]);
+
+            DB::table('cash_transfers')->insert([
+                'project_id'     => $transfer->project_id,
+                'from_wallet_id' => $transfer->status === 'accepted' ? null : $targetWallet->id,
+                'to_wallet_id'   => $transfer->status === 'accepted' ? $targetWallet->id : null,
+                'amount'         => $newAmount,
+                'currency'       => $newCurrency,
+                'exchange_rate'  => null,
+                'usd_amount'     => null,
+                'status'         => $transfer->status, // зберігаємо той самий статус
+                'target_owner'   => $transfer->target_owner,
+                'created_by'     => $transfer->created_by,
+                'accepted_at'    => $transfer->status === 'accepted' ? $now : null,
+                'created_at'     => $now,
+                'updated_at'     => $now,
+            ]);
+        });
+
+        // Сповіщення Hlushchenko — якщо дію виконав не він
+        if ($user->actor !== 'hlushchenko') {
+            $project = $transfer->project_id
+                ? DB::table('sales_projects')->where('id', $transfer->project_id)->first(['client_name'])
+                : null;
+
+            $projectName     = $project->client_name ?? '—';
+            $currencyChanged = $newCurrency !== $oldCurrency;
+
+            $notifTitle = $currencyChanged ? '🔄 Змінено валюту авансу' : '✏️ Виправлено аванс';
+            $notifBody  = implode("\n", [
+                "👤 Хто: {$user->name}",
+                "📍 Проект: {$projectName}",
+                "🔧 Дія: " . ($currencyChanged ? 'Зміна валюти' : 'Виправлення суми'),
+                "💰 Було: " . number_format($oldAmount, 0, '.', ' ') . ' ' . $oldCurrency,
+                "💰 Стало: " . number_format($newAmount, 0, '.', ' ') . ' ' . $newCurrency,
+                "📅 Час: {$now->format('d.m.Y H:i')}",
+            ]);
+
+            $hlushchenko = DB::table('users')->where('actor', 'hlushchenko')->first(['id']);
+            if ($hlushchenko) {
+                try {
+                    app(\App\Services\NotificationService::class)->send(
+                        (int) $hlushchenko->id,
+                        $notifTitle,
+                        $notifBody,
+                        'system',
+                        ['transfer_id' => $transfer->id, 'project_id' => $transfer->project_id]
+                    );
+                } catch (\Throwable $e) {
+                    \Log::error('correctTransferCurrency: notification failed: ' . $e->getMessage());
+                }
+            }
+        }
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function destroy($id): \Illuminate\Http\JsonResponse
+    {
+        $project = SalesProject::find($id);
+        if (!$project) {
+            return response()->json(['error' => 'Проект не знайдено'], 404);
+        }
+
+        if ($project->status === 'cancelled') {
+            return response()->json(['error' => 'Проект вже видалено'], 422);
+        }
+
+        $user = auth()->user();
+
+        if ($user->actor !== 'hlushchenko') {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+        $now     = now();
+        $comment = "Reversal: проект видалено користувачем {$user->name}";
+
+        $reversedByCurrency = [];
+
+        DB::transaction(function () use ($project, $user, $now, $comment, &$reversedByCurrency) {
+
+            // ── 1. Знайти всі cash_transfers проекту ─────────────────────────
+            $transfers = DB::table('cash_transfers')
+                ->where('project_id', $project->id)
+                ->whereIn('status', ['pending', 'accepted'])
+                ->get();
+
+            foreach ($transfers as $transfer) {
+
+                // ── 2. Визначити гаманець з позитивним залишком ───────────────
+                //   accepted → гроші осіли в to_wallet_id (власник)
+                //   pending  → гроші осіли в from_wallet_id (НТВ)
+                $walletId = $transfer->status === 'accepted'
+                    ? $transfer->to_wallet_id
+                    : $transfer->from_wallet_id;
+
+                if (!$walletId) {
+                    continue;
+                }
+
+                $amount   = (float) $transfer->amount;
+                $currency = $transfer->currency;
+
+                // ── 3. Захист від дублювання: шукаємо оригінальний income entry
+                //    (той що не має reversal і ще не скасований)
+                $originalEntry = DB::table('entries')
+                    ->where('wallet_id', $walletId)
+                    ->where('entry_type', 'income')
+                    ->where('amount', $amount)
+                    ->whereNull('reversal_of_id')
+                    ->whereNotExists(function ($q) {
+                        $q->from('entries as rev')
+                          ->whereColumn('rev.reversal_of_id', 'entries.id');
+                    })
+                    ->orderByDesc('created_at')
+                    ->first(['id']);
+
+                // Якщо reversal вже існує — пропускаємо (дублікат)
+                if ($originalEntry && DB::table('entries')
+                        ->where('reversal_of_id', $originalEntry->id)
+                        ->exists()) {
+                    continue;
+                }
+
+                // ── 4. Створити reversal (expense) ────────────────────────────
+                DB::table('entries')->insert([
+                    'wallet_id'      => $walletId,
+                    'entry_type'     => 'expense',
+                    'amount'         => $amount,
+                    'comment'        => $comment,
+                    'posting_date'   => $now->format('Y-m-d'),
+                    'reversal_of_id' => $originalEntry?->id,
+                    'created_by'     => $user->id,
+                    'created_at'     => $now,
+                    'updated_at'     => $now,
+                ]);
+
+                $reversedByCurrency[$currency] = ($reversedByCurrency[$currency] ?? 0) + $amount;
+
+                // ── 5. Скасувати cash_transfer ────────────────────────────────
+                DB::table('cash_transfers')
+                    ->where('id', $transfer->id)
+                    ->update([
+                        'status'       => 'cancelled',
+                        'cancelled_at' => $now,
+                        'cancelled_by' => $user->id,
+                    ]);
+            }
+
+            // ── 6. Soft-delete проекту (status = cancelled) ───────────────────
+            DB::table('sales_projects')
+                ->where('id', $project->id)
+                ->update([
+                    'status'             => 'cancelled',
+                    'cancelled_at'       => $now,
+                    'cancelled_by'       => $user->id,
+                    'cancelled_by_actor' => $user->actor,
+                ]);
+        });
+
+        // ── 7. Системне сповіщення Hlushchenko (поза транзакцією) ───────────
+        if ($user->actor !== 'hlushchenko') {
+            $totalStr = collect($reversedByCurrency)
+                ->map(fn ($v, $k) => number_format($v, 0, '.', ' ') . ' ' . $k)
+                ->join(', ');
+
+            $totalStr = $totalStr ?: '0';
+
+            $notifTitle = '❌ Проект видалено';
+            $notifBody  = implode("\n", [
+                "👤 Хто: {$user->name}",
+                "📍 Проект: {$project->client_name}",
+                "💰 Було внесено: {$totalStr}",
+                "📅 Дата: {$now->format('d.m.Y H:i')}",
+                "",
+                "Всі фінансові операції були автоматично скориговані.",
+            ]);
+
+            $hlushchenko = DB::table('users')->where('actor', 'hlushchenko')->first(['id']);
+            if ($hlushchenko) {
+                try {
+                    app(\App\Services\NotificationService::class)->send(
+                        (int) $hlushchenko->id,
+                        $notifTitle,
+                        $notifBody,
+                        'system',
+                        ['project_id' => $project->id, 'project_name' => $project->client_name]
+                    );
+                } catch (\Throwable $e) {
+                    \Log::error('destroy: notification failed: ' . $e->getMessage());
+                }
+            }
+        }
+
+        return response()->json(['ok' => true]);
     }
 
     public function closeProject(Request $request, $id)

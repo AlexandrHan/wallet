@@ -46,6 +46,24 @@ if (!['accountant', 'manager'].includes(AUTH_USER.role) && !AUTH_ACTOR) {
     pendingOpenStaffWalletId: null,
   };
 
+// ── Sound guard: prevents phantom sounds on init / reload ─────────────────
+const WALLET_SEEN_KEY = 'wallet_last_seen_entry_id';
+let lastSeenEntryId   = parseInt(localStorage.getItem(WALLET_SEEN_KEY)) || 0;
+let isInitialLoad     = true;
+let _lastSoundAt      = 0;
+
+function updateLastSeen(id) {
+  lastSeenEntryId = id;
+  localStorage.setItem(WALLET_SEEN_KEY, id);
+}
+
+function playSoundSafe(type) {
+  const now = Date.now();
+  if (now - _lastSoundAt < 300) return;
+  _lastSoundAt = now;
+  entryFeedback(type);
+}
+
 const BOOT_QUERY = new URLSearchParams(window.location.search);
 const pendingOpenStaffWalletId = Number(BOOT_QUERY.get('open_staff_wallet') || 0);
 if (pendingOpenStaffWalletId > 0) {
@@ -278,6 +296,8 @@ function checkOnline() {
 
 
   // категорії в коментарях
+  const INTERNAL_CATEGORY = 'Туда Сюда'; // внутрішні переміщення — не враховуються в статистиці
+
   const CATEGORIES = {
     expense: [
       'Логістика',
@@ -504,6 +524,29 @@ async function loadWallets() {
     state.entries = data.entries || [];
     initStatsMonth();
 
+    // ── Sound guard ────────────────────────────────────────────────────────
+    const maxId = state.entries.reduce((m, e) => Math.max(m, e.id || 0), 0);
+    if (isInitialLoad) {
+      if (!lastSeenEntryId) {
+        updateLastSeen(maxId);
+        console.log('[Wallet] Initial load (first ever) — lastSeenEntryId set to', maxId);
+      } else {
+        console.log('[Wallet] Initial load — lastSeenEntryId from localStorage:', lastSeenEntryId);
+      }
+      isInitialLoad = false;
+    } else {
+      // Сортуємо за id щоб stream-processing працював коректно
+      const sorted = [...state.entries].sort((a, b) => (a.id || 0) - (b.id || 0));
+      sorted.forEach(e => {
+        if ((e.id || 0) > lastSeenEntryId) {
+          console.log('[Wallet] New entry:', e.id, '>', lastSeenEntryId, '→ sound', e.entry_type);
+          playSoundSafe(e.entry_type);
+          updateLastSeen(e.id); // одразу — не чекаємо кінця циклу
+        }
+      });
+    }
+    // ── /Sound guard ───────────────────────────────────────────────────────
+
 
     elWalletTitle.textContent = `${state.selectedWallet.name} • ${state.selectedWallet.currency}`;
 
@@ -586,6 +629,7 @@ const CURRENCY_SYMBOLS = {
 
       const m = (e.comment || '').match(/^\[(.+?)\]/);
       const cat = m ? m[1] : 'Без категорії';
+      if (cat === INTERNAL_CATEGORY) return;
 
       map[cat] = (map[cat] || 0) + Math.abs(val);
     });
@@ -644,11 +688,14 @@ const CURRENCY_SYMBOLS = {
       const cls = signed >= 0 ? 'pos' : 'neg';
       const sign = signed >= 0 ? '+' : '';
 
+      const isNtvTransfer = e.source === 'ntv_transfer';
+
       const editable =
         isToday(e.posting_date) &&
         canWriteWallet(state.selectedWallet.owner) &&
         !isLockedNtvCash &&
-        !e.cash_transfer_id;
+        !e.cash_transfer_id &&
+        !isNtvTransfer;
 
       const isTransfer = !!e.cash_transfer_id;
 
@@ -675,7 +722,13 @@ const CURRENCY_SYMBOLS = {
       }
       function cancelLp() { clearTimeout(lpTimer); }
 
-      tr.addEventListener('touchstart', startLp, { passive: true });
+      // Блокуємо системне контекстне меню і виділення тексту
+      tr.style.webkitTouchCallout = 'none';
+      tr.style.userSelect = 'none';
+      tr.style.webkitUserSelect = 'none';
+      tr.addEventListener('contextmenu', (ev) => ev.preventDefault());
+
+      tr.addEventListener('touchstart', (ev) => { ev.preventDefault(); startLp(ev); });
       tr.addEventListener('touchmove',  cancelLp, { passive: true });
       tr.addEventListener('touchend', (ev) => {
         cancelLp();
@@ -904,12 +957,12 @@ function renderCategoryStats() {
   let total = 0;
 
   entries.forEach(e => {
-    const amount = Math.abs(Number(e.signed_amount));
-    total += amount;
-
     const m = (e.comment || '').match(/^\[(.+?)\]/);
     const cat = m ? m[1] : 'Інше';
+    if (cat === INTERNAL_CATEGORY) return;
 
+    const amount = Math.abs(Number(e.signed_amount));
+    total += amount;
     map[cat] = (map[cat] || 0) + amount;
   });
 
@@ -950,6 +1003,7 @@ function renderCategoryChart() {
     if (!m) return;
 
     const cat = m[1];
+    if (cat === INTERNAL_CATEGORY) return;
     data[cat] = (data[cat] || 0) + Math.abs(Number(e.signed_amount));
   });
 
@@ -1003,6 +1057,7 @@ function renderCategoryChart() {
 
       const m = (e.comment || '').match(/^\[(.+?)\]/);
       const cat = m ? m[1] : 'Без категорії';
+      if (cat === INTERNAL_CATEGORY) return;
 
       map[cat] = (map[cat] || 0) + Math.abs(Number(e.signed_amount));
     });
@@ -1222,6 +1277,12 @@ async function submitEntry(entry_type, amount, comment){
 
   // ✅ якщо операція створилась/підтвердилась — ключ можна обнулити
   if (!isEdit) state.entryIdemKey = null;
+
+  // Оновлюємо lastSeenEntryId щоб loadEntries() нижче не зіграв звук повторно
+  if (createdId) {
+    updateLastSeen(Math.max(lastSeenEntryId, createdId));
+    console.log('[Wallet] saveEntry: lastSeenEntryId updated to', lastSeenEntryId);
+  }
 
   // ... далі твій код з receipt upload (як був)
   // важливо: createdId тепер буде однаковий навіть при повторі
@@ -1705,14 +1766,15 @@ function buildHoldingStats(ops, ym, type){
     if (type === 'expense' && val >= 0) return;
     if (type === 'income'  && val <= 0) return;
 
+    const cat = extractCategoryFromEntry(e);
+    if (cat === INTERNAL_CATEGORY) return;
+
     const abs = Math.abs(val);
     const converted = convertAmount(abs, e.currency||'UAH', base);
     if (!Number.isFinite(converted)) return;
 
     total += converted;
     count++;
-
-    const cat = extractCategoryFromEntry(e);
     map[cat] = (map[cat] || 0) + converted;
   });
 
@@ -2542,6 +2604,21 @@ function showEntryActions(entry, editable, isTransfer) {
 
   _lpButtons.innerHTML = '';
 
+  // Операція від НТВ — власник не може змінювати
+  if (entry.source === 'ntv_transfer' && IS_OWNER) {
+    const msg = document.createElement('div');
+    msg.style.cssText = 'padding:8px 0; font-size:13px; opacity:.75; text-align:center; line-height:1.4;';
+    msg.textContent = '🔒 Операція отримана від НТВ і не може бути змінена. Використовуйте коригуючу операцію.';
+    _lpButtons.appendChild(msg);
+    const btnClose = document.createElement('button');
+    btnClose.className = 'lp-close';
+    btnClose.textContent = 'Закрити';
+    btnClose.onclick = hideEntryActions;
+    _lpButtons.appendChild(btnClose);
+    _lpSheet.classList.add('open');
+    return;
+  }
+
   if (isTransfer && IS_OWNER && isToday(entry.posting_date)) {
     const btn = document.createElement('button');
     btn.className = 'lp-cancel-transfer';
@@ -2836,10 +2913,7 @@ function renderRatesModal(data){
 
   data.rates.forEach(r => {
     body.innerHTML += `
-      <div class="rate-card" data-currency="${r.currency}"
-        onclick="selectRateCard(this); openExchange('${r.currency}', ${r.purchase}, ${r.sale})">
-
-
+      <div class="rate-card" data-currency="${r.currency}" data-buy="${r.purchase}" data-sell="${r.sale}">
         <div class="rate-title rate-title-${r.currency.toLowerCase()}">${r.currency}</div>
         💰 Купівля: <b>${r.purchase ?? '—'}</b><br>
         🏦 Продаж: <b>${r.sale ?? '—'}</b>

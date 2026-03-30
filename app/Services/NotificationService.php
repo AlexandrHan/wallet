@@ -13,6 +13,9 @@ class NotificationService
     /**
      * Send an in-app notification (+ push if user has token).
      */
+    // ID системного користувача (role='system', фіксований)
+    public const SYSTEM_USER_ID = 18;
+
     public function send(
         int    $userId,
         string $title,
@@ -20,6 +23,8 @@ class NotificationService
         string $type = 'system',
         array  $data = []
     ): int {
+        $now = now();
+
         $id = DB::table('notifications')->insertGetId([
             'user_id'    => $userId,
             'type'       => $type,
@@ -27,8 +32,18 @@ class NotificationService
             'message'    => $message,
             'data'       => $data ? json_encode($data) : null,
             'is_read'    => false,
-            'created_at' => now(),
+            'created_at' => $now,
         ]);
+
+        // Зберігаємо в чат від системного користувача (крім повідомлень між людьми)
+        if ($type !== 'message' && $userId !== self::SYSTEM_USER_ID) {
+            DB::table('messages')->insert([
+                'from_user_id' => self::SYSTEM_USER_ID,
+                'to_user_id'   => $userId,
+                'message'      => "[{$title}]\n{$message}",
+                'created_at'   => $now,
+            ]);
+        }
 
         $payload = [
             'id'         => $id,

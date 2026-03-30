@@ -56,7 +56,6 @@
 
   <div class="tg-menu__content">
     <a class="tg-menu__item" href="/messages" style="font-size:15px; font-weight:600; padding:14px 18px; margin-bottom:14px; border-bottom:1px solid rgba(255,255,255,0.06);">💬 Чат</a>
-
     <details class="tg-acc" >
       <summary class="tg-acc__title">💳 Гаманець</summary>
       <div class="tg-acc__body">
@@ -66,35 +65,6 @@
         @endif
 
         <button type="button" class="tg-menu__item js-show-rates">💱 Обмінник</button>
-      </div>
-    </details>
-
-    <details class="tg-acc">
-      <summary class="tg-acc__title">📈 Відділ продажу</summary>
-      <div class="tg-acc__body">
-        <a class="tg-menu__item" href="/finance">🧾 Продажі</a>
-      </div>
-    </details>
-
-    <a class="tg-menu__item" style="margin-bottom: 14px;" href="/equipment-orders">🛒 Замовлення обладнання</a>
-
-    <details class="tg-acc">
-      <summary class="tg-acc__title">📦 Sun Fix</summary>
-      <div class="tg-acc__body">
-        <a class="tg-menu__item" href="/stock">📦 Склад</a>
-        <a class="tg-menu__item" href="/deliveries">🚚 Поставки</a>
-        <a class="tg-menu__item" href="/equipment-orders">🛒 Замовлення обладнання</a>
-        <a class="tg-menu__item" href="/stock/sales-reports">📊 Історія звітів складу</a>
-        <a class="tg-menu__item" href="/stock/supplier-cash">💸 Борги</a>
-      </div>
-    </details>
-
-    <a class="tg-menu__item" style="margin-bottom: 14px;" href="/solar-glass">☀️ Solar Glass</a>
-
-    <details class="tg-acc">
-      <summary class="tg-acc__title">⚙️ Налаштування</summary>
-      <div class="tg-acc__body">
-        <a class="tg-menu__item" href="/norm-rules">🔧 Нормалізація обладнання</a>
       </div>
     </details>
 
@@ -116,6 +86,31 @@
     </details>
 
     <details class="tg-acc">
+      <summary class="tg-acc__title">📈 Відділ продажу</summary>
+      <div class="tg-acc__body">
+        <a class="tg-menu__item" href="/finance">🧾 Продажі</a>
+      </div>
+    </details>
+
+
+    
+
+    <a class="tg-menu__item" style="margin-bottom: 14px;" href="/equipment-orders">🛒 Замовлення обладнання</a>
+
+    <a class="tg-menu__item" style="margin-bottom: 14px;" href="/solar-glass">☀️ Solar Glass</a>
+
+    <details class="tg-acc">
+      <summary class="tg-acc__title">📦 Sun Fix</summary>
+      <div class="tg-acc__body">
+        <a class="tg-menu__item" href="/stock">📦 Склад</a>
+        <a class="tg-menu__item" href="/deliveries">🚚 Поставки</a>
+        <a class="tg-menu__item" href="/equipment-orders">🛒 Замовлення обладнання</a>
+        <a class="tg-menu__item" href="/stock/sales-reports">📊 Історія звітів складу</a>
+        <a class="tg-menu__item" href="/stock/supplier-cash">💸 Борги</a>
+      </div>
+    </details>
+
+    <details class="tg-acc">
       <summary class="tg-acc__title">💰 Зарплатня</summary>
       <div class="tg-acc__body">
         <a class="tg-menu__item" href="/salary">💰 Нарахування зарплатні</a>
@@ -129,6 +124,13 @@
       <div class="tg-acc__body">
         <a class="tg-menu__item" href="/analytics">📊 Огляд</a>
         <a class="tg-menu__item" href="/ai">🤖 AI Аналітик</a>
+      </div>
+    </details>
+
+    <details class="tg-acc">
+      <summary class="tg-acc__title">⚙️ Налаштування</summary>
+      <div class="tg-acc__body">
+        <a class="tg-menu__item" href="/norm-rules">🔧 Нормалізація обладнання</a>
       </div>
     </details>
 
