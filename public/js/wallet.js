@@ -712,8 +712,13 @@ const CURRENCY_SYMBOLS = {
       let lpTimer = null;
       let lpFired = false;
 
+      let lpStartX = 0, lpStartY = 0;
+
       function startLp(ev) {
         lpFired = false;
+        const t = ev.touches ? ev.touches[0] : ev;
+        lpStartX = t.clientX;
+        lpStartY = t.clientY;
         lpTimer = setTimeout(() => {
           lpFired = true;
           vibrate(30);
@@ -728,11 +733,16 @@ const CURRENCY_SYMBOLS = {
       tr.style.webkitUserSelect = 'none';
       tr.addEventListener('contextmenu', (ev) => ev.preventDefault());
 
-      tr.addEventListener('touchstart', (ev) => { ev.preventDefault(); startLp(ev); });
-      tr.addEventListener('touchmove',  cancelLp, { passive: true });
+      // passive:true — не блокуємо нативний скрол
+      tr.addEventListener('touchstart', startLp, { passive: true });
+      tr.addEventListener('touchmove', (ev) => {
+        const t = ev.touches[0];
+        const dx = Math.abs(t.clientX - lpStartX);
+        const dy = Math.abs(t.clientY - lpStartY);
+        if (dx > 8 || dy > 8) cancelLp();
+      }, { passive: true });
       tr.addEventListener('touchend', (ev) => {
         cancelLp();
-        if (lpFired) ev.preventDefault();
       });
       tr.addEventListener('mousedown', startLp);
       tr.addEventListener('mouseup',   cancelLp);

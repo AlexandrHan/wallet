@@ -359,15 +359,13 @@ class SalesProjectController extends Controller
         $projectsQuery = SalesProject::query()->where('sales_projects.status', '!=', 'cancelled');
         if ($layer === 'finance') {
             // Show projects that are either:
-            // 1. Manually created (source_layer='finance', no amo link yet)
-            // 2. Synced from AmoCRM and currently in a finance stage
-            if ($amoComplectationByProjectId->isNotEmpty() && !empty($financeStageIds)) {
+            // 1. Synced from AmoCRM and currently in a finance stage
+            // 2. Manually created in the finance layer (source_layer='finance')
+            if (!empty($financeStageIds)) {
                 $projectsQuery
                     ->leftJoin('amo_complectation_projects', 'amo_complectation_projects.wallet_project_id', '=', 'sales_projects.id')
                     ->where(function ($q) use ($financeStageIds) {
-                        // Has amo link in a finance stage
                         $q->whereIn('amo_complectation_projects.status_id', $financeStageIds)
-                          // OR no amo link but explicitly created in finance layer
                           ->orWhere(function ($q2) {
                               $q2->whereNull('amo_complectation_projects.wallet_project_id')
                                  ->where('sales_projects.source_layer', 'finance');
@@ -375,7 +373,6 @@ class SalesProjectController extends Controller
                     })
                     ->select('sales_projects.*');
             } else {
-                // Fallback: amo table empty or no finance stage IDs configured — show only explicitly tagged
                 $projectsQuery->where('sales_projects.source_layer', 'finance');
             }
         } elseif ($layer === 'projects') {
