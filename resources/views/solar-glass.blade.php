@@ -19,6 +19,7 @@
     <button class="sg-filter" data-cat="panels">☀️ Панелі</button>
     <button class="sg-filter" data-cat="inverters">🔌 Інвертори</button>
     <button class="sg-filter" data-cat="batteries">⚡ АКБ</button>
+    <button class="sg-filter" data-cat="additional">🔧 Додаткове</button>
   </div>
 
   {{-- Пошук --}}
@@ -61,6 +62,17 @@
 .sg-qty { font-weight: 700; font-size: 15px; white-space: nowrap; flex-shrink: 0; }
 .sg-qty-high { color: #4d9; }
 .sg-qty-low  { color: #fa0; }
+.sg-section {
+  font-size: 10px;
+  font-weight: 700;
+  opacity: .4;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  padding: 16px 0 4px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  margin-top: 4px;
+}
+.sg-section-first { padding-top: 2px; border-top: none; margin-top: 0; }
 </style>
 
 <script>
@@ -84,7 +96,14 @@ async function loadStock() {
     }
     const card = document.createElement('div');
     card.className = 'card';
+    let firstSection = true;
     items.forEach(item => {
+      if (item.is_section) {
+        card.insertAdjacentHTML('beforeend',
+          `<div class="sg-section${firstSection ? ' sg-section-first' : ''}">${esc(item.item_name)}</div>`);
+        firstSection = false;
+        return;
+      }
       const qc = item.qty >= 100 ? 'sg-qty-high' : item.qty <= 10 ? 'sg-qty-low' : '';
       card.insertAdjacentHTML('beforeend', `
         <div class="sg-row">
@@ -92,7 +111,7 @@ async function loadStock() {
             <div class="sg-name">${esc(item.item_name)}</div>
             <div class="sg-code">${esc(item.item_code)}</div>
           </div>
-          <div class="sg-qty ${qc}">${item.qty} шт.</div>
+          <div class="sg-qty ${qc}">${item.qty} ${esc(item.unit ?? 'шт')}</div>
         </div>`);
     });
     list.innerHTML = '';

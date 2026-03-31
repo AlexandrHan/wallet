@@ -520,6 +520,7 @@ class AmoCrmService
                     return;
                 }
                 $currency = $this->extractCurrency($lead, 'USD');
+                $managerFields = $responsibleUserId > 0 ? ['lead_manager_user_id' => $responsibleUserId] : [];
                 $project = SalesProject::query()->create(array_merge([
                     'client_name' => mb_substr($clientName, 0, 255),
                     'total_amount' => round($totalAmount, 2),
@@ -527,14 +528,15 @@ class AmoCrmService
                     'currency' => $currency,
                     'created_by' => $this->systemUserId(),
                     'source_layer' => 'finance',
-                ], $projectPayload));
+                ], $managerFields, $projectPayload));
 
                 $created++;
             } else {
+                $managerFields = $responsibleUserId > 0 ? ['lead_manager_user_id' => $responsibleUserId] : [];
                 $project->update(array_merge([
                     'client_name' => mb_substr($clientName, 0, 255),
                     'total_amount' => round($totalAmount, 2),
-                ], $this->applyAppWinsFilter($projectPayload, $project)));
+                ], $managerFields, $this->applyAppWinsFilter($projectPayload, $project)));
                 $updated++;
             }
 
@@ -577,7 +579,8 @@ class AmoCrmService
             $payload['phone_number'] = mb_substr($phone, 0, 50);
         }
         if ($this->hasSalesProjectColumn('inverter') && $inverter !== null) {
-            $payload['inverter'] = mb_substr($inverter, 0, 255);
+            $canonical = \App\Services\InverterNormalizerService::normalize($inverter);
+            $payload['inverter'] = mb_substr($canonical ?? $inverter, 0, 255);
         }
         if ($this->hasSalesProjectColumn('bms') && $bms !== null) {
             $payload['bms'] = mb_substr($bms, 0, 255);
@@ -621,11 +624,21 @@ class AmoCrmService
                 || str_contains($metaLower, 'green tariff');
         }
 
-        $advanceRaw = $this->extractLeadFieldValue($lead, ['Аванс', 'Завдаток', 'Аванс/Завдаток', 'advance', 'Advance', 'First payment', 'Перший платіж']);
+        // field_id 107031 = "Предоплата, $" — the real advance field in this AMO pipeline
+        $advanceRaw = $this->extractLeadFieldValue($lead, ['Предоплата, $', 'Предоплата', 'Аванс', 'Завдаток', 'Аванс/Завдаток', 'advance', 'Advance', 'First payment', 'Перший платіж'], [107031]);
         if ($this->hasSalesProjectColumn('advance_amount') && $advanceRaw !== null) {
             $advanceNum = (float) preg_replace('/[^\d.]/', '', (string) $advanceRaw);
             if ($advanceNum > 0) {
                 $payload['advance_amount'] = round($advanceNum, 2);
+            }
+        }
+
+        // field_id 107033 = "Остаток, $" — remaining balance owed by client
+        $remainingRaw = $this->extractLeadFieldValue($lead, ['Остаток, $', 'Остаток', 'Залишок', 'Remaining', 'remaining'], [107033]);
+        if ($this->hasSalesProjectColumn('remaining_amount') && $remainingRaw !== null) {
+            $remainingNum = (float) preg_replace('/[^\d.]/', '', (string) $remainingRaw);
+            if ($remainingNum >= 0) {
+                $payload['remaining_amount'] = round($remainingNum, 2);
             }
         }
 

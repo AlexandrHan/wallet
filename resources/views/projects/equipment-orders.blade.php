@@ -99,6 +99,18 @@ tbody {background-color: transparent;}
   border-top: 1px solid rgba(255,255,255,0.07);
 }
 .eq-section-label:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+.eq-section-row td {
+  padding: 16px 8px 4px;
+  font-size: 10px;
+  font-weight: 700;
+  opacity: .45;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  border-top: 1px solid rgba(255,255,255,0.1) !important;
+  border-bottom: none !important;
+  background: transparent;
+}
+.eq-section-first td { padding-top: 2px; border-top: none !important; }
 </style>
 
 <script>
@@ -127,12 +139,8 @@ function makeCollapsible(card, titleHtml, bodyHtml, openByDefault) {
 
 /* Build Назва | На складі | В проектах | Не вистачає | Залишок */
 function buildTable(rows) {
-  if (!rows.length) return '<div style="opacity:.4;font-size:13px;padding:8px 0;">Немає даних</div>';
-
-  const totStock     = rows.reduce((s, r) => s + r.stock,     0);
-  const totProjects  = rows.reduce((s, r) => s + r.projects,  0);
-  const totShortage  = rows.reduce((s, r) => s + r.shortage,  0);
-  const totRemaining = rows.reduce((s, r) => s + r.remaining, 0);
+  const dataRows = rows.filter(r => !r.is_section);
+  if (!dataRows.length) return '<div style="opacity:.4;font-size:13px;padding:8px 0;">Немає даних</div>';
 
   let html = `
     <table class="eq-table">
@@ -145,7 +153,13 @@ function buildTable(rows) {
       </tr></thead>
       <tbody>`;
 
-  rows.forEach(r => {
+  rows.forEach((r, idx) => {
+    if (r.is_section) {
+      const isFirst = rows.slice(0, idx).every(x => x.is_section);
+      html += `<tr class="eq-section-row${isFirst ? ' eq-section-first' : ''}">
+        <td colspan="5">${esc(r.name)}</td></tr>`;
+      return;
+    }
     const stockCell     = r.stock     === 0 ? `<td class="eq-zero">—</td>` : `<td>${r.stock}</td>`;
     const projectsCell  = r.projects  === 0 ? `<td class="eq-zero">—</td>` : `<td>${r.projects}</td>`;
     const shortageCell  = r.shortage  > 0   ? `<td class="eq-shortage">${r.shortage}</td>` : `<td class="eq-zero">—</td>`;
@@ -212,6 +226,19 @@ async function loadEquipmentOrders() {
     makeCard(
       '<span style="font-weight:800;font-size:15px;">🔌 Інвертори</span>',
       buildTable(tables.inverters)
+    );
+  }
+
+  // ── 🔧 ДОДАТКОВЕ ОБЛАДНАННЯ ──────────────────────────────
+  if (tables.additional && tables.additional.length) {
+    let rows = tables.additional.map(item => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.07);font-size:13px;">
+        <span style="font-weight:500;">${esc(item.name)}</span>
+        <span style="font-weight:700;white-space:nowrap;margin-left:12px;${item.stock > 0 ? 'color:#4d9;' : 'opacity:.35;'}">${item.stock} ${esc(item.unit)}</span>
+      </div>`).join('');
+    makeCard(
+      '<span style="font-weight:800;font-size:15px;">🔧 Додаткове обладнання</span>',
+      rows
     );
   }
 

@@ -67,6 +67,30 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
     Route::view('/solar-glass', 'solar-glass')->name('solar-glass');
 
     Route::get('/api/solar-glass/stock', function (Request $request) {
+        $search   = trim((string) $request->query('q', ''));
+        $category = trim((string) $request->query('category', ''));
+
+        // Additional equipment: cable and profile (normalized names)
+        $additionalDefs = [
+            'ID00238' => ['name' => 'Сонячний кабель',   'unit' => 'м'],
+            'ID00331' => ['name' => 'Профіль монтажний', 'unit' => 'шт'],
+        ];
+
+        if ($category === 'additional') {
+            $rows = DB::table('solarglass_stock')
+                ->whereIn('item_code', array_keys($additionalDefs))
+                ->where('qty', '>', 0)
+                ->get(['item_code', 'item_name', 'qty', 'updated_at']);
+            $items = $rows->map(fn($r) => [
+                'item_code' => $r->item_code,
+                'item_name' => $additionalDefs[$r->item_code]['name'],
+                'qty'       => $r->qty,
+                'unit'      => $additionalDefs[$r->item_code]['unit'],
+                'updated_at'=> $r->updated_at,
+            ])->filter(fn($r) => !$search || mb_stripos($r['item_name'], $search) !== false)->values();
+            return response()->json($items);
+        }
+
         $query = DB::table('solarglass_stock')
             ->select('item_code', 'item_name', 'qty', 'updated_at')
             ->where('qty', '>', 0)
@@ -77,11 +101,10 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
                   ->orWhere('item_name', 'like', 'АКБ%');
             });
 
-        if ($search = trim((string) $request->query('q', ''))) {
+        if ($search) {
             $query->where('item_name', 'like', '%' . $search . '%');
         }
 
-        $category = trim((string) $request->query('category', ''));
         if ($category === 'panels') {
             $query->where('item_name', 'like', 'Фотомодул%');
         } elseif ($category === 'inverters') {
@@ -93,7 +116,80 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
             $query->where('item_name', 'like', 'АКБ%');
         }
 
-        return response()->json($query->orderBy('item_name')->get());
+        $mainItems = $query->orderBy('item_name')->get()->map(fn($r) => [
+            'item_code'  => $r->item_code,
+            'item_name'  => $r->item_name,
+            'qty'        => $r->qty,
+            'unit'       => 'шт',
+            'updated_at' => $r->updated_at,
+        ]);
+
+        // Сортуємо і групуємо інвертори по секціях
+        if ($category === 'inverters') {
+            $invSection = function(string $raw): int {
+                $n = \App\Services\InverterNormalizerService::normalize($raw) ?? $raw;
+                if (!preg_match('/^Solax\b/i', $n)) return 5;
+                $isX1 = (bool) preg_match('/\bX1\b/i', $n);
+                $isX3 = (bool) preg_match('/\bX3\b/i', $n);
+                $isH  = (bool) preg_match('/\bHybrid\b/i', $n);
+                $isG  = (bool) preg_match('/\bGrid\b/i', $n);
+                if ($isH && $isX1) return 1;
+                if ($isH && $isX3) return 2;
+                if ($isG && $isX1) return 3;
+                if ($isG && $isX3) return 4;
+                return 5;
+            };
+            $invPower = function(string $raw): float {
+                $n = \App\Services\InverterNormalizerService::normalize($raw) ?? $raw;
+                return preg_match('/\b(\d+(?:\.\d+)?)K\b/i', $n, $m) ? (float)$m[1] : 9999.0;
+            };
+            $invSectionLabels = [
+                1 => 'Однофазні гібридні',
+                2 => 'Трифазні гібридні',
+                3 => 'Однофазні мережеві',
+                4 => 'Трифазні мережеві',
+                5 => 'Автономні / Інші',
+            ];
+            $sortedArr = $mainItems->values()->all();
+            usort($sortedArr, function($a, $b) use ($invSection, $invPower) {
+                $sa = $invSection($a['item_name']); $sb = $invSection($b['item_name']);
+                if ($sa !== $sb) return $sa <=> $sb;
+                $pa = $invPower($a['item_name']);   $pb = $invPower($b['item_name']);
+                if ($pa !== $pb) return $pa <=> $pb;
+                return $a['item_name'] <=> $b['item_name'];
+            });
+            $sorted = collect($sortedArr);
+
+            $withSections = collect();
+            $curSec = null;
+            foreach ($sorted as $item) {
+                $sec = $invSection($item['item_name']);
+                if ($sec !== $curSec) {
+                    $withSections->push(['is_section' => true, 'item_name' => $invSectionLabels[$sec], 'item_code' => '', 'qty' => 0, 'unit' => '']);
+                    $curSec = $sec;
+                }
+                $withSections->push($item);
+            }
+            return response()->json($withSections->values());
+        }
+
+        // Append additional items when showing "all" (no category filter)
+        if ($category === '') {
+            $addRows = DB::table('solarglass_stock')
+                ->whereIn('item_code', array_keys($additionalDefs))
+                ->where('qty', '>', 0)
+                ->get(['item_code', 'item_name', 'qty', 'updated_at']);
+            $addItems = $addRows->map(fn($r) => [
+                'item_code'  => $r->item_code,
+                'item_name'  => $additionalDefs[$r->item_code]['name'],
+                'qty'        => $r->qty,
+                'unit'       => $additionalDefs[$r->item_code]['unit'],
+                'updated_at' => $r->updated_at,
+            ])->filter(fn($r) => !$search || mb_stripos($r['item_name'], $search) !== false)->values();
+            $mainItems = $mainItems->concat($addItems);
+        }
+
+        return response()->json($mainItems->values());
     });
 
 
@@ -1795,62 +1891,15 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
             return $applyRules($s, $normRulesBattery) ?? $s;
         };
 
-        // Нормалізація інверторів: DB rules → SolaX auto-detect → raw trim
+        // Нормалізація інверторів через InverterNormalizerService
         $normalizeInverterName = function(string $raw) use ($normRulesInverter, $applyRules): string {
             $s = trim($raw);
 
-            // DB rules — найвищий пріоритет
+            // DB rules — найвищий пріоритет (legacy overrides)
             $fromDb = $applyRules($s, $normRulesInverter);
             if ($fromDb !== null) return $fromDb;
 
-            // SolaX auto-normalization
-            // Тригер: "solax", "Інвертор X..." або паттерн X[1-9]-[A-Z]+
-            $isSolax = preg_match('/solax/i', $s)
-                || preg_match('/(?:інвертор|інвектор)\s+X[1-9]/iu', $s)
-                || preg_match('/\bX[1-9]-(?:HYB|NEO|LITE|MIC|FIT|BOOST)/i', $s);
-
-            if ($isSolax) {
-                // Серія X: X1, X3 тощо
-                $series = null;
-                if (preg_match('/\bX([1-9])\b/i', $s, $sm)) {
-                    $series = 'X' . $sm[1];
-                }
-
-                // Тип моделі → завжди "Hybrid" для HYB/NEO/LITE/Hybrid
-                $type = 'Hybrid'; // всі відомі варіанти = Hybrid
-
-                // Потужність: 6.0, 8.0, 12K, 10kw, 6k, або просто число перед HV/LV
-                $power = null;
-                // Спочатку десяткова: 6.0, 8.0 (без K)
-                if (preg_match('/\b(\d+)\.(\d+)\s*(?:-|k(?:w)?)?\b/i', $s, $pm)) {
-                    $kw = (int)$pm[1]; // 6.0 → 6, 8.0 → 8
-                } elseif (preg_match('/\b(\d+)\s*k(?:w)?\b/i', $s, $pm)) {
-                    $kw = (int)$pm[1];
-                } elseif (preg_match('/\b(\d+)\s+(?:HV|LV)\b/i', $s, $pm)) {
-                    $kw = (int)$pm[1]; // "15 HV", "30 HV" → 15, 30
-                } else {
-                    $kw = null;
-                }
-                if ($kw !== null) {
-                    $allowed = [6, 8, 10, 12, 15, 20, 30];
-                    $closest = $allowed[0];
-                    foreach ($allowed as $v) {
-                        if (abs($v - $kw) < abs($closest - $kw)) $closest = $v;
-                    }
-                    $power = $closest . 'K';
-                }
-
-                // Напруга: LV або HV
-                $voltage = null;
-                if (preg_match('/\b(LV|HV)\b/i', $s, $vm)) {
-                    $voltage = strtoupper($vm[1]);
-                }
-
-                $parts = array_filter(['Solax', $series ? $series . ' ' . $type : null, $power, $voltage]);
-                if (count($parts) > 1) return implode(' ', $parts);
-            }
-
-            return $s;
+            return \App\Services\InverterNormalizerService::normalize($s) ?? $s;
         };
 
         // Зведення по обладнанню (кількість однакових позицій)
@@ -2019,7 +2068,50 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
                 'remaining' => max(0, $inStock - $inProjects),
             ];
         }
-        usort($invertersTable, fn($a, $b) => $b['shortage'] <=> $a['shortage'] ?: $b['projects'] <=> $a['projects']);
+        // Секція: 1=X1 Hybrid, 2=X3 Hybrid, 3=X1 Grid, 4=X3 Grid, 5=Інші
+        $getInverterSection = function(string $name): int {
+            if (!preg_match('/^Solax\b/i', $name)) return 5;
+            $isX1      = (bool) preg_match('/\bX1\b/i', $name);
+            $isX3      = (bool) preg_match('/\bX3\b/i', $name);
+            $isHybrid  = (bool) preg_match('/\bHybrid\b/i', $name);
+            $isGrid    = (bool) preg_match('/\bGrid\b/i', $name);
+            if ($isHybrid && $isX1) return 1;
+            if ($isHybrid && $isX3) return 2;
+            if ($isGrid   && $isX1) return 3;
+            if ($isGrid   && $isX3) return 4;
+            return 5;
+        };
+        $getInverterPower = fn(string $name): float =>
+            preg_match('/\b(\d+(?:\.\d+)?)K\b/i', $name, $m) ? (float)$m[1] : 9999.0;
+
+        usort($invertersTable, function($a, $b) use ($getInverterSection, $getInverterPower) {
+            $sa = $getInverterSection($a['name']);
+            $sb = $getInverterSection($b['name']);
+            if ($sa !== $sb) return $sa <=> $sb;
+            $pa = $getInverterPower($a['name']);
+            $pb = $getInverterPower($b['name']);
+            return $pa !== $pb ? ($pa <=> $pb) : ($a['name'] <=> $b['name']);
+        });
+
+        // Вставляємо заголовки секцій
+        $sectionLabels = [
+            1 => 'Однофазні гібридні',
+            2 => 'Трифазні гібридні',
+            3 => 'Однофазні мережеві',
+            4 => 'Трифазні мережеві',
+            5 => 'Автономні / Інші',
+        ];
+        $invertersFlat = [];
+        $currentSection = null;
+        foreach ($invertersTable as $row) {
+            $sec = $getInverterSection($row['name']);
+            if ($sec !== $currentSection) {
+                $invertersFlat[] = ['is_section' => true, 'name' => $sectionLabels[$sec]];
+                $currentSection = $sec;
+            }
+            $invertersFlat[] = $row;
+        }
+        $invertersTable = $invertersFlat;
 
         $panelsByModel = collect($panelsByModelMap)
             ->map(fn($qty, $name) => ['panel_name' => $name, 'qty' => $qty])
@@ -2027,6 +2119,12 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         $batteriesByModel = collect($batteriesByModelMap)
             ->map(fn($qty, $name) => ['battery_name' => $name, 'qty' => $qty])
             ->values();
+
+        // Додаткове обладнання: Сонячний кабель та Профіль монтажний
+        $stockCable   = (int) \Illuminate\Support\Facades\DB::table('solarglass_stock')
+            ->where('item_name', 'like', 'Кабель для сонячних панелей%')->sum('qty');
+        $stockProfile = (int) \Illuminate\Support\Facades\DB::table('solarglass_stock')
+            ->where('item_name', 'like', 'Профіль монтажний%')->sum('qty');
 
         return response()->json([
             'projects' => $projects->values(),
@@ -2041,6 +2139,10 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
                 'panels'    => $panelsTableMap,
                 'batteries' => $batteriesTableMap,
                 'inverters' => $invertersTable,
+                'additional' => [
+                    ['name' => 'Сонячний кабель', 'stock' => $stockCable,   'unit' => 'м'],
+                    ['name' => 'Профіль монтажний', 'stock' => $stockProfile, 'unit' => 'шт'],
+                ],
             ],
         ]);
     });

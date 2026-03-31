@@ -43,3 +43,19 @@ Schedule::command('sheets:sync-installers')
 // 🗑 Очищення даних про недоліки старших 3 місяців
 Schedule::command('quality:prune-deficiencies')
     ->dailyAt('03:00');
+
+// 🔔 Перевірка залишку Сонячного кабелю — щодня о 10:00 (пн-пт)
+Schedule::call(function () {
+    $qty = (int) \Illuminate\Support\Facades\DB::table('solarglass_stock')
+        ->where('item_code', 'ID00238')
+        ->value('qty');
+
+    if ($qty < 1000) {
+        app(\App\Services\NotificationService::class)->sendToRole(
+            'owner',
+            '⚠️ Сонячний кабель закінчується',
+            "На складі залишилось {$qty} м Сонячного кабелю. Потрібно замовити.",
+            'system'
+        );
+    }
+})->dailyAt('10:00')->weekdays();
