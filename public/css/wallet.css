@@ -171,7 +171,6 @@ body{
 
 body.modal-open{
   overflow:hidden;
-  touch-action:none;
 }
 
 /* щоб receipt-модалка виглядала як твій sheet/modal */
@@ -611,6 +610,11 @@ tbody td:last-child{
   right:0;
   bottom:0;
   z-index:3001;
+
+  max-height:90dvh;
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;
 
   padding:16px 18px 80px;
   border-radius:24px 24px 0 0;

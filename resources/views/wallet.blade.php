@@ -260,6 +260,7 @@
 
 
 
+    <div style="overflow-x:hidden; -webkit-overflow-scrolling:touch;">
     <table>
       <thead>
         <tr>
@@ -271,6 +272,7 @@
       </thead>
       <tbody id="entries"></tbody>
     </table>
+    </div>
   </div>
 
 </div>
