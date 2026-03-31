@@ -906,7 +906,19 @@ document.addEventListener('DOMContentLoaded', async function () {
           grouped.get(key).push(project);
         }
         if (normalizedKeys.size === 0) {
-          unscheduled.push({ ...project, _scheduledDate: project[SCHEDULE_FIELD] });
+          const todayStr = days[0].key;
+          const allInPast = explicitDates.length > 0
+            && explicitDates.every(rawDate => {
+              const d = parseProjectDate(rawDate);
+              return d && d.toISOString().slice(0, 10) < todayStr;
+            });
+          if (allInPast && !project.installation_completed_at) {
+            if (grouped.has(todayStr)) {
+              grouped.get(todayStr).push({ ...project, _isOverdue: true });
+            }
+          } else {
+            unscheduled.push({ ...project, _scheduledDate: project[SCHEDULE_FIELD] });
+          }
         }
       });
 

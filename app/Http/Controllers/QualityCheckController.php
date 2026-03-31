@@ -238,9 +238,14 @@ class QualityCheckController extends Controller
             . 'Потрібно перевірити якість робіт і підтвердити завершення для нарахування зарплати.';
 
         $notifService = app(\App\Services\NotificationService::class);
-        $foremen = DB::table('users')->whereIn('role', ['owner', 'manager'])->get();
-        foreach ($foremen as $foreman) {
-            $notifService->send((int) $foreman->id, $notifTitle, $notifBody, 'system');
+        $recipients = DB::table('users')
+            ->where(function ($q) {
+                $q->whereIn('role', ['owner', 'manager'])
+                  ->orWhere('actor', 'foreman');
+            })
+            ->get();
+        foreach ($recipients as $recipient) {
+            $notifService->send((int) $recipient->id, $notifTitle, $notifBody, 'system');
         }
 
         return response()->json([

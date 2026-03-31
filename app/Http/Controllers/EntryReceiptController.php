@@ -24,13 +24,14 @@ class EntryReceiptController extends Controller
             Storage::disk('public')->delete($entry->receipt_path);
         }
 
-        $entry->receipt_path = $path;
-        $entry->save();
+        \Illuminate\Support\Facades\DB::table('entries')
+            ->where('id', $entry->id)
+            ->update(['receipt_path' => $path]);
 
         return response()->json([
             'ok' => true,
-            'receipt_path' => $entry->receipt_path,
-            'receipt_url' => Storage::disk('public')->url($entry->receipt_path),
+            'receipt_path' => $path,
+            'receipt_url' => Storage::disk('public')->url($path),
         ]);
     }
 }

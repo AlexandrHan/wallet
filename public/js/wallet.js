@@ -1271,8 +1271,9 @@ async function submitEntry(entry_type, amount, comment){
   }
 
   if (!res.ok) {
-    const txt = await res.text();
-    alert(txt || 'Помилка');
+    let msg = 'Помилка';
+    try { const j = await res.json(); msg = j.message || msg; } catch {}
+    alert(msg);
     return false;
   }
 
@@ -1312,8 +1313,9 @@ async function submitEntry(entry_type, amount, comment){
       });
 
       if (!up.ok) {
-        const txt = await up.text();
-        alert('Чек не завантажився: ' + (txt || up.status));
+        let msg = 'Чек не завантажився (' + up.status + ')';
+        try { const j = await up.json(); msg = j.message || msg; } catch {}
+        alert(msg);
       } else {
         resetReceiptUI();
       }
@@ -1372,8 +1374,9 @@ async function submitEntry(entry_type, amount, comment){
     });
 
     if (!res.ok) {
-      const txt = await res.text();
-      alert(`Помилка: ${res.status}\n${txt.slice(0, 300)}`);
+      let msg = 'Помилка ' + res.status;
+      try { const j = await res.json(); msg = j.message || msg; } catch {}
+      alert(msg);
       return false;
     }
 
@@ -1412,8 +1415,9 @@ async function submitEntry(entry_type, amount, comment){
     });
 
     if (!res.ok) {
-      const txt = await res.text();
-      alert(`Помилка: ${res.status}\n${txt.slice(0, 300)}`);
+      let msg = 'Помилка ' + res.status;
+      try { const j = await res.json(); msg = j.message || msg; } catch {}
+      alert(msg);
       return;
     }
 
@@ -2546,8 +2550,9 @@ async function deleteEntry(id){
   });
 
   if (!res.ok) {
-    const txt = await res.text();
-    alert(txt || 'Помилка видалення');
+    let msg = 'Помилка видалення';
+    try { const j = await res.json(); msg = j.message || msg; } catch {}
+    alert(msg);
     return;
   }
 

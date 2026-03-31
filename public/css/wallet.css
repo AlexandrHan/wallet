@@ -469,6 +469,7 @@ tbody tr{
   -webkit-backdrop-filter: blur(22px) saturate(160%);
 
   border:1px solid rgba(255,255,255,.14);
+  touch-action: pan-y;
 }
 
 tbody td{ padding:14px; font-size:14px; }
@@ -1621,6 +1622,7 @@ body.modal-open{
   width: 100%;
   height: 100dvh;
   max-height: 100dvh;
+  top: 20px;
   background:
     radial-gradient(1400px 700px at 20% -20%, #1b2450 0%, transparent 60%),
     radial-gradient(1200px 600px at 90% 10%, #0f3a2a 0%, transparent 55%),
@@ -1680,6 +1682,42 @@ body.modal-open{
 }
 #staffCashModal .modal-close:active{
   transform: translateY(1px);
+}
+
+@media (min-width: 900px){
+  #staffCashModal{
+    display: block;
+    padding: 0;
+  }
+
+  #staffCashModal.hidden{
+    display: none;
+  }
+
+  #staffCashModal .modal-panel{
+    top: 1rem;
+    left: 30%;
+    right: auto;
+    bottom: auto;
+    transform: none;
+    width: 40%;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  #staffCashModal .modal-header{
+    margin-bottom: 12px;
+  }
+
+  #staffCashModal .modal-body{
+    max-height: none;
+    overflow-y: auto;
+    padding: 14px 16px;
+    padding-bottom: calc(60px + env(safe-area-inset-bottom));
+  }
 }
 
 .avatar-image{
