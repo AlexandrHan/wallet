@@ -535,13 +535,11 @@ async function loadWallets() {
       }
       isInitialLoad = false;
     } else {
-      // Сортуємо за id щоб stream-processing працював коректно
+      // Оновлюємо lastSeenEntryId без звуку — звук тільки при локальному створенні
       const sorted = [...state.entries].sort((a, b) => (a.id || 0) - (b.id || 0));
       sorted.forEach(e => {
         if ((e.id || 0) > lastSeenEntryId) {
-          console.log('[Wallet] New entry:', e.id, '>', lastSeenEntryId, '→ sound', e.entry_type);
-          playSoundSafe(e.entry_type);
-          updateLastSeen(e.id); // одразу — не чекаємо кінця циклу
+          updateLastSeen(e.id);
         }
       });
     }

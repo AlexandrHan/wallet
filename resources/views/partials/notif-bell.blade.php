@@ -191,8 +191,6 @@
           if (!window.location.pathname.startsWith('/messages')) {
             window._sgPlaySound && window._sgPlaySound('/sounds/chat.mp3');
           }
-        } else if (n.type === 'income') {
-          window._sgPlaySound && window._sgPlaySound('/sounds/moneta.mp3');
         } else {
           window._sgPlaySound && window._sgPlaySound('/sounds/chat.mp3');
         }

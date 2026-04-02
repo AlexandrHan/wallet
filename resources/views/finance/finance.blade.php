@@ -1,6 +1,6 @@
 @php
   $leadManagers = \App\Models\User::query()
-    ->where('role', 'ntv')
+    ->whereIn('role', ['ntv', 'manager'])
     ->orderBy('name')
     ->get(['id', 'name', 'email', 'actor'])
     ->map(function ($user) {
@@ -15,7 +15,7 @@
       }
 
       if ($label === '') {
-        $label = 'НТВ #' . $user->id;
+        $label = 'Менеджер #' . $user->id;
       }
 
       return [
@@ -46,6 +46,13 @@
 
       <button id="createProjectBtn" class="btn" style="align-items:center;width: 100%;background:rgba(84, 192, 134, 0.71); margin-bottom:0;">➕ Новий проект</button>
     </div>
+  </div>
+
+  <div class="card" style="margin-top:15px; display:flex; flex-direction:column; gap:8px;">
+    <input id="globalSearchInput" class="btn" type="text" placeholder="🔍 Пошук по прізвищу..." style="width:100%; margin-bottom:0;">
+    <select id="managerFilterSelect" class="btn" style="width:100%; margin-bottom:0;">
+      <option value="">👤 Всі менеджери</option>
+    </select>
   </div>
 
   <div id="projectsContainer" style="margin-top:20px;"></div>
@@ -142,6 +149,8 @@ document.addEventListener('DOMContentLoaded', function () {
   const OPEN_ACTIVE_KEY = 'finance_open_active_projects';
   const SEARCH_PAID_KEY = 'finance_search_paid_projects';
   const SEARCH_ACTIVE_KEY = 'finance_search_active_projects';
+  const MANAGER_FILTER_KEY = 'finance_manager_filter';
+  const GLOBAL_SEARCH_KEY  = 'finance_global_search';
   const rememberOpenProject = (id) => localStorage.setItem(OPEN_KEY, String(id));
   const getOpenProject = () => {
     const v = localStorage.getItem(OPEN_KEY);
@@ -150,6 +159,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const POLL_MS = 20000;
   let isProjectsLoading = false;
   let pendingRefresh = false;
+  let cachedProjects = null;
   let projectsPollTimer = null;
 
   function renderProjects(projects) {
@@ -169,7 +179,29 @@ document.addEventListener('DOMContentLoaded', function () {
     const isActiveOpen = localStorage.getItem(OPEN_ACTIVE_KEY) !== '0';
     const paidQuery = (localStorage.getItem(SEARCH_PAID_KEY) || '').trim();
     const activeQuery = (localStorage.getItem(SEARCH_ACTIVE_KEY) || '').trim();
+    cachedProjects = projects;
     container.innerHTML = '';
+
+    // ── Оновлюємо список менеджерів у фільтрі з реальних даних проектів ──
+    const managerFilter  = localStorage.getItem(MANAGER_FILTER_KEY) || '';
+    const globalSearch   = localStorage.getItem(GLOBAL_SEARCH_KEY)  || '';
+    const sel = document.getElementById('managerFilterSelect');
+    if (sel) {
+      const names = [...new Set(
+        (projects || []).map(p => p.manager_name || '').filter(n => n && n !== '—')
+      )].sort((a, b) => a.localeCompare(b, 'uk'));
+      const current = sel.value || managerFilter;
+      sel.innerHTML = '<option value="">👤 Всі менеджери</option>' +
+        names.map(n => `<option value="${n.replace(/"/g,'&quot;')}">${n}</option>`).join('');
+      sel.value = current;
+    }
+    const gsi = document.getElementById('globalSearchInput');
+    if (gsi && document.activeElement !== gsi) gsi.value = globalSearch;
+
+    const normalizeG = (v) => String(v ?? '').toLowerCase().trim();
+    const filteredByManager = (projects || [])
+      .filter(p => !managerFilter || (p.manager_name || '') === managerFilter)
+      .filter(p => !globalSearch || [p.client_name, p.manager_name].some(v => normalizeG(v).includes(normalizeG(globalSearch))));
 
     const byName = (a, b) => String(a.client_name || '').localeCompare(String(b.client_name || ''), 'uk', { sensitivity: 'base' });
     const toNum = (v) => {
@@ -187,7 +219,7 @@ document.addEventListener('DOMContentLoaded', function () {
       return total > 0 && paid >= total && remaining <= 0;
     };
     const hasPending = (p) => (p.transfers || []).some(t => t.status === 'pending');
-    const allActiveProjects = (projects || [])
+    const allActiveProjects = filteredByManager
       .filter(p => !isPaidProject(p))
       .sort((a, b) => {
         const ap = hasPending(a) ? 1 : 0;
@@ -195,7 +227,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (bp !== ap) return bp - ap; // pending — вгорі
         return byName(a, b);           // решта — за алфавітом
       });
-    const allPaidProjects = (projects || [])
+    const allPaidProjects = filteredByManager
       .filter(p => isPaidProject(p))
       .sort(byName);
 
@@ -396,7 +428,7 @@ document.addEventListener('DOMContentLoaded', function () {
               Очікує підтвердження: ${formatMoney(p.pending_amount, p.currency)}
             </div>
             
-            ${(AUTH_USER && (AUTH_USER.role === 'ntv' || AUTH_USER.role === 'owner')) ? `
+            ${(AUTH_USER && (AUTH_USER.role === 'ntv' || AUTH_USER.role === 'owner' || AUTH_USER.role === 'accountant')) ? `
             <div style="margin-top:12px;">
               <button class="btn create-advance-btn" style="width:100%;" data-id="${p.id}" data-currency="${p.currency}">
                 ➕ Створити аванс
@@ -578,6 +610,24 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   window.refreshSalesProjects = () => loadProjects({ silent: false });
+
+  // ── Global search + manager filter ───────────────────────────────────────
+  const globalSearchInput = document.getElementById('globalSearchInput');
+  if (globalSearchInput) {
+    globalSearchInput.value = localStorage.getItem(GLOBAL_SEARCH_KEY) || '';
+    globalSearchInput.addEventListener('input', function () {
+      localStorage.setItem(GLOBAL_SEARCH_KEY, this.value);
+      if (cachedProjects) renderProjects(cachedProjects);
+    });
+  }
+  const managerFilterSelect = document.getElementById('managerFilterSelect');
+  if (managerFilterSelect) {
+    managerFilterSelect.value = localStorage.getItem(MANAGER_FILTER_KEY) || '';
+    managerFilterSelect.addEventListener('change', function () {
+      localStorage.setItem(MANAGER_FILTER_KEY, this.value);
+      if (cachedProjects) renderProjects(cachedProjects);
+    });
+  }
 
   loadProjects();
   projectsPollTimer = window.setInterval(() => loadProjects({ silent: true }), POLL_MS);

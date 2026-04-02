@@ -78,7 +78,7 @@
         });
       }
 
-      const soundFile = (data.type === 'income') ? '/sounds/moneta.mp3' : '/sounds/chat.mp3';
+      const soundFile = '/sounds/chat.mp3';
       if (window._sgPlaySound) {
         window._sgPlaySound(soundFile);
       } else {
