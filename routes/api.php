@@ -975,6 +975,14 @@ Route::post('/automation/kryzhanovskyi-sync', fn (Request $request) => $runAutom
     'task_note_field' => 'installation_team_task_note',
 ]));
 
+Route::post('/automation/samoilenko-sync', fn (Request $request) => $runAutomationProjectSync($request, [
+    'assignment_field' => 'installation_team',
+    'assignment_value' => 'Самойленко',
+    'date_field' => 'panel_work_start_date',
+    'note_field' => 'installation_team_note',
+    'task_note_field' => 'installation_team_task_note',
+]));
+
 // ─── Electrician Google Sheet sync (ERP-driven) ───────────────────────────────
 // POST /api/automation/electrician-google-sync
 //

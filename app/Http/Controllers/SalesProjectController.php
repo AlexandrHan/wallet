@@ -1603,7 +1603,7 @@ class SalesProjectController extends Controller
     {
         $defaults = [
             'electrician' => ['Малінін', 'Савенков', 'Комаренко'],
-            'installation_team' => ['Кукуяка', 'Шевченко', 'Крижановський'],
+            'installation_team' => ['Кукуяка', 'Шевченко', 'Крижановський', 'Самойленко'],
         ];
 
         if (!Schema::hasTable('construction_staff_options')) {

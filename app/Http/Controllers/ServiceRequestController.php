@@ -21,6 +21,7 @@ class ServiceRequestController extends Controller
             'shevchenko' => 'Шевченко',
             'kukuiaka' => 'Кукуяка',
             'kryzhanovskyi' => 'Крижановський',
+            'samoilenko' => 'Самойленко',
         ];
 
         $name = (string) ($actorMap[(string) $user->actor] ?? $user->name ?? '');
@@ -28,7 +29,7 @@ class ServiceRequestController extends Controller
 
         if ($user->role === 'worker' && $user->position === 'electrician') {
             $field = 'electrician';
-        } elseif ($user->role === 'worker' && in_array((string) $user->actor, ['shevchenko', 'kukuiaka', 'kryzhanovskyi'], true)) {
+        } elseif ($user->role === 'worker' && in_array((string) $user->actor, ['shevchenko', 'kukuiaka', 'kryzhanovskyi', 'samoilenko'], true)) {
             $field = 'installation_team';
         }
 

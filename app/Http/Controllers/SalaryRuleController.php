@@ -23,7 +23,7 @@ class SalaryRuleController extends Controller
     {
         return match ($type) {
             'electrician' => ['Малінін', 'Савенков', 'Комаренко'],
-            'installation_team' => ['Кукуяка', 'Шевченко', 'Крижановський'],
+            'installation_team' => ['Кукуяка', 'Шевченко', 'Крижановський', 'Самойленко'],
             default => [],
         };
     }

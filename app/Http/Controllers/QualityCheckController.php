@@ -19,7 +19,7 @@ class QualityCheckController extends Controller
     private function isInstaller($user): bool
     {
         return $user->role === 'worker'
-            && in_array(mb_strtolower((string) $user->actor), ['kryzhanovskyi', 'kukuiaka', 'shevchenko'], true);
+            && in_array(mb_strtolower((string) $user->actor), ['kryzhanovskyi', 'kukuiaka', 'shevchenko', 'samoilenko'], true);
     }
 
     private function isElectrician($user): bool
@@ -462,6 +462,7 @@ class QualityCheckController extends Controller
                 'kryzhanovskyi' => 'Крижановський',
                 'kukuiaka'      => 'Кукуяка',
                 'shevchenko'    => 'Шевченко',
+                'samoilenko'    => 'Самойленко',
             ];
             $teamName = mb_strtolower(trim((string) ($project->installation_team ?? '')));
             $notifService = app(\App\Services\NotificationService::class);

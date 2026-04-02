@@ -34,7 +34,7 @@
   @elseif($user->role === 'worker' && $user->position === 'electrician')
     @include('partials.nav.bottom-electrik')
 
-  @elseif($user->role === 'worker' && in_array(mb_strtolower((string)$user->actor), ['kryzhanovskyi', 'kukuiaka', 'shevchenko']))
+  @elseif($user->role === 'worker' && in_array(mb_strtolower((string)$user->actor), ['kryzhanovskyi', 'kukuiaka', 'shevchenko', 'samoilenko']))
     @include('partials.nav.bottom-installers')
 
   @elseif($user->role === 'worker')

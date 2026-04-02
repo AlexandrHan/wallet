@@ -474,6 +474,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
                 'kryzhanovskyi' => 'Крижановський',
                 'kukuiaka'      => 'Кукуяка',
                 'shevchenko'    => 'Шевченко',
+                'samoilenko'    => 'Самойленко',
             ];
             $actor = mb_strtolower(trim((string) ($user->actor ?? '')));
             if (isset($actorMap[$actor])) {
@@ -487,7 +488,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         if (
             !$user
             || $user->role !== 'worker'
-            || !in_array(mb_strtolower((string) $user->actor), ['kryzhanovskyi', 'kukuiaka', 'shevchenko'])
+            || !in_array(mb_strtolower((string) $user->actor), ['kryzhanovskyi', 'kukuiaka', 'shevchenko', 'samoilenko'])
         ) {
             abort(403);
         }

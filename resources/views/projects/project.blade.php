@@ -42,6 +42,7 @@ let STAFF_OPTIONS = {
     { id: null, name: 'Кукуяка' },
     { id: null, name: 'Шевченко' },
     { id: null, name: 'Крижановський' },
+    { id: null, name: 'Самойленко' },
   ],
 };
 

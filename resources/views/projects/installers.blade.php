@@ -14,6 +14,7 @@
     'kryzhanovskyi' => 'Крижановський',
     'kukuiaka' => 'Кукуяка',
     'shevchenko' => 'Шевченко',
+    'samoilenko' => 'Самойленко',
   ],
   'scheduleField' => 'panel_work_start_date',
   'scheduleDurationField' => 'panel_work_days',
