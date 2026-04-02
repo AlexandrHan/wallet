@@ -17,7 +17,7 @@ class FinanceAccess
 
         if ($isFinance) {
             $u = $request->user();
-            if (!$u || !in_array($u->role, ['owner', 'ntv'], true)) {
+            if (!$u || !in_array($u->role, ['owner', 'ntv', 'accountant'], true)) {
                 abort(403);
             }
         }
