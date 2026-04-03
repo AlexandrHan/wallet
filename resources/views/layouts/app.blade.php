@@ -58,7 +58,6 @@
              double-play when both WebSocket and FCM push arrive for the same event.
         --}}
         <audio id="_sg_snd_chat"   src="/sounds/chat.mp3"   preload="auto" style="display:none"></audio>
-        <audio id="_sg_snd_moneta" src="/sounds/moneta.mp3" preload="auto" style="display:none"></audio>
         <script>(function () {
           let _unlocked = false;
           let _lastAt   = 0;
@@ -66,9 +65,7 @@
 
           function _elem(src) {
             if (!_pool[src]) {
-              const id = src.includes('chat') ? '_sg_snd_chat'
-                       : src.includes('moneta') ? '_sg_snd_moneta'
-                       : null;
+              const id = src.includes('chat') ? '_sg_snd_chat' : null;
               _pool[src] = (id && document.getElementById(id)) || new Audio(src);
             }
             return _pool[src];
@@ -77,15 +74,15 @@
           function _unlock() {
             if (_unlocked) return;
             _unlocked = true;
-            ['_sg_snd_chat', '_sg_snd_moneta'].forEach(id => {
-              const a = document.getElementById(id);
-              if (!a) return;
-              try {
-                a.muted = true;
-                a.play().then(() => { a.pause(); a.currentTime = 0; a.muted = false; })
-                         .catch(() => { a.muted = false; });
-              } catch {}
-            });
+            // Pre-unlock тільки chat.mp3 — він грає автоматично (push/WS).
+            // moneta/leave грають тільки на прямому кліку кнопки — вони не потребують pre-unlock.
+            const a = document.getElementById('_sg_snd_chat');
+            if (!a) return;
+            try {
+              a.muted = true;
+              a.play().then(() => { a.pause(); a.currentTime = 0; a.muted = false; })
+                       .catch(() => { a.muted = false; });
+            } catch {}
           }
 
           ['click', 'keydown'].forEach(ev => document.addEventListener(ev, _unlock, { once: true }));

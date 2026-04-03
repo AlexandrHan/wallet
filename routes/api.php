@@ -739,13 +739,39 @@ $runAutomationProjectSync = function (
                 continue;
             }
 
+            // ── Find best matching project ────────────────────────────────────
+            $project = null;
+            $bestCandidate = null;
+            $bestScore = 0.0;
+
+            foreach ($projects as $candidateProject) {
+                $score = $scoreNameMatch($candidateName, (string) $candidateProject->client_name);
+                if ($score > $bestScore) {
+                    $bestScore = $score;
+                    $bestCandidate = $candidateProject;
+                } elseif ($score === $bestScore && $score >= 72.0 && $bestCandidate !== null) {
+                    // Tie: prefer the project that already has the assignment field set
+                    $currentHas = ($normalizeName($candidateProject->{$assignmentField} ?? '')) !== '';
+                    $bestHas = ($normalizeName($bestCandidate->{$assignmentField} ?? '')) !== '';
+                    if ($currentHas && !$bestHas) {
+                        $bestCandidate = $candidateProject;
+                    }
+                }
+            }
+
+            if ($bestCandidate && $bestScore >= 72.0) {
+                $project = $bestCandidate;
+            }
+
+            // ── task_note rows always go to service_requests (never project) ──
             if ($taskNote !== '' && $serviceTableAvailable) {
                 $taskMeta = $extractTaskMeta($taskNote);
                 $servicePayload = [
-                    'client_name' => $candidateName,
-                    'settlement' => $taskMeta['D'] !== '' ? $taskMeta['D'] : 'Автоматизація',
-                    'description' => $taskNote,
-                    'updated_at' => now(),
+                    'client_name'   => $candidateName,
+                    'settlement'    => $taskMeta['D'] !== '' ? $taskMeta['D'] : 'Автоматизація',
+                    'description'   => $taskNote,
+                    'scheduled_date' => $date,
+                    'updated_at'    => now(),
                 ];
 
                 if ($noteField && $note) {
@@ -785,36 +811,15 @@ $runAutomationProjectSync = function (
                 }
 
                 $servicePayload['created_at'] = now();
-                $servicePayload['status'] = 'open';
-                $servicePayload['created_by'] = null;
+                $servicePayload['status']      = 'open';
+                $servicePayload['created_by']  = null;
 
                 DB::table('service_requests')->insert($servicePayload);
                 $serviceCreated++;
                 continue;
             }
 
-            $project = null;
-            $bestCandidate = null;
-            $bestScore = 0.0;
-
-            foreach ($projects as $candidateProject) {
-                $score = $scoreNameMatch($candidateName, (string) $candidateProject->client_name);
-                if ($score > $bestScore) {
-                    $bestScore = $score;
-                    $bestCandidate = $candidateProject;
-                } elseif ($score === $bestScore && $score >= 72.0 && $bestCandidate !== null) {
-                    // Tie: prefer the project that already has the assignment field set
-                    $currentHas = ($normalizeName($candidateProject->{$assignmentField} ?? '')) !== '';
-                    $bestHas = ($normalizeName($bestCandidate->{$assignmentField} ?? '')) !== '';
-                    if ($currentHas && !$bestHas) {
-                        $bestCandidate = $candidateProject;
-                    }
-                }
-            }
-
-            if ($bestCandidate && $bestScore >= 72.0) {
-                $project = $bestCandidate;
-            } else {
+            if (!$project) {
                 $notFound[] = $candidateName;
                 Log::warning('[auto-sync] NOT FOUND', [
                     'executor'   => $syncLabel,

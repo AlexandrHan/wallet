@@ -328,10 +328,16 @@ function renderCheck(c) {
       <div id="saveIndicator_${c.id}"
         style="font-size:12px; text-align:right; min-height:18px; margin-bottom:6px; transition:opacity .4s;"></div>
 
-      <button type="button" class="btn save qc-approve-btn" data-id="${c.id}"
-        style="width:100%; ${approveOpacity}" ${approveDisabled}>
-        ✅ Проект прийнятий
-      </button>
+      <div style="display:flex; gap:8px; margin-top:4px;">
+        <button type="button" class="btn save qc-approve-btn" data-id="${c.id}"
+          style="flex:1; ${approveOpacity}" ${approveDisabled}>
+          ✅ Проект прийнятий
+        </button>
+        <button type="button" class="btn qc-cancel-btn" data-id="${c.id}"
+          style="padding:0 14px; background:rgba(229,62,62,.15); color:#f88; border:1px solid rgba(229,62,62,.3);">
+          ✕ Скасувати
+        </button>
+      </div>
     </div>
   `;
 }
@@ -497,6 +503,35 @@ async function approveCheck(id, btn) {
   }
 }
 
+async function cancelCheck(id, btn) {
+  btn.disabled = true;
+  btn.textContent = '...';
+
+  const card = btn.closest('[data-check-id]');
+
+  try {
+    const r = await fetch(`/api/quality-checks/${id}/cancel`, {
+      method: 'POST',
+      headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content },
+    });
+    const data = await r.json();
+
+    if (r.ok && data.ok) {
+      card.style.opacity = '.4';
+      card.style.pointerEvents = 'none';
+      setTimeout(() => card.remove(), 800);
+    } else {
+      alert(data.error || 'Помилка');
+      btn.disabled = false;
+      btn.textContent = '✕ Скасувати';
+    }
+  } catch (e) {
+    alert('Помилка з\'єднання');
+    btn.disabled = false;
+    btn.textContent = '✕ Скасувати';
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   loadChecks();
   setInterval(() => loadChecks().catch(() => {}), 10000);
@@ -508,6 +543,15 @@ document.addEventListener('click', function (e) {
     const id = parseInt(approveBtn.dataset.id);
     if (confirm('Підтвердити прийняття проєкту?')) {
       approveCheck(id, approveBtn);
+    }
+    return;
+  }
+
+  const cancelBtn = e.target.closest('.qc-cancel-btn');
+  if (cancelBtn) {
+    const id = parseInt(cancelBtn.dataset.id);
+    if (confirm('Скасувати відправку проєкту на перевірку? Монтажник зможе відправити повторно.')) {
+      cancelCheck(id, cancelBtn);
     }
     return;
   }

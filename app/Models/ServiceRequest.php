@@ -19,5 +19,10 @@ class ServiceRequest extends Model
         'scheduled_date',
         'created_by',
         'status',
+        'closed_at',
+    ];
+
+    protected $casts = [
+        'closed_at' => 'datetime',
     ];
 }

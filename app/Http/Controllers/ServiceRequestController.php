@@ -50,6 +50,7 @@ class ServiceRequestController extends Controller
             'is_urgent' => (bool) $item->is_urgent,
             'description' => (string) ($item->description ?? ''),
             'status' => (string) ($item->status ?? 'open'),
+            'closed_at' => optional($item->closed_at)?->toISOString(),
             'created_at' => optional($item->created_at)->format('d.m.Y H:i'),
             'schedule_date' => $item->scheduled_date ?? optional($item->created_at)->format('Y-m-d'),
             'entry_type' => 'service',
@@ -107,6 +108,31 @@ class ServiceRequestController extends Controller
             ->values();
 
         return response()->json($items);
+    }
+
+    public function close(ServiceRequest $serviceRequest): JsonResponse
+    {
+        $user = auth()->user();
+        if (!$user) {
+            abort(403);
+        }
+
+        // Workers can close their own assigned services; owners/foremen can close any
+        $isOwner = $user->role === 'owner';
+        $isForeman = $user->role === 'worker' && $user->position === 'foreman';
+        [$field, $value] = $this->resolveWorkerAssignmentName();
+        $isAssigned = $field && $value && $serviceRequest->{$field} === $value;
+
+        if (!$isOwner && !$isForeman && !$isAssigned) {
+            abort(403);
+        }
+
+        $serviceRequest->update([
+            'status'    => 'closed',
+            'closed_at' => now(),
+        ]);
+
+        return response()->json(['ok' => true]);
     }
 
     public function store(Request $request): JsonResponse

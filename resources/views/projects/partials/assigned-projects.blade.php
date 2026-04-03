@@ -237,6 +237,12 @@ document.addEventListener('DOMContentLoaded', async function () {
                 <span>Відкрити Google Maps</span>
               </a>
             </div>
+
+            ${MATCH_FIELD === 'electrician' && String(service.status || '') !== 'closed' ? `
+            <button type="button" class="btn svc-close-btn" data-service-id="${service.id}"
+              style="width:100%; margin-top:12px; background:#1a4a6a; color:#fff; font-weight:700;">
+              ✅ Завершив сервіс
+            </button>` : ''}
           </div>
         </div>
       </div>
@@ -247,6 +253,36 @@ document.addEventListener('DOMContentLoaded', async function () {
       const isHidden = window.getComputedStyle(body).display === 'none';
       body.style.display = isHidden ? 'block' : 'none';
     });
+
+    const closeBtn = card.querySelector('.svc-close-btn');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', async function (e) {
+        e.stopPropagation();
+        if (!confirm('Підтвердити завершення сервісного виклику?')) return;
+        this.disabled = true;
+        this.textContent = 'Збереження...';
+        try {
+          const r = await fetch(`/api/service-requests/${service.id}/close`, {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content },
+          });
+          const data = await r.json();
+          if (r.ok && data.ok) {
+            card.style.opacity = '.4';
+            card.style.pointerEvents = 'none';
+            setTimeout(() => loadProjects().catch(() => {}), 600);
+          } else {
+            alert(data.error || 'Помилка');
+            this.disabled = false;
+            this.textContent = '✅ Завершив сервіс';
+          }
+        } catch {
+          alert('Помилка з\'єднання');
+          this.disabled = false;
+          this.textContent = '✅ Завершив сервіс';
+        }
+      });
+    }
 
     return card;
   }
@@ -329,8 +365,34 @@ document.addEventListener('DOMContentLoaded', async function () {
     }
 
     // Show "Завершили будівництво" button for workers only (not owner viewing)
-    const isService = String(project.status || '') === 'service';
-    if (!isWorker || isService) return '';
+    const isService = String(project.entry_type || '') === 'service';
+    if (!isWorker) return '';
+    if (isService) {
+      // Service close button only for electrician view
+      if (MATCH_FIELD !== 'electrician') return '';
+      if (String(project.status || '') === 'closed') return '';
+      return `
+        <button type="button" class="btn close-service-btn"
+          data-service-id="${project.id}"
+          style="width:100%; margin:8px 0 12px; background:#1a4a6a; color:#fff; font-weight:700;">
+          ✅ Завершити сервісний виклик
+        </button>
+      `;
+    }
+
+    // Блокуємо майбутні проекти — завершити можна тільки сьогодні або минулі
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const startDate = project.panel_work_start_date || '';
+    const isFuture = startDate && startDate > todayStr;
+    if (isFuture) {
+      return `
+        <div style="width:100%; margin:8px 0 12px; padding:10px 14px; border-radius:8px;
+                    background:rgba(255,255,255,.06); color:rgba(255,255,255,.4);
+                    font-size:13px; text-align:center;">
+          🔒 Завершення доступне з ${startDate.split('-').reverse().join('.')}
+        </div>
+      `;
+    }
 
     return `
       <button type="button" class="btn complete-construction-btn"
@@ -678,10 +740,44 @@ document.addEventListener('DOMContentLoaded', async function () {
       });
     }
 
+    // ── Close service button ──────────────────────────────────────────────
+    const closeServiceBtn = card.querySelector('.close-service-btn');
+    if (closeServiceBtn) {
+      closeServiceBtn.addEventListener('click', async function () {
+        if (!confirm('Підтвердити завершення сервісного виклику?')) return;
+        this.disabled = true;
+        this.textContent = 'Збереження...';
+        try {
+          const r = await fetch(`/api/service-requests/${project.id}/close`, {
+            method: 'POST',
+            headers: {
+              'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+              'Accept': 'application/json',
+            },
+          });
+          const data = await r.json();
+          if (r.ok && data.ok) {
+            card.style.opacity = '.4';
+            card.style.pointerEvents = 'none';
+            setTimeout(() => loadProjects().catch(() => {}), 600);
+          } else {
+            alert(data.error || 'Помилка');
+            this.disabled = false;
+            this.textContent = '✅ Завершити сервісний виклик';
+          }
+        } catch (err) {
+          alert('Помилка з\'єднання');
+          this.disabled = false;
+          this.textContent = '✅ Завершити сервісний виклик';
+        }
+      });
+    }
+
     return card;
   }
 
-  function renderScheduledProjects(projects) {
+  function renderScheduledProjects(projects, target = null) {
+    target = target || container;
     const days = getWeekRange();
     const grouped = new Map(days.map(day => [day.key, []]));
     const unscheduled = [];
@@ -694,8 +790,9 @@ document.addEventListener('DOMContentLoaded', async function () {
     }
 
     projects.forEach(project => {
-      // Prefer installer_schedule_entries (has per-day descriptions) over plain dates array
-      const scheduleEntries = Array.isArray(project?.installer_schedule_entries) && project.installer_schedule_entries.length > 0
+      // For electrician view use only electric_schedule_dates (not installer entries which belong to another team)
+      const useInstallerEntries = MATCH_FIELD !== 'electrician';
+      const scheduleEntries = useInstallerEntries && Array.isArray(project?.installer_schedule_entries) && project.installer_schedule_entries.length > 0
         ? project.installer_schedule_entries
         : null;
 
@@ -762,12 +859,15 @@ document.addEventListener('DOMContentLoaded', async function () {
       }
     });
 
-    captureOpenState();
-    container.innerHTML = '';
+    if (!target || target === container) {
+      captureOpenState();
+      container.innerHTML = '';
+    }
 
     const hasAnyProjects = Array.from(grouped.values()).some(items => items.length > 0) || unscheduled.length > 0;
     if (!hasAnyProjects) {
-      container.innerHTML = `<div class="card">${esc(EMPTY_TEXT)}</div>`;
+      target.insertAdjacentHTML('beforeend', `<div class="card">${esc(EMPTY_TEXT)}</div>`);
+      restoreOpenState();
       return;
     }
 
@@ -799,7 +899,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         lastCard.style.marginBottom = '0';
       }
 
-      container.appendChild(daySection);
+      target.appendChild(daySection);
     });
 
     if (unscheduled.length > 0) {
@@ -826,7 +926,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         lastCard.style.marginBottom = '0';
       }
 
-      container.appendChild(unscheduledSection);
+      target.appendChild(unscheduledSection);
     }
 
     restoreOpenState();
@@ -834,19 +934,136 @@ document.addEventListener('DOMContentLoaded', async function () {
 
   const DONE_STATUSES = new Set(['waiting_quality_check', 'salary_pending']);
 
+  const UA_MONTHS = ['Січень','Лютий','Березень','Квітень','Травень','Червень','Липень','Серпень','Вересень','Жовтень','Листопад','Грудень'];
+
+  function fillArchiveBody(bodyEl, items, dateField, cardKeyPrefix) {
+    const byYear = {};
+    items.forEach(item => {
+      const raw = item[dateField] || '';
+      const d = raw ? new Date(raw) : null;
+      if (!d || isNaN(d.getTime())) {
+        if (!byYear['?']) byYear['?'] = { '?': [] };
+        byYear['?']['?'].push(item);
+        return;
+      }
+      const y = d.getFullYear();
+      const m = d.getMonth();
+      if (!byYear[y]) byYear[y] = {};
+      if (!byYear[y][m]) byYear[y][m] = [];
+      byYear[y][m].push(item);
+    });
+
+    const years = Object.keys(byYear).sort((a, b) => b > a ? 1 : -1);
+    if (!years.length) {
+      bodyEl.innerHTML = `<div class="acc-empty">Немає завершених</div>`;
+      return;
+    }
+
+    function makeToggle(el, body, stateKey) {
+      const isOpen = savedAccordionState.hasOwnProperty(stateKey) ? savedAccordionState[stateKey] : false;
+      body.style.display = isOpen ? 'block' : 'none';
+      el.querySelector('.acc-chevron').textContent = isOpen ? '▼' : '▶';
+      if (isOpen) el.classList.add('acc-header--open');
+      el.addEventListener('click', () => {
+        const closing = body.style.display !== 'none';
+        body.style.display = closing ? 'none' : 'block';
+        el.querySelector('.acc-chevron').textContent = closing ? '▶' : '▼';
+        el.classList.toggle('acc-header--open', !closing);
+        savedAccordionState[stateKey] = !closing;
+      });
+    }
+
+    years.forEach(year => {
+      const months = Object.keys(byYear[year]).sort((a, b) => b > a ? 1 : -1);
+      const yearCount = months.reduce((s, m) => s + byYear[year][m].length, 0);
+      const yearKey = `${cardKeyPrefix}-y-${year}`;
+
+      const yearSection = document.createElement('div');
+      yearSection.className = 'acc-section';
+
+      const yearHeader = document.createElement('button');
+      yearHeader.type = 'button';
+      yearHeader.className = 'acc-header';
+      yearHeader.style.fontSize = '14px';
+      yearHeader.innerHTML =
+        `<span class="acc-title">${esc(String(year))}</span>` +
+        `<span class="acc-count">${yearCount}</span>` +
+        `<span class="acc-chevron">▶</span>`;
+
+      const yearBody = document.createElement('div');
+      yearBody.className = 'acc-body';
+      makeToggle(yearHeader, yearBody, yearKey);
+
+      months.forEach(month => {
+        const monthItems = byYear[year][month];
+        const monthKey = `${cardKeyPrefix}-m-${year}-${month}`;
+        const monthSection = document.createElement('div');
+        monthSection.className = 'acc-section';
+        monthSection.style.marginBottom = '6px';
+
+        const monthLabel = month === '?' ? 'Без дати' : (UA_MONTHS[+month] || month);
+        const monthHeader = document.createElement('button');
+        monthHeader.type = 'button';
+        monthHeader.className = 'acc-header';
+        monthHeader.style.fontSize = '13px';
+        monthHeader.innerHTML =
+          `<span class="acc-title">${esc(monthLabel)}</span>` +
+          `<span class="acc-count">${monthItems.length}</span>` +
+          `<span class="acc-chevron">▶</span>`;
+
+        const monthBody = document.createElement('div');
+        monthBody.className = 'acc-body';
+        makeToggle(monthHeader, monthBody, monthKey);
+
+        monthItems
+          .sort((a, b) => String(b[dateField] || '').localeCompare(String(a[dateField] || '')))
+          .forEach((item, i) => {
+            const card = makeCard(item, `${cardKeyPrefix}-${item.id}-${year}-${month}`);
+            card.style.marginBottom = i < monthItems.length - 1 ? '12px' : '0';
+            monthBody.appendChild(card);
+          });
+
+        monthSection.appendChild(monthHeader);
+        monthSection.appendChild(monthBody);
+        yearBody.appendChild(monthSection);
+      });
+
+      yearSection.appendChild(yearHeader);
+      yearSection.appendChild(yearBody);
+      bodyEl.appendChild(yearSection);
+    });
+  }
+
   function renderAccordionProjects(projects) {
-    const schedule  = [];
-    const pending   = [];
-    const defective = [];
-    const done      = [];
+    const schedule          = [];
+    const pending           = [];
+    const defective         = [];
+    const completedInstalls = [];
+    const completedServices = [];
+
+    const isElecView = MATCH_FIELD === 'electrician';
 
     projects.forEach(project => {
       const cs = String(project?.construction_status || '');
-      if (cs === 'salary_pending' || cs === 'salary_paid') {
-        done.push(project);
+      const isService = String(project?.entry_type || '') === 'service';
+
+      if (isService) {
+        if (isElecView && String(project?.status || '') === 'closed') {
+          completedServices.push(project);
+        } else if (String(project?.status || '') !== 'closed') {
+          schedule.push(project);
+        }
+        return;
+      }
+
+      if (isElecView && (cs === 'salary_pending' || cs === 'salary_paid')) {
+        completedInstalls.push(project);
       } else if (cs === 'has_deficiencies') {
         defective.push(project);
       } else if (project?.installation_completed_at || cs === 'waiting_quality_check' || cs === 'deficiencies_fixed') {
+        pending.push(project);
+      } else if (cs === 'salary_pending' || cs === 'salary_paid') {
+        // non-electrician view: salary_pending goes to "done" (shown as pending confirmation)
         pending.push(project);
       } else {
         schedule.push(project);
@@ -866,7 +1083,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     schedule.sort(byStartDate);
     pending.sort(byCompletedDesc);
     defective.sort(byCompletedDesc);
-    done.sort(byCompletedDesc);
+    completedInstalls.sort(byCompletedDesc);
 
     // Render "Графік будівництва" body with date/weekday headers
     function fillScheduleBody(bodyEl, items) {
@@ -960,18 +1177,25 @@ document.addEventListener('DOMContentLoaded', async function () {
       }
     }
 
-    // Order: Завершені → Очікують → Потребують → Графік (open by default)
-    const sections = [
-      { key: 'done',      label: '✅ Завершені',                projects: done,      defaultOpen: false, isSchedule: false },
-      { key: 'pending',   label: '⏳ Очікують підтвердження',   projects: pending,   defaultOpen: false, isSchedule: false },
-      { key: 'defective', label: '⚠️ Потребують виправлення',   projects: defective, defaultOpen: false, isSchedule: false },
-      { key: 'schedule',  label: '📁 Графік будівництва',       projects: schedule,  defaultOpen: true,  isSchedule: true  },
+    // Order depends on view type
+    const baseSections = [
+      { key: 'pending',   label: '⏳ Очікують підтвердження', projects: pending,   defaultOpen: false, isSchedule: false },
+      { key: 'defective', label: '⚠️ Потребують виправлення', projects: defective, defaultOpen: false, isSchedule: false },
+      { key: 'schedule',  label: '📅 Графік будівництва',     projects: schedule,  defaultOpen: true,  isSchedule: true  },
     ];
+
+    const sections = isElecView
+      ? [
+          { key: 'completed-installs', label: '📁 Завершені монтажі',  projects: completedInstalls, defaultOpen: false, isArchive: true, archiveField: 'installation_completed_at', archivePrefix: 'ci' },
+          { key: 'completed-services', label: '📂 Завершені сервіси',  projects: completedServices, defaultOpen: false, isArchive: true, archiveField: 'closed_at',                 archivePrefix: 'cs' },
+          ...baseSections,
+        ]
+      : baseSections;
 
     captureOpenState();
     container.innerHTML = '';
 
-    sections.forEach(({ key, label, projects: items, defaultOpen, isSchedule }) => {
+    sections.forEach(({ key, label, projects: items, defaultOpen, isSchedule, isArchive, archiveField, archivePrefix }) => {
       // Preserve accordion open/closed state across auto-refreshes
       const open = savedAccordionState.hasOwnProperty(key) ? savedAccordionState[key] : defaultOpen;
 
@@ -992,7 +1216,6 @@ document.addEventListener('DOMContentLoaded', async function () {
         body.style.display = closing ? 'none' : 'block';
         header.querySelector('.acc-chevron').textContent = closing ? '▶' : '▼';
         header.classList.toggle('acc-header--open', !closing);
-        // Persist state so next auto-refresh respects user's choice
         savedAccordionState[key] = !closing;
       });
 
@@ -1000,7 +1223,9 @@ document.addEventListener('DOMContentLoaded', async function () {
       body.className = 'acc-body';
       body.style.display = open ? 'block' : 'none';
 
-      if (isSchedule) {
+      if (isArchive) {
+        fillArchiveBody(body, items, archiveField, archivePrefix);
+      } else if (isSchedule) {
         fillScheduleBody(body, items);
       } else if (items.length === 0) {
         body.innerHTML = `<div class="acc-empty">Немає проектів</div>`;
@@ -1028,6 +1253,63 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     if (ACCORDION_MODE) {
       renderAccordionProjects(base);
+      return;
+    }
+
+    // ── Electrician view: prepend archive accordions then render schedule ──
+    if (MATCH_FIELD === 'electrician') {
+      const doneProjects  = base.filter(p => {
+        const cs = String(p?.construction_status || '');
+        return String(p?.entry_type || '') !== 'service' && (cs === 'salary_pending' || cs === 'salary_paid');
+      });
+      const doneServices  = base.filter(p =>
+        String(p?.entry_type || '') === 'service' && String(p?.status || '') === 'closed'
+      );
+      const active = base
+        .filter(p => !doneProjects.includes(p) && !doneServices.includes(p))
+        .filter(p => !p?.installation_completed_at || p?.construction_status === 'has_deficiencies')
+        .filter(p => !DONE_STATUSES.has(p?.construction_status));
+
+      captureOpenState();
+      container.innerHTML = '';
+
+      [
+        { key: 'arch-installs', label: '📁 Завершені монтажі', items: doneProjects, dateField: 'installation_completed_at', prefix: 'ai' },
+        { key: 'arch-services', label: '📂 Завершені сервіси', items: doneServices, dateField: 'closed_at',                 prefix: 'as' },
+      ].forEach(({ key, label, items, dateField, prefix }) => {
+        const open = savedAccordionState.hasOwnProperty(key) ? savedAccordionState[key] : false;
+        const section = document.createElement('div');
+        section.className = 'acc-section';
+
+        const header = document.createElement('button');
+        header.type = 'button';
+        header.className = 'acc-header' + (open ? ' acc-header--open' : '');
+        header.innerHTML =
+          `<span class="acc-title">${esc(label)}</span>` +
+          `<span class="acc-count">${items.length}</span>` +
+          `<span class="acc-chevron">${open ? '▼' : '▶'}</span>`;
+
+        const body = document.createElement('div');
+        body.className = 'acc-body';
+        body.style.display = open ? 'block' : 'none';
+
+        header.addEventListener('click', () => {
+          const closing = body.style.display !== 'none';
+          body.style.display = closing ? 'none' : 'block';
+          header.querySelector('.acc-chevron').textContent = closing ? '▶' : '▼';
+          header.classList.toggle('acc-header--open', !closing);
+          savedAccordionState[key] = !closing;
+        });
+
+        fillArchiveBody(body, items, dateField, prefix);
+        section.appendChild(header);
+        section.appendChild(body);
+        container.appendChild(section);
+      });
+
+      const scheduleTarget = document.createElement('div');
+      container.appendChild(scheduleTarget);
+      renderScheduledProjects(active, scheduleTarget);
       return;
     }
 
@@ -1080,10 +1362,8 @@ document.addEventListener('DOMContentLoaded', async function () {
       const normalizedServices = Array.isArray(services)
         ? services.map((item) => ({
             ...item,
-            client_name: item.client_name,
-            status: 'service',
+            entry_type: 'service',
             is_retail: false,
-            created_at: item.created_at,
             electric_work_start_date: item.schedule_date || '',
             panel_work_start_date: item.schedule_date || '',
             electric_schedule_dates: item.schedule_date ? [item.schedule_date] : [],

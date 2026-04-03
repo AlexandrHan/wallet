@@ -202,6 +202,18 @@ class QualityCheckController extends Controller
             return response()->json(['error' => 'Вже очікує перевірки'], 422);
         }
 
+        // Заборона завершувати майбутні проекти (тільки сьогодні або минулі)
+        if ($user->role !== 'owner') {
+            $startDate = $project->panel_work_start_date ?? null;
+            if ($startDate) {
+                $start = \Carbon\Carbon::parse($startDate)->startOfDay();
+                $today = \Carbon\Carbon::today();
+                if ($start->gt($today)) {
+                    return response()->json(['error' => 'Не можна завершити майбутній проект. Завершення доступне тільки сьогодні або для минулих дат.'], 422);
+                }
+            }
+        }
+
         $completedAt = now();
 
         DB::transaction(function () use ($id, $user, $completedAt) {
@@ -386,6 +398,39 @@ class QualityCheckController extends Controller
             DB::table('sales_projects')->where('id', $check->project_id)->update([
                 'construction_status' => 'salary_pending',
                 'updated_at'          => now(),
+            ]);
+        });
+
+        return response()->json(['ok' => true]);
+    }
+
+    /**
+     * POST /api/quality-checks/{id}/cancel
+     * Foreman/owner cancels quality check → reverts project to in_progress
+     */
+    public function cancelCheck(Request $request, int $id): JsonResponse
+    {
+        $user = auth()->user();
+        if (!$this->isForeman($user)) {
+            return response()->json(['error' => 'Немає доступу'], 403);
+        }
+
+        $check = DB::table('quality_checks')->where('id', $id)->first();
+        if (!$check) {
+            return response()->json(['error' => 'Перевірку не знайдено'], 404);
+        }
+        if ($check->status === 'approved') {
+            return response()->json(['error' => 'Вже затверджено, скасування неможливе'], 422);
+        }
+
+        DB::transaction(function () use ($id, $check) {
+            DB::table('quality_checks')->where('id', $id)->delete();
+
+            DB::table('sales_projects')->where('id', $check->project_id)->update([
+                'construction_status'       => 'in_progress',
+                'installation_completed_at' => null,
+                'installation_completed_by' => null,
+                'updated_at'                => now(),
             ]);
         });
 

@@ -3285,20 +3285,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const unlock = () => {
     if (SND.unlocked) return;
     SND.unlocked = true;
-
-    [SND.leave, SND.moneta, SND.alarm].forEach(a => {
-      if (!a) return;
-      try {
-        a.muted = true;
-        a.play().then(() => {
-          a.pause();
-          a.currentTime = 0;
-          a.muted = false;
-        }).catch(() => {
-          a.muted = false;
-        });
-      } catch {}
-    });
+    // moneta/leave/alarm грають виключно на прямому кліку кнопки —
+    // pre-unlock не потрібен і може викликати фантомний звук на мобільному.
   };
 
   // перший жест користувача "розблоковує" аудіо (особливо iOS)

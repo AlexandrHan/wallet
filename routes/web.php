@@ -573,6 +573,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         Route::get('/my-service-requests', [ServiceRequestController::class, 'myIndex']);
         Route::post('/service-requests', [ServiceRequestController::class, 'store']);
         Route::delete('/service-requests/{serviceRequest}', [ServiceRequestController::class, 'destroy']);
+        Route::post('/service-requests/{serviceRequest}/close', [ServiceRequestController::class, 'close']);
         
         Route::post('/send-project-money', [\App\Http\Controllers\CashTransferController::class, 'sendProjectMoney']);
 
@@ -1745,6 +1746,9 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
 
         Route::post('/api/quality-checks/{id}/save-deficiencies',
             [\App\Http\Controllers\QualityCheckController::class, 'saveDeficiencies']);
+
+        Route::post('/api/quality-checks/{id}/cancel',
+            [\App\Http\Controllers\QualityCheckController::class, 'cancelCheck']);
 
         Route::post('/api/projects/{id}/deficiencies-fixed',
             [\App\Http\Controllers\QualityCheckController::class, 'markFixed']);
