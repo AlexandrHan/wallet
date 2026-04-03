@@ -112,6 +112,62 @@ class QualityCheckController extends Controller
     }
 
     /**
+     * Accrue salary only for the electrician assigned to the project.
+     * Used when an electrician submits their own quality check.
+     * Skips if mode is fixed (no per-project accrual for fixed salary).
+     * Returns true if accrual was created (piecework), false if fixed/skipped.
+     */
+    private function accrueForElectrician(int $projectId): bool
+    {
+        $project = DB::table('sales_projects')->where('id', $projectId)->first();
+        if (!$project) return false;
+
+        $electricianName = trim((string) ($project->electrician ?? ''));
+        if (!$electricianName || $electricianName === 'Без монтажних робіт') return false;
+
+        $rule = DB::table('salary_rules')
+            ->where('staff_group', 'electrician')
+            ->where('staff_name', $electricianName)
+            ->first();
+
+        if (!$rule || $rule->mode === 'fixed') return false; // fixed salary → no per-project accrual
+
+        $userId = DB::table('salary_rules')
+            ->where('staff_group', 'electrician')
+            ->where('staff_name', $electricianName)
+            ->whereNotNull('user_id')
+            ->value('user_id');
+
+        if (!$userId) {
+            Log::warning("quality-check electrician accrual: no user found for '{$electricianName}'");
+            return false;
+        }
+
+        $exists = DB::table('salary_accruals')
+            ->where('project_id', $projectId)
+            ->where('user_id', $userId)
+            ->exists();
+        if ($exists) return true; // already accrued
+
+        $salary = $this->calcSalary($project, 'electrician', $electricianName);
+
+        DB::table('salary_accruals')->insert([
+            'project_id'  => $projectId,
+            'user_id'     => $userId,
+            'staff_group' => 'electrician',
+            'staff_name'  => $electricianName,
+            'amount'      => $salary['amount'],
+            'currency'    => $salary['currency'],
+            'details'     => $salary['details'],
+            'status'      => 'pending',
+            'created_at'  => now(),
+            'updated_at'  => now(),
+        ]);
+
+        return true;
+    }
+
+    /**
      * Accrue salary for every worker assigned to the project.
      * Skips workers without a matched user account (logs warning).
      */
@@ -204,7 +260,10 @@ class QualityCheckController extends Controller
 
         // Заборона завершувати майбутні проекти (тільки сьогодні або минулі)
         if ($user->role !== 'owner') {
-            $startDate = $project->panel_work_start_date ?? null;
+            $isElectrician = $this->isElectrician($user);
+            $startDate = $isElectrician
+                ? ($project->electric_work_start_date ?? null)
+                : ($project->panel_work_start_date ?? null);
             if ($startDate) {
                 $start = \Carbon\Carbon::parse($startDate)->startOfDay();
                 $today = \Carbon\Carbon::today();
@@ -215,6 +274,7 @@ class QualityCheckController extends Controller
         }
 
         $completedAt = now();
+        $isElectricianUser = $this->isElectrician($user);
 
         DB::transaction(function () use ($id, $user, $completedAt) {
             DB::table('sales_projects')->where('id', $id)->update([
@@ -242,12 +302,21 @@ class QualityCheckController extends Controller
         // Notify foremen (owner + manager roles)
         $project = DB::table('sales_projects')->where('id', $id)->first();
         $dateLabel = $completedAt->format('d.m.Y');
-        $notifTitle = '🔧 Монтаж завершено';
-        $notifBody  = "🔧 Монтаж завершено\n\n"
-            . "👷 Монтажник: {$user->name}\n"
-            . "📍 Проект: {$project->client_name}\n"
-            . "📅 Дата завершення: {$dateLabel}\n\n"
-            . 'Потрібно перевірити якість робіт і підтвердити завершення для нарахування зарплати.';
+        if ($isElectricianUser) {
+            $notifTitle = '⚡ Електромонтаж завершено';
+            $notifBody  = "⚡ Електромонтаж завершено\n\n"
+                . "👷 Електрик: {$user->name}\n"
+                . "📍 Проект: {$project->client_name}\n"
+                . "📅 Дата завершення: {$dateLabel}\n\n"
+                . 'Потрібно перевірити якість електромонтажу і підтвердити завершення.';
+        } else {
+            $notifTitle = '🔧 Монтаж завершено';
+            $notifBody  = "🔧 Монтаж завершено\n\n"
+                . "👷 Монтажник: {$user->name}\n"
+                . "📍 Проект: {$project->client_name}\n"
+                . "📅 Дата завершення: {$dateLabel}\n\n"
+                . 'Потрібно перевірити якість робіт і підтвердити завершення для нарахування зарплати.';
+        }
 
         $notifService = app(\App\Services\NotificationService::class);
         $recipients = DB::table('users')
@@ -265,6 +334,82 @@ class QualityCheckController extends Controller
             'construction_status'       => 'waiting_quality_check',
             'installation_completed_at' => $completedAt->toISOString(),
         ]);
+    }
+
+    /**
+     * POST /api/service-requests/{id}/complete
+     * Electrician marks service as done → creates quality check, notifies foreman
+     */
+    public function completeService(Request $request, int $id): JsonResponse
+    {
+        $user = auth()->user();
+
+        if (!$this->isElectrician($user) && $user->role !== 'owner') {
+            return response()->json(['error' => 'Немає доступу'], 403);
+        }
+
+        $service = DB::table('service_requests')->where('id', $id)->first();
+        if (!$service) {
+            return response()->json(['error' => 'Сервіс не знайдено'], 404);
+        }
+
+        if (in_array($service->status, ['waiting_quality_check', 'closed'], true)) {
+            return response()->json(['error' => 'Вже завершено або очікує перевірки'], 422);
+        }
+
+        // Заборона завершувати майбутні сервіси
+        if ($user->role !== 'owner') {
+            $scheduledDate = $service->scheduled_date ?? null;
+            if ($scheduledDate) {
+                $start = \Carbon\Carbon::parse($scheduledDate)->startOfDay();
+                if ($start->gt(\Carbon\Carbon::today())) {
+                    return response()->json(['error' => 'Не можна завершити майбутній сервіс. Завершення доступне тільки сьогодні або для минулих дат.'], 422);
+                }
+            }
+        }
+
+        $completedAt = now();
+
+        DB::transaction(function () use ($id, $user, $completedAt) {
+            DB::table('service_requests')->where('id', $id)->update([
+                'status'     => 'waiting_quality_check',
+                'updated_at' => $completedAt,
+            ]);
+
+            DB::table('quality_checks')
+                ->where('service_request_id', $id)
+                ->where('status', 'pending')
+                ->delete();
+
+            DB::table('quality_checks')->insert([
+                'service_request_id' => $id,
+                'created_by'         => $user->id,
+                'status'             => 'pending',
+                'created_at'         => $completedAt,
+                'updated_at'         => $completedAt,
+            ]);
+        });
+
+        $notifTitle = '⚡ Сервіс завершено';
+        $notifBody  = "⚡ Сервіс завершено\n\n"
+            . "👷 Електрик: {$user->name}\n"
+            . "📍 Клієнт: {$service->client_name}\n"
+            . ($service->settlement ? "🏘 Населений пункт: {$service->settlement}\n" : '')
+            . "📅 Дата: {$completedAt->format('d.m.Y')}\n\n"
+            . 'Потрібно підтвердити виконання сервісного виклику.';
+
+        $notifService = app(\App\Services\NotificationService::class);
+        $recipients = DB::table('users')
+            ->where(function ($q) {
+                $q->whereIn('role', ['owner', 'manager'])
+                  ->orWhere('actor', 'foreman');
+            })
+            ->get();
+        foreach ($recipients as $recipient) {
+            $notifService->send((int) $recipient->id, $notifTitle, $notifBody, 'system');
+        }
+
+        return response()->json(['ok' => true, 'status' => 'waiting_quality_check']);
     }
 
     /**
@@ -292,9 +437,11 @@ class QualityCheckController extends Controller
             return response()->json(['error' => 'Немає доступу'], 403);
         }
 
-        $checks = DB::table('quality_checks as qc')
+        // ── Project checks ──────────────────────────────────────────────────────
+        $projectChecks = DB::table('quality_checks as qc')
             ->join('sales_projects as sp', 'sp.id', '=', 'qc.project_id')
             ->join('users as u', 'u.id', '=', 'qc.created_by')
+            ->whereNotNull('qc.project_id')
             ->whereIn('qc.status', ['pending', 'has_deficiencies', 'deficiencies_fixed'])
             ->select([
                 'qc.id',
@@ -313,9 +460,44 @@ class QualityCheckController extends Controller
                 'u.name as submitted_by',
             ])
             ->orderBy('qc.created_at')
-            ->get();
+            ->get()
+            ->map(function ($c) { $c->check_type = 'project'; $c->service_request_id = null; return $c; });
 
-        // Attach photos for each check
+        // ── Service checks ──────────────────────────────────────────────────────
+        $serviceChecks = DB::table('quality_checks as qc')
+            ->join('service_requests as sr', 'sr.id', '=', 'qc.service_request_id')
+            ->join('users as u', 'u.id', '=', 'qc.created_by')
+            ->whereNotNull('qc.service_request_id')
+            ->whereIn('qc.status', ['pending', 'has_deficiencies', 'deficiencies_fixed'])
+            ->select([
+                'qc.id',
+                'qc.service_request_id',
+                'qc.status as check_status',
+                'qc.deficiencies',
+                'qc.voice_memo_path',
+                'qc.created_at',
+                'sr.client_name',
+                'sr.electrician',
+                'sr.description',
+                'sr.settlement',
+                'u.name as submitted_by',
+            ])
+            ->orderBy('qc.created_at')
+            ->get()
+            ->map(function ($c) {
+                $c->check_type       = 'service';
+                $c->project_id       = null;
+                $c->installation_team = null;
+                $c->panel_name       = null;
+                $c->panel_qty        = null;
+                $c->inverter         = null;
+                $c->construction_status = null;
+                return $c;
+            });
+
+        $checks = $projectChecks->concat($serviceChecks)->sortBy('created_at')->values();
+
+        // Attach photos
         $checkIds = $checks->pluck('id')->all();
         $photosByCheck = DB::table('quality_photos')
             ->whereIn('quality_check_id', $checkIds)
@@ -361,7 +543,12 @@ class QualityCheckController extends Controller
 
         $deficiencies = trim((string) $request->input('deficiencies', ''));
 
-        DB::transaction(function () use ($id, $check, $deficiencies, $user, $request) {
+        // Determine check type and submitter role
+        $isServiceCheck = !empty($check->service_request_id);
+        $submitter = DB::table('users')->where('id', $check->created_by)->first();
+        $isElectricianCheck = !$isServiceCheck && $submitter && $submitter->position === 'electrician';
+
+        DB::transaction(function () use ($id, $check, $deficiencies, $user, $request, $isServiceCheck, $isElectricianCheck) {
             // Update quality check
             DB::table('quality_checks')->where('id', $id)->update([
                 'status'       => 'approved',
@@ -384,17 +571,42 @@ class QualityCheckController extends Controller
                 }
             }
 
-            // Also save deficiencies to the existing defects_note field on project
+            // ── Service check: just close the service request ───────────────────
+            if ($isServiceCheck) {
+                DB::table('service_requests')->where('id', $check->service_request_id)->update([
+                    'status'     => 'closed',
+                    'closed_at'  => now(),
+                    'updated_at' => now(),
+                ]);
+                return;
+            }
+
+            // ── Electrician project check ───────────────────────────────────────
+            if ($isElectricianCheck) {
+                if ($deficiencies) {
+                    DB::table('sales_projects')->where('id', $check->project_id)
+                        ->update(['defects_note' => $deficiencies, 'updated_at' => now()]);
+                }
+
+                $isPiecework = $this->accrueForElectrician($check->project_id);
+                $finalStatus = $isPiecework ? 'salary_pending' : 'salary_paid';
+
+                DB::table('sales_projects')->where('id', $check->project_id)->update([
+                    'construction_status' => $finalStatus,
+                    'updated_at'          => now(),
+                ]);
+                return;
+            }
+
+            // ── Installer project check (unchanged) ────────────────────────────
             $projectUpdate = ['construction_status' => 'quality_approved', 'updated_at' => now()];
             if ($deficiencies) {
                 $projectUpdate['defects_note'] = $deficiencies;
             }
             DB::table('sales_projects')->where('id', $check->project_id)->update($projectUpdate);
 
-            // Accrue salary for workers on this project
             $this->accrueForProject($check->project_id);
 
-            // Update project status to salary_pending
             DB::table('sales_projects')->where('id', $check->project_id)->update([
                 'construction_status' => 'salary_pending',
                 'updated_at'          => now(),
@@ -426,12 +638,21 @@ class QualityCheckController extends Controller
         DB::transaction(function () use ($id, $check) {
             DB::table('quality_checks')->where('id', $id)->delete();
 
-            DB::table('sales_projects')->where('id', $check->project_id)->update([
-                'construction_status'       => 'in_progress',
-                'installation_completed_at' => null,
-                'installation_completed_by' => null,
-                'updated_at'                => now(),
-            ]);
+            if (!empty($check->service_request_id)) {
+                // Service check: revert service to open
+                DB::table('service_requests')->where('id', $check->service_request_id)->update([
+                    'status'     => 'open',
+                    'updated_at' => now(),
+                ]);
+            } else {
+                // Project check: revert project status
+                DB::table('sales_projects')->where('id', $check->project_id)->update([
+                    'construction_status'       => 'in_progress',
+                    'installation_completed_at' => null,
+                    'installation_completed_by' => null,
+                    'updated_at'                => now(),
+                ]);
+            }
         });
 
         return response()->json(['ok' => true]);
@@ -500,28 +721,31 @@ class QualityCheckController extends Controller
             DB::table('sales_projects')->where('id', $check->project_id)->update($projectUpdate);
         });
 
-        // Notify installers on this project
-        $project = DB::table('sales_projects')->where('id', $check->project_id)->first();
-        if ($project && $deficiencies) {
-            $actorMap = [
-                'kryzhanovskyi' => 'Крижановський',
-                'kukuiaka'      => 'Кукуяка',
-                'shevchenko'    => 'Шевченко',
-                'samoilenko'    => 'Самойленко',
-            ];
-            $teamName = mb_strtolower(trim((string) ($project->installation_team ?? '')));
+        // Notify the worker who submitted the check
+        if ($deficiencies) {
             $notifService = app(\App\Services\NotificationService::class);
-            foreach ($actorMap as $actor => $ukName) {
-                if (mb_strtolower($ukName) === $teamName) {
-                    $installer = DB::table('users')->where('actor', $actor)->first();
-                    if ($installer) {
-                        $body = "⚠️ Виявлено недоліки\n\n"
-                            . "📍 Проект: {$project->client_name}\n"
-                            . "📝 Коментар: {$deficiencies}\n\n"
-                            . "Потрібно виправити та повторно завершити.";
-                        $notifService->send((int) $installer->id, '⚠️ Виявлено недоліки', $body, 'system');
-                    }
-                    break;
+            $submitter = DB::table('users')->where('id', $check->created_by)->first();
+
+            if (!empty($check->service_request_id)) {
+                // Service check — notify the electrician who submitted
+                $service = DB::table('service_requests')->where('id', $check->service_request_id)->first();
+                if ($submitter && $service) {
+                    $body = "⚠️ Виявлено недоліки\n\n"
+                        . "📍 Клієнт: {$service->client_name}\n"
+                        . "📝 Коментар: {$deficiencies}\n\n"
+                        . "Потрібно виправити та повторно завершити.";
+                    $notifService->send((int) $submitter->id, '⚠️ Виявлено недоліки', $body, 'system');
+                }
+            } else {
+                // Project check — notify submitter directly
+                if ($submitter) {
+                    $project = DB::table('sales_projects')->where('id', $check->project_id)->first();
+                    $clientName = $project ? $project->client_name : "Проект #{$check->project_id}";
+                    $body = "⚠️ Виявлено недоліки\n\n"
+                        . "📍 Проект: {$clientName}\n"
+                        . "📝 Коментар: {$deficiencies}\n\n"
+                        . "Потрібно виправити та повторно завершити.";
+                    $notifService->send((int) $submitter->id, '⚠️ Виявлено недоліки', $body, 'system');
                 }
             }
         }
@@ -554,29 +778,42 @@ class QualityCheckController extends Controller
             return response()->json(['error' => 'Немає відкритих недоліків'], 422);
         }
 
-        DB::transaction(function () use ($id, $check) {
+        $isServiceCheck = !empty($check->service_request_id);
+
+        DB::transaction(function () use ($id, $check, $isServiceCheck) {
             DB::table('quality_checks')->where('id', $check->id)->update([
                 'status'     => 'deficiencies_fixed',
                 'updated_at' => now(),
             ]);
-            DB::table('sales_projects')->where('id', $id)->update([
-                'construction_status' => 'waiting_quality_check',
-                'updated_at'          => now(),
-            ]);
+            if ($isServiceCheck) {
+                DB::table('service_requests')->where('id', $check->service_request_id)->update([
+                    'status'     => 'waiting_quality_check',
+                    'updated_at' => now(),
+                ]);
+            } else {
+                DB::table('sales_projects')->where('id', $id)->update([
+                    'construction_status' => 'waiting_quality_check',
+                    'updated_at'          => now(),
+                ]);
+            }
         });
 
-        $project = DB::table('sales_projects')->where('id', $id)->first();
-        if ($project) {
-            $notifService = app(\App\Services\NotificationService::class);
-            $foremen = DB::table('users')->whereIn('role', ['owner', 'manager'])->get();
-            foreach ($foremen as $foreman) {
-                $notifService->send(
-                    (int) $foreman->id,
-                    '🔧 Недоліки виправлено',
-                    "🔧 Недоліки виправлено\n\n📍 Проект: {$project->client_name}\n\nПотрібно повторно перевірити.",
-                    'system'
-                );
-            }
+        $notifService = app(\App\Services\NotificationService::class);
+        $foremen = DB::table('users')->whereIn('role', ['owner', 'manager'])->get();
+        if ($isServiceCheck) {
+            $service = DB::table('service_requests')->where('id', $check->service_request_id)->first();
+            $label = $service ? "Сервіс: {$service->client_name}" : "Сервіс #{$check->service_request_id}";
+        } else {
+            $project = DB::table('sales_projects')->where('id', $id)->first();
+            $label = $project ? "Проект: {$project->client_name}" : "Проект #{$id}";
+        }
+        foreach ($foremen as $foreman) {
+            $notifService->send(
+                (int) $foreman->id,
+                '🔧 Недоліки виправлено',
+                "🔧 Недоліки виправлено\n\n📍 {$label}\n\nПотрібно повторно перевірити.",
+                'system'
+            );
         }
 
         return response()->json(['ok' => true, 'construction_status' => 'waiting_quality_check']);

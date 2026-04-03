@@ -242,11 +242,14 @@ function updateCardState(id) {
 
 function renderCheck(c) {
   const status = c.check_status || 'pending';
+  const isService = c.check_type === 'service';
 
   let borderStyle = '';
   let approveDisabled = '';
   let approveOpacity  = '';
   let statusNote      = '';
+
+  const workerLabel = isService ? 'електрика' : 'монтажника';
 
   if (status === 'has_deficiencies') {
     borderStyle     = 'border:2px solid #e53e3e;';
@@ -254,7 +257,7 @@ function renderCheck(c) {
     approveOpacity  = 'opacity:.4;';
     statusNote      = `<div style="margin-bottom:10px; padding:8px 10px; border-radius:7px;
         background:rgba(229,62,62,.15); font-size:13px; color:#f88;">
-      ❌ Є недоліки — очікує виправлення від монтажника
+      ❌ Є недоліки — очікує виправлення від ${workerLabel}
     </div>`;
   } else if (status === 'deficiencies_fixed') {
     borderStyle = 'border:2px solid #d4a017;';
@@ -266,7 +269,6 @@ function renderCheck(c) {
 
   const prefillText = c.deficiencies ? esc(c.deficiencies) : '';
 
-  // Saved media (loaded from DB on page open)
   const savedPhotosHtml = (c.photos || []).length
     ? `<div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;">
         ${(c.photos || []).map(url => `
@@ -283,9 +285,20 @@ function renderCheck(c) {
       </div>`
     : '';
 
-  return `
-    <div class="card" style="margin-bottom:14px; ${borderStyle}" data-check-id="${c.id}" data-check-status="${esc(status)}">
-      <div style="font-weight:700; font-size:16px; margin-bottom:4px;">${esc(c.client_name)}</div>
+  // ── Type-specific info block ────────────────────────────────────────────
+  let infoHtml = '';
+  if (isService) {
+    infoHtml = `
+      <div style="display:inline-block; font-size:11px; font-weight:700; padding:2px 8px; border-radius:10px;
+        background:rgba(26,74,106,.5); color:#7ec8e3; margin-bottom:8px;">⚡ Сервісний виклик</div>
+      <div style="font-size:13px; opacity:.75; margin-bottom:6px;">
+        ${c.electrician ? '⚡ ' + esc(c.electrician) : ''}
+        ${c.settlement ? ' &nbsp;🏘 ' + esc(c.settlement) : ''}
+      </div>
+      ${c.description ? `<div style="font-size:13px; opacity:.8; margin-bottom:10px; white-space:pre-line;">${esc(c.description)}</div>` : ''}
+    `;
+  } else {
+    infoHtml = `
       <div style="font-size:13px; opacity:.75; margin-bottom:10px;">
         ${c.installation_team ? '🏗 ' + esc(c.installation_team) + '&nbsp;&nbsp;' : ''}
         ${c.electrician ? '⚡ ' + esc(c.electrician) : ''}
@@ -296,12 +309,20 @@ function renderCheck(c) {
       <div style="font-size:13px; opacity:.8; margin-bottom:10px;">
         ${c.inverter ? 'Інвертор: ' + esc(c.inverter) : ''}
       </div>
+    `;
+  }
+
+  const approveBtnLabel = isService ? '✅ Сервіс прийнятий' : '✅ Проект прийнятий';
+
+  return `
+    <div class="card" style="margin-bottom:14px; ${borderStyle}" data-check-id="${c.id}" data-check-status="${esc(status)}">
+      <div style="font-weight:700; font-size:16px; margin-bottom:4px;">${esc(c.client_name)}</div>
+      ${infoHtml}
       <div style="font-size:12px; opacity:.55; margin-bottom:14px;">
         Подав: ${esc(c.submitted_by)} — ${new Date(c.created_at).toLocaleDateString('uk-UA')}
       </div>
 
       ${statusNote}
-
       ${savedPhotosHtml}
       ${savedVoiceHtml}
 
@@ -331,7 +352,7 @@ function renderCheck(c) {
       <div style="display:flex; gap:8px; margin-top:4px;">
         <button type="button" class="btn save qc-approve-btn" data-id="${c.id}"
           style="flex:1; ${approveOpacity}" ${approveDisabled}>
-          ✅ Проект прийнятий
+          ${approveBtnLabel}
         </button>
         <button type="button" class="btn qc-cancel-btn" data-id="${c.id}"
           style="padding:0 14px; background:rgba(229,62,62,.15); color:#f88; border:1px solid rgba(229,62,62,.3);">
@@ -541,7 +562,12 @@ document.addEventListener('click', function (e) {
   const approveBtn = e.target.closest('.qc-approve-btn');
   if (approveBtn && !approveBtn.disabled) {
     const id = parseInt(approveBtn.dataset.id);
-    if (confirm('Підтвердити прийняття проєкту?')) {
+    const card = approveBtn.closest('[data-check-id]');
+    const isService = card?.querySelector('[style*="Сервісний виклик"]') !== null;
+    const confirmText = isService
+      ? 'Підтвердити прийняття сервісного виклику?'
+      : 'Підтвердити прийняття проєкту?';
+    if (confirm(confirmText)) {
       approveCheck(id, approveBtn);
     }
     return;
@@ -550,7 +576,12 @@ document.addEventListener('click', function (e) {
   const cancelBtn = e.target.closest('.qc-cancel-btn');
   if (cancelBtn) {
     const id = parseInt(cancelBtn.dataset.id);
-    if (confirm('Скасувати відправку проєкту на перевірку? Монтажник зможе відправити повторно.')) {
+    const card = cancelBtn.closest('[data-check-id]');
+    const isService = card?.querySelector('[style*="Сервісний виклик"]') !== null;
+    const confirmText = isService
+      ? 'Скасувати відправку сервісного виклику? Електрик зможе відправити повторно.'
+      : 'Скасувати відправку проєкту на перевірку? Монтажник зможе відправити повторно.';
+    if (confirm(confirmText)) {
       cancelCheck(id, cancelBtn);
     }
     return;

@@ -1753,6 +1753,9 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         Route::post('/api/projects/{id}/deficiencies-fixed',
             [\App\Http\Controllers\QualityCheckController::class, 'markFixed']);
 
+        Route::post('/api/service-requests/{id}/complete',
+            [\App\Http\Controllers\QualityCheckController::class, 'completeService']);
+
         // Owner: salary accruals
         Route::get('/salary/accruals',
             [\App\Http\Controllers\QualityCheckController::class, 'accruals'])

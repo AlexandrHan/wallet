@@ -238,11 +238,26 @@ document.addEventListener('DOMContentLoaded', async function () {
               </a>
             </div>
 
-            ${MATCH_FIELD === 'electrician' && String(service.status || '') !== 'closed' ? `
-            <button type="button" class="btn svc-close-btn" data-service-id="${service.id}"
-              style="width:100%; margin-top:12px; background:#1a4a6a; color:#fff; font-weight:700;">
-              ✅ Завершив сервіс
-            </button>` : ''}
+            ${(() => {
+              if (MATCH_FIELD !== 'electrician') return '';
+              const svcStatus = String(service.status || '');
+              if (svcStatus === 'closed') return '';
+              if (svcStatus === 'waiting_quality_check') {
+                return `<div style="width:100%; margin-top:12px; padding:8px 12px; border-radius:8px;
+                  background:rgba(212,160,23,.12); color:#f4c842; font-size:13px; font-weight:600; text-align:center;">
+                  ⏳ Очікує перевірки прорабом</div>`;
+              }
+              const svcDate = service.scheduled_date || service.schedule_date || '';
+              const todayStr = new Date().toISOString().slice(0, 10);
+              if (svcDate && svcDate > todayStr) {
+                return `<div style="width:100%; margin-top:12px; padding:10px 14px; border-radius:8px;
+                  background:rgba(255,255,255,.06); color:rgba(255,255,255,.4); font-size:13px; text-align:center;">
+                  🔒 Завершення доступне з ${svcDate.split('-').reverse().join('.')}</div>`;
+              }
+              return `<button type="button" class="btn svc-close-btn" data-service-id="${service.id}"
+                style="width:100%; margin-top:12px; background:#1a4a6a; color:#fff; font-weight:700;">
+                ✅ Завершити сервісний виклик</button>`;
+            })()}
           </div>
         </div>
       </div>
@@ -258,28 +273,29 @@ document.addEventListener('DOMContentLoaded', async function () {
     if (closeBtn) {
       closeBtn.addEventListener('click', async function (e) {
         e.stopPropagation();
-        if (!confirm('Підтвердити завершення сервісного виклику?')) return;
+        if (!confirm('Підтвердити завершення сервісного виклику? Прораб отримає сповіщення для перевірки.')) return;
         this.disabled = true;
-        this.textContent = 'Збереження...';
+        this.textContent = 'Відправка...';
         try {
-          const r = await fetch(`/api/service-requests/${service.id}/close`, {
+          const r = await fetch(`/api/service-requests/${service.id}/complete`, {
             method: 'POST',
             headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content },
           });
           const data = await r.json();
           if (r.ok && data.ok) {
-            card.style.opacity = '.4';
-            card.style.pointerEvents = 'none';
-            setTimeout(() => loadProjects().catch(() => {}), 600);
+            this.textContent = '⏳ Очікує перевірки';
+            this.style.background = 'rgba(212,160,23,.3)';
+            this.style.color = '#f4c842';
+            setTimeout(() => loadProjects().catch(() => {}), 800);
           } else {
             alert(data.error || 'Помилка');
             this.disabled = false;
-            this.textContent = '✅ Завершив сервіс';
+            this.textContent = '✅ Завершити сервісний виклик';
           }
         } catch {
           alert('Помилка з\'єднання');
           this.disabled = false;
-          this.textContent = '✅ Завершив сервіс';
+          this.textContent = '✅ Завершити сервісний виклик';
         }
       });
     }
@@ -366,11 +382,28 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     // Show "Завершили будівництво" button for workers only (not owner viewing)
     const isService = String(project.entry_type || '') === 'service';
+    const todayStr = new Date().toISOString().slice(0, 10);
+
     if (!isWorker) return '';
     if (isService) {
       // Service close button only for electrician view
       if (MATCH_FIELD !== 'electrician') return '';
-      if (String(project.status || '') === 'closed') return '';
+      const svcStatus = String(project.status || '');
+      if (svcStatus === 'closed') return '';
+      if (svcStatus === 'waiting_quality_check') {
+        return `<div style="width:100%; margin:8px 0 12px; padding:8px 12px; border-radius:8px;
+                  background:rgba(212,160,23,.12); color:#f4c842; font-size:13px; font-weight:600; text-align:center;">
+          ⏳ Очікує перевірки прорабом
+        </div>`;
+      }
+      // Block future services
+      const svcDate = project.scheduled_date || '';
+      if (svcDate && svcDate > todayStr) {
+        return `<div style="width:100%; margin:8px 0 12px; padding:10px 14px; border-radius:8px;
+                  background:rgba(255,255,255,.06); color:rgba(255,255,255,.4); font-size:13px; text-align:center;">
+          🔒 Завершення доступне з ${svcDate.split('-').reverse().join('.')}
+        </div>`;
+      }
       return `
         <button type="button" class="btn close-service-btn"
           data-service-id="${project.id}"
@@ -381,8 +414,9 @@ document.addEventListener('DOMContentLoaded', async function () {
     }
 
     // Блокуємо майбутні проекти — завершити можна тільки сьогодні або минулі
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const startDate = project.panel_work_start_date || '';
+    const startDate = MATCH_FIELD === 'electrician'
+      ? (project.electric_work_start_date || '')
+      : (project.panel_work_start_date || '');
     const isFuture = startDate && startDate > todayStr;
     if (isFuture) {
       return `
@@ -740,15 +774,15 @@ document.addEventListener('DOMContentLoaded', async function () {
       });
     }
 
-    // ── Close service button ──────────────────────────────────────────────
+    // ── Close service button (electrician view → goes through quality check) ──
     const closeServiceBtn = card.querySelector('.close-service-btn');
     if (closeServiceBtn) {
       closeServiceBtn.addEventListener('click', async function () {
-        if (!confirm('Підтвердити завершення сервісного виклику?')) return;
+        if (!confirm('Підтвердити завершення сервісного виклику? Прораб отримає сповіщення для перевірки.')) return;
         this.disabled = true;
-        this.textContent = 'Збереження...';
+        this.textContent = 'Відправка...';
         try {
-          const r = await fetch(`/api/service-requests/${project.id}/close`, {
+          const r = await fetch(`/api/service-requests/${project.id}/complete`, {
             method: 'POST',
             headers: {
               'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
@@ -757,9 +791,10 @@ document.addEventListener('DOMContentLoaded', async function () {
           });
           const data = await r.json();
           if (r.ok && data.ok) {
-            card.style.opacity = '.4';
-            card.style.pointerEvents = 'none';
-            setTimeout(() => loadProjects().catch(() => {}), 600);
+            this.textContent = '⏳ Очікує перевірки';
+            this.style.background = 'rgba(212,160,23,.3)';
+            this.style.color = '#f4c842';
+            setTimeout(() => loadProjects().catch(() => {}), 800);
           } else {
             alert(data.error || 'Помилка');
             this.disabled = false;
@@ -1364,6 +1399,7 @@ document.addEventListener('DOMContentLoaded', async function () {
             ...item,
             entry_type: 'service',
             is_retail: false,
+            scheduled_date: item.schedule_date || '',
             electric_work_start_date: item.schedule_date || '',
             panel_work_start_date: item.schedule_date || '',
             electric_schedule_dates: item.schedule_date ? [item.schedule_date] : [],

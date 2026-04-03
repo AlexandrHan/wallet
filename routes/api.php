@@ -674,7 +674,7 @@ $runAutomationProjectSync = function (
 
     $scoreNameMatch = fn (string $needle, string $haystack): float => NameMatcher::score($needle, $haystack);
 
-    $projectColumns = ['id', 'client_name', $assignmentField];
+    $projectColumns = ['id', 'client_name', $assignmentField, 'telegram_group_link', 'geo_location_link'];
     if ($noteField) {
         $projectColumns[] = $noteField;
     }
@@ -766,12 +766,14 @@ $runAutomationProjectSync = function (
             // ── task_note rows always go to service_requests (never project) ──
             if ($taskNote !== '' && $serviceTableAvailable) {
                 $taskMeta = $extractTaskMeta($taskNote);
+                $settlement = $taskMeta['D'] !== '' ? $taskMeta['D'] : 'Автоматизація';
+
                 $servicePayload = [
-                    'client_name'   => $candidateName,
-                    'settlement'    => $taskMeta['D'] !== '' ? $taskMeta['D'] : 'Автоматизація',
-                    'description'   => $taskNote,
+                    'client_name'    => $candidateName,
+                    'settlement'     => $settlement,
+                    'description'    => $taskNote,
                     'scheduled_date' => $date,
-                    'updated_at'    => now(),
+                    'updated_at'     => now(),
                 ];
 
                 if ($noteField && $note) {
@@ -784,6 +786,39 @@ $runAutomationProjectSync = function (
                 if ($assignmentField === 'installation_team') {
                     $servicePayload['installation_team'] = $assignmentValue;
                 }
+
+                // ── Збагачення telegram/geo з відповідного проекту ───────────
+                // Шукаємо проект по прізвищу + населеному пункту (в client_name проекту)
+                $enrichProject = null;
+
+                // 1) Серед кандидатів з name score >= 60 шукаємо той, де settlement є в client_name
+                if ($settlement !== 'Автоматизація') {
+                    $settlementLower = mb_strtolower(trim($settlement));
+                    $enrichProject = $projects
+                        ->filter(function ($p) use ($scoreNameMatch, $candidateName, $settlementLower) {
+                            return $scoreNameMatch($candidateName, (string) $p->client_name) >= 60
+                                && mb_strpos(mb_strtolower((string) $p->client_name), $settlementLower) !== false;
+                        })
+                        ->sortByDesc(fn ($p) => $scoreNameMatch($candidateName, (string) $p->client_name))
+                        ->first();
+                }
+
+                // 2) Fallback: найкращий name match >= 72 (вже знайдений $project)
+                if (!$enrichProject && $project) {
+                    $enrichProject = $project;
+                }
+
+                if ($enrichProject) {
+                    $tg  = trim((string) ($enrichProject->telegram_group_link ?? ''));
+                    $geo = trim((string) ($enrichProject->geo_location_link ?? ''));
+                    if ($tg !== '' && $tg !== ',') {
+                        $servicePayload['telegram_group_link'] = $tg;
+                    }
+                    if ($geo !== '' && $geo !== ',') {
+                        $servicePayload['geo_location_link'] = $geo;
+                    }
+                }
+                // ─────────────────────────────────────────────────────────────
 
                 $existingServiceQuery = DB::table('service_requests')
                     ->where('client_name', $candidateName)
@@ -798,11 +833,18 @@ $runAutomationProjectSync = function (
                 }
 
                 $existingService = $existingServiceQuery
-                    ->select('id')
+                    ->select('id', 'telegram_group_link', 'geo_location_link')
                     ->orderByDesc('id')
                     ->first();
 
                 if ($existingService) {
+                    // Не перетирати вручну виставлені посилання
+                    if (!empty($existingService->telegram_group_link)) {
+                        unset($servicePayload['telegram_group_link']);
+                    }
+                    if (!empty($existingService->geo_location_link)) {
+                        unset($servicePayload['geo_location_link']);
+                    }
                     DB::table('service_requests')
                         ->where('id', $existingService->id)
                         ->update($servicePayload);
