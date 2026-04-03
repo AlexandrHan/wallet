@@ -116,19 +116,26 @@ function renderWorkerBlock(pendingGroup, paidForUser) {
 
   const pendingTotal = pendingAccruals.reduce((s, a) => s + Number(a.amount || 0), 0);
 
-  // Pending rows
-  const pendingRows = pendingAccruals.map(a => `
+  // Pending rows (with penalty highlighting)
+  const pendingRows = pendingAccruals.map(a => {
+    const isPenalty = a.is_penalty || Number(a.amount) < 0;
+    return `
     <div style="display:flex; justify-content:space-between; align-items:flex-start;
-      padding:8px 0; border-bottom:1px solid rgba(255,255,255,.07);">
-      <div>
-        <div style="font-size:14px;">${esc(a.client_name)}</div>
-        <div style="font-size:11px; opacity:.55;">${esc(a.details || '')} • ${fdate(a.created_at)}</div>
+      padding:8px 0; border-bottom:1px solid rgba(255,255,255,.07);
+      ${isPenalty ? 'background:rgba(229,62,62,.06); margin:0 -12px; padding-left:12px; padding-right:12px;' : ''}">
+      <div style="flex:1; min-width:0;">
+        <div style="font-size:14px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+          ${isPenalty ? '<span style="font-size:11px; font-weight:700; background:rgba(229,62,62,.25); color:#f88; padding:1px 6px; border-radius:6px; white-space:nowrap;">⚠ Штраф</span>' : ''}
+          <span>${esc(a.client_name)}</span>
+        </div>
+        <div style="font-size:11px; opacity:.55; margin-top:2px;">${esc(a.details || '')} • ${fdate(a.created_at)}</div>
       </div>
-      <div style="font-size:14px; font-weight:700; white-space:nowrap; padding-left:12px;">
-        ${fmoney(a.amount, a.currency)}
+      <div style="font-size:14px; font-weight:700; white-space:nowrap; padding-left:12px;
+        ${isPenalty ? 'color:#f88;' : ''}">
+        ${isPenalty ? '−' : ''}${fmoney(Math.abs(Number(a.amount)), a.currency)}
       </div>
     </div>
-  `).join('');
+  `}).join('');
 
   // Paid rows
   const paidRows = paidAccruals.map(a => {
@@ -156,7 +163,7 @@ function renderWorkerBlock(pendingGroup, paidForUser) {
     </div>`;
   }).join('');
 
-  const salaryUsd = pendingAccruals.filter(a => a.currency === 'USD').reduce((s, a) => s + Number(a.amount || 0), 0);
+  const salaryUsd = pendingAccruals.filter(a => a.currency === 'USD' && Number(a.amount) > 0).reduce((s, a) => s + Number(a.amount || 0), 0);
 
   const payBtn = pendingAccruals.length ? `
     <button type="button" class="btn save pay-btn"
@@ -172,6 +179,27 @@ function renderWorkerBlock(pendingGroup, paidForUser) {
     <div style="font-size:13px; opacity:.5; text-align:center; padding:8px 0;">
       Нарахувань немає
     </div>
+  `;
+
+  // Manual penalty form from owner
+  const penaltyForm = `
+    <details style="margin-top:12px;" class="penalty-details">
+      <summary style="cursor:pointer; font-size:13px; font-weight:700; color:#f88; opacity:.8; padding:4px 0; list-style:none;">
+        ⚠ Штраф від власника
+      </summary>
+      <div style="margin-top:8px; padding:10px 12px; border-radius:8px; background:rgba(229,62,62,.06); border:1px solid rgba(229,62,62,.2);">
+        <div class="project-field-label" style="margin-bottom:4px;">Сума штрафу (USD)</div>
+        <input type="number" min="1" step="1" placeholder="50" class="btn penalty-amount"
+          style="width:100%; margin-bottom:8px; text-align:right;">
+        <div class="project-field-label" style="margin-bottom:4px;">Причина</div>
+        <input type="text" placeholder="Опишіть причину штрафу..." class="btn penalty-reason"
+          style="width:100%; margin-bottom:10px;">
+        <button type="button" class="btn penalty-submit" data-user-id="${userId}" data-user-name="${esc(userName)}"
+          style="width:100%; background:rgba(229,62,62,.2); color:#f88; border:1px solid rgba(229,62,62,.3);">
+          Застосувати штраф
+        </button>
+      </div>
+    </details>
   `;
 
   const paidSection = paidAccruals.length ? `
@@ -199,6 +227,8 @@ function renderWorkerBlock(pendingGroup, paidForUser) {
       ${pendingRows || '<div style="font-size:13px; opacity:.45; padding:4px 0;">Немає записів</div>'}
 
       ${payBtn}
+
+      ${penaltyForm}
 
       ${paidSection}
     </div>
@@ -429,15 +459,62 @@ document.getElementById('bonusCurrencyUsd').addEventListener('click', () => setB
 document.getElementById('bonusCurrencyUah').addEventListener('click', () => setBonusCurrency('UAH'));
 
 document.addEventListener('click', function (e) {
-  const btn = e.target.closest('.pay-btn');
-  if (btn) {
+  // Pay button
+  const payBtn = e.target.closest('.pay-btn');
+  if (payBtn) {
     openPayModal(
-      parseInt(btn.dataset.userId),
-      btn.dataset.userName,
-      parseFloat(btn.dataset.salaryUsd || btn.dataset.total || 0),
+      parseInt(payBtn.dataset.userId),
+      payBtn.dataset.userName,
+      parseFloat(payBtn.dataset.salaryUsd || payBtn.dataset.total || 0),
     );
     return;
   }
+
+  // Owner penalty submit
+  const penaltyBtn = e.target.closest('.penalty-submit');
+  if (penaltyBtn) {
+    const details = penaltyBtn.closest('details');
+    const amountInput = details?.querySelector('.penalty-amount');
+    const reasonInput  = details?.querySelector('.penalty-reason');
+    const userId   = parseInt(penaltyBtn.dataset.userId);
+    const userName = penaltyBtn.dataset.userName;
+    const amount   = parseFloat(amountInput?.value || 0);
+    const reason   = (reasonInput?.value || '').trim();
+
+    if (!amount || amount <= 0) { alert('Вкажіть суму штрафу'); amountInput?.focus(); return; }
+    if (!reason) { alert('Вкажіть причину штрафу'); reasonInput?.focus(); return; }
+
+    if (!confirm(`Застосувати штраф ${amount} $ до ${userName}?\nПричина: ${reason}`)) return;
+
+    penaltyBtn.disabled = true;
+    penaltyBtn.textContent = 'Зберігаємо...';
+
+    fetch(`/api/salary/penalty/${userId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF },
+      body: JSON.stringify({ amount, reason }),
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        if (amountInput) amountInput.value = '';
+        if (reasonInput) reasonInput.value = '';
+        if (details) details.open = false;
+        load();
+      } else {
+        alert(data.error || 'Помилка збереження штрафу');
+        penaltyBtn.disabled = false;
+        penaltyBtn.textContent = 'Застосувати штраф';
+      }
+    })
+    .catch(() => {
+      alert('Помилка з\'єднання');
+      penaltyBtn.disabled = false;
+      penaltyBtn.textContent = 'Застосувати штраф';
+    });
+    return;
+  }
+
   if (e.target.id === 'payModal') closePayModal();
 });
 

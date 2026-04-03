@@ -131,6 +131,9 @@
       <summary class="tg-acc__title">⚙️ Налаштування</summary>
       <div class="tg-acc__body">
         <a class="tg-menu__item" href="/norm-rules">🔧 Нормалізація обладнання</a>
+        @if(mb_strtolower(auth()->user()->name ?? '') === 'hlushchenko')
+          <a class="tg-menu__item" href="/suspicious-actions" style="color:#f88;">🚨 Підозрілі дії</a>
+        @endif
       </div>
     </details>
 

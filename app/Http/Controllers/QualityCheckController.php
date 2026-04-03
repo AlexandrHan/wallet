@@ -691,7 +691,11 @@ class QualityCheckController extends Controller
             $voicePath = $request->file('voice_memo')->store('quality-voice', 'public');
         }
 
-        DB::transaction(function () use ($id, $check, $deficiencies, $photoPaths, $voicePath) {
+        $isServiceCheck  = !empty($check->service_request_id);
+        $submitterUser   = DB::table('users')->where('id', $check->created_by)->first();
+        $isInstallerCheck = !$isServiceCheck && $submitterUser && $submitterUser->position !== 'electrician';
+
+        DB::transaction(function () use ($id, $check, $deficiencies, $photoPaths, $voicePath, $isServiceCheck, $isInstallerCheck) {
             $qcUpdate = [
                 'status'       => 'has_deficiencies',
                 'deficiencies' => $deficiencies ?: null,
@@ -711,14 +715,57 @@ class QualityCheckController extends Controller
                 ]);
             }
 
-            $projectUpdate = [
-                'construction_status' => 'has_deficiencies',
-                'updated_at'          => now(),
-            ];
-            if ($deficiencies) {
-                $projectUpdate['defects_note'] = $deficiencies;
+            if (!$isServiceCheck) {
+                $projectUpdate = [
+                    'construction_status' => 'has_deficiencies',
+                    'updated_at'          => now(),
+                ];
+                if ($deficiencies) {
+                    $projectUpdate['defects_note'] = $deficiencies;
+                }
+                DB::table('sales_projects')->where('id', $check->project_id)->update($projectUpdate);
+            } else {
+                DB::table('service_requests')->where('id', $check->service_request_id)->update([
+                    'status'     => 'has_deficiencies',
+                    'updated_at' => now(),
+                ]);
             }
-            DB::table('sales_projects')->where('id', $check->project_id)->update($projectUpdate);
+
+            // ── Auto-штраф $50 для монтажника при першому виявленні недоліків ──
+            if ($isInstallerCheck && $deficiencies) {
+                $project = DB::table('sales_projects')->where('id', $check->project_id)->first();
+                if ($project) {
+                    $teamName = trim((string) ($project->installation_team ?? ''));
+                    $rule = DB::table('salary_rules')
+                        ->where('staff_group', 'installation_team')
+                        ->where('staff_name', $teamName)
+                        ->whereNotNull('user_id')
+                        ->first();
+
+                    if ($rule) {
+                        $alreadyPenalized = DB::table('salary_accruals')
+                            ->where('project_id', $check->project_id)
+                            ->where('user_id', $rule->user_id)
+                            ->where('amount', '<', 0)
+                            ->exists();
+
+                        if (!$alreadyPenalized) {
+                            DB::table('salary_accruals')->insert([
+                                'project_id'  => $check->project_id,
+                                'user_id'     => $rule->user_id,
+                                'staff_group' => 'installation_team',
+                                'staff_name'  => $teamName,
+                                'amount'      => -50.00,
+                                'currency'    => 'USD',
+                                'details'     => 'Штраф за недоліки: ' . mb_substr($deficiencies, 0, 120),
+                                'status'      => 'pending',
+                                'created_at'  => now(),
+                                'updated_at'  => now(),
+                            ]);
+                        }
+                    }
+                }
+            }
         });
 
         // Notify the worker who submitted the check
@@ -844,7 +891,7 @@ class QualityCheckController extends Controller
 
         $rows = DB::table('salary_accruals as sa')
             ->join('users as u', 'u.id', '=', 'sa.user_id')
-            ->join('sales_projects as sp', 'sp.id', '=', 'sa.project_id')
+            ->leftJoin('sales_projects as sp', 'sp.id', '=', 'sa.project_id')
             ->where('sa.status', 'pending')
             ->select([
                 'sa.id',
@@ -862,7 +909,12 @@ class QualityCheckController extends Controller
             ])
             ->orderBy('u.name')
             ->orderBy('sa.created_at')
-            ->get();
+            ->get()
+            ->map(function ($row) {
+                $row->is_penalty = (float) $row->amount < 0;
+                $row->client_name = $row->client_name ?? '—';
+                return $row;
+            });
 
         // Group by user_id
         $grouped = [];
@@ -885,6 +937,52 @@ class QualityCheckController extends Controller
     }
 
     /**
+     * POST /api/salary/penalty/{userId}
+     * Owner adds a manual penalty to a worker
+     */
+    public function addPenalty(Request $request, int $userId): JsonResponse
+    {
+        if (auth()->user()->role !== 'owner') {
+            return response()->json(['error' => 'Немає доступу'], 403);
+        }
+
+        $amount = abs((float) $request->input('amount', 0));
+        if ($amount <= 0) {
+            return response()->json(['error' => 'Сума штрафу має бути більше 0'], 422);
+        }
+
+        $reason = trim((string) $request->input('reason', ''));
+        if (!$reason) {
+            return response()->json(['error' => 'Вкажіть причину штрафу'], 422);
+        }
+
+        $worker = DB::table('users')->where('id', $userId)->first();
+        if (!$worker) {
+            return response()->json(['error' => 'Користувача не знайдено'], 404);
+        }
+
+        $rule = DB::table('salary_rules')->where('user_id', $userId)->first();
+        if (!$rule) {
+            return response()->json(['error' => 'Правило зарплати не знайдено'], 422);
+        }
+
+        DB::table('salary_accruals')->insert([
+            'project_id'  => null,
+            'user_id'     => $userId,
+            'staff_group' => $rule->staff_group,
+            'staff_name'  => $rule->staff_name,
+            'amount'      => -$amount,
+            'currency'    => 'USD',
+            'details'     => 'Штраф від власника: ' . $reason,
+            'status'      => 'pending',
+            'created_at'  => now(),
+            'updated_at'  => now(),
+        ]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /**
      * GET /api/salary/accruals/paid
      * JSON: paid accruals grouped by user
      */
@@ -896,7 +994,7 @@ class QualityCheckController extends Controller
 
         $rows = DB::table('salary_accruals as sa')
             ->join('users as u', 'u.id', '=', 'sa.user_id')
-            ->join('sales_projects as sp', 'sp.id', '=', 'sa.project_id')
+            ->leftJoin('sales_projects as sp', 'sp.id', '=', 'sa.project_id')
             ->where('sa.status', 'paid')
             ->select([
                 'sa.id',
@@ -917,7 +1015,12 @@ class QualityCheckController extends Controller
             ])
             ->orderBy('u.name')
             ->orderByDesc('sa.paid_at')
-            ->get();
+            ->get()
+            ->map(function ($row) {
+                $row->is_penalty   = $row->amount < 0;
+                $row->client_name  = $row->client_name ?? '—';
+                return $row;
+            });
 
         $grouped = [];
         foreach ($rows as $row) {
@@ -1246,13 +1349,14 @@ class QualityCheckController extends Controller
         $month      = (int) $request->input('month', 0);
 
         $query = DB::table('salary_accruals as sa')
-            ->join('sales_projects as sp', 'sp.id', '=', 'sa.project_id')
+            ->leftJoin('sales_projects as sp', 'sp.id', '=', 'sa.project_id')
             ->where('sa.status', 'paid')
             ->select([
                 'sa.id',
                 'sa.project_id',
                 'sa.amount',
                 'sa.currency',
+                'sa.details',
                 'sa.paid_at',
                 'sa.paid_usd',
                 'sa.paid_uah',

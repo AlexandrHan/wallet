@@ -59,3 +59,22 @@ Schedule::call(function () {
         );
     }
 })->dailyAt('10:00')->weekdays();
+
+// 🔔 Перевірка залишку Профілю монтажного — щодня о 10:00 (пн-пт)
+Schedule::call(function () {
+    // qty в штуках (1 шт = 6 м), поріг < 400 м = < 67 шт
+    $qtyPcs = (int) \Illuminate\Support\Facades\DB::table('solarglass_stock')
+        ->where('item_code', 'ID00331')
+        ->value('qty');
+
+    $qtyMeters = $qtyPcs * 6;
+
+    if ($qtyMeters < 400) {
+        app(\App\Services\NotificationService::class)->sendToRole(
+            'owner',
+            '⚠️ Профіль монтажний закінчується',
+            "На складі залишилось {$qtyMeters} м Профілю монтажного ({$qtyPcs} шт). Потрібно замовити.",
+            'system'
+        );
+    }
+})->dailyAt('10:00')->weekdays();

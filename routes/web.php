@@ -1773,6 +1773,9 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         Route::get('/api/salary/paid-history',
             [\App\Http\Controllers\QualityCheckController::class, 'paidHistory']);
 
+        Route::post('/api/salary/penalty/{userId}',
+            [\App\Http\Controllers\QualityCheckController::class, 'addPenalty']);
+
         Route::get('/api/quality-checks/wallets',
             [\App\Http\Controllers\QualityCheckController::class, 'wallets']);
     });
@@ -1782,6 +1785,70 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         if (!$user || !in_array($user->role, ['owner', 'ntv'], true)) abort(403);
         return view('projects.equipment-orders');
     });
+
+    // Suspicious actions — Hlushchenko only
+    Route::middleware(['auth', 'only.owner'])->get('/suspicious-actions', function () {
+        $user = auth()->user();
+        if (mb_strtolower($user->name) !== 'hlushchenko') abort(403);
+
+        $suspiciousTitles = [
+            '⚠️ Зміна фінансової операції',
+            '❌ Видалено фінансову операцію',
+            '🔄 Змінено валюту авансу',
+            '❌ Скасовано аванс',
+            '🚫 Аванс скасовано',
+            '✏️ Валюту авансу виправлено',
+            '❌ Проект видалено',
+        ];
+
+        $rows = DB::table('notifications')
+            ->whereIn('title', $suspiciousTitles)
+            ->orderByDesc('created_at')
+            ->get(['id', 'title', 'message', 'data', 'created_at']);
+
+        // Parse actor from each notification message
+        $grouped = [];
+        foreach ($rows as $row) {
+            $actor = null;
+            if (preg_match('/Хто:\s*([^\n]+)/u', $row->message, $m)) {
+                $actor = trim($m[1]);
+            } elseif (preg_match('/Видалив:\s*([^\n]+)/u', $row->message, $m)) {
+                $actor = trim($m[1]);
+            } elseif (preg_match('/Виправив:\s*([^\n]+)/u', $row->message, $m)) {
+                $actor = trim($m[1]);
+            } else {
+                $actor = 'Невідомо';
+            }
+
+            // Власник не потрапляє до списку підозрілих
+            if (mb_strtolower($actor) === 'hlushchenko') continue;
+
+            // Map title to action category
+            $category = match($row->title) {
+                '⚠️ Зміна фінансової операції'   => 'Редагування суми',
+                '❌ Видалено фінансову операцію'  => 'Видалення операції',
+                '🔄 Змінено валюту авансу'        => 'Зміна валюти авансу',
+                '❌ Скасовано аванс'              => 'Скасування авансу',
+                '🚫 Аванс скасовано'              => 'Скасування авансу',
+                '✏️ Валюту авансу виправлено'    => 'Виправлення валюти авансу',
+                '❌ Проект видалено'              => 'Видалення проекту',
+                default                           => $row->title,
+            };
+
+            $grouped[$actor][$category][] = [
+                'id'      => $row->id,
+                'title'   => $row->title,
+                'message' => $row->message,
+                'data'    => $row->data,
+                'created_at' => $row->created_at,
+            ];
+        }
+
+        // Sort actors alphabetically, categories by count desc
+        ksort($grouped);
+
+        return view('suspicious-actions', ['grouped' => $grouped]);
+    })->name('suspicious-actions');
 
     // Norm rules (battery / panel / inverter) — єдина сторінка
     Route::middleware(['auth', 'only.owner'])->get('/norm-rules', function () {
