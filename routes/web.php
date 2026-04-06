@@ -1761,6 +1761,13 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
             [\App\Http\Controllers\QualityCheckController::class, 'accruals'])
             ->name('salary.accruals');
 
+        Route::get('/api/salary/fx-rate', function () {
+            if (auth()->user()->role !== 'owner') return response()->json(['error' => 'Немає доступу'], 403);
+            $row = DB::table('fx_rates')->where('currency', 'USD')->first();
+            $buy = $row ? (float) $row->buy : (float) config('services.erpnext.fx.usd', 40);
+            return response()->json(['usd_buy' => $buy]);
+        });
+
         Route::get('/api/salary/accruals',
             [\App\Http\Controllers\QualityCheckController::class, 'apiAccruals']);
 

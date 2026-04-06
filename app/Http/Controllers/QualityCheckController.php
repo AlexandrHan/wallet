@@ -1173,23 +1173,25 @@ class QualityCheckController extends Controller
         $fxRow = DB::table('fx_rates')->where('currency', 'USD')->first();
         $rate  = $fxRow ? (float) $fxRow->buy : (float) config('services.erpnext.fx.usd', 40);
 
-        // Sum pending USD accruals (all installer accruals are in USD)
+        // Sum pending USD accruals
         $salaryUsd = (float) $pending->where('currency', 'USD')->sum('amount');
 
         $bonusUsd  = ($bonusCurrency === 'USD') ? $bonusAmount : 0.0;
         $bonusUah  = ($bonusCurrency === 'UAH') ? $bonusAmount : 0.0;
         $usdTotal  = $salaryUsd + $bonusUsd;
 
-        // How much to pay in USD (default: all)
-        $usdPaidInput = (float) $request->input('usd_paid', 0);
-        $usdToPay = ($usdPaidInput > 0 && $usdPaidInput < $usdTotal)
-            ? $usdPaidInput
-            : $usdTotal;
-        $usdToPay = round($usdToPay, 2);
+        // USD amount to pay: explicit value from request (0 = pay nothing in USD)
+        $usdPaidInput = $request->has('usd_paid') ? (float) $request->input('usd_paid') : $usdTotal;
+        $usdToPay = round(min(max($usdPaidInput, 0), $usdTotal), 2);
 
+        // UAH amount: explicit override from frontend, or auto-calculate from USD remainder
+        $uahOverride = $request->has('uah_paid') ? (float) $request->input('uah_paid') : -1;
         $usdRemaining = round($usdTotal - $usdToPay, 2);
-        $uahFromUsd   = round($usdRemaining * $rate, 2);
-        $uahTotal     = round($uahFromUsd + $bonusUah, 2);
+        if ($uahOverride >= 0) {
+            $uahTotal = round($uahOverride + $bonusUah, 2);
+        } else {
+            $uahTotal = round($usdRemaining * $rate + $bonusUah, 2);
+        }
 
         // Validate wallets
         $usdWallet = null;

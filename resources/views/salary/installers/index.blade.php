@@ -18,15 +18,37 @@
 
 {{-- Payment modal --}}
 <div id="payModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.75); z-index:9000;
-  align-items:center; justify-content:center; padding:16px;">
-  <div class="card" style="width:100%; max-width:400px; padding:20px;">
-    <div style="font-weight:800; font-size:16px; margin-bottom:6px;" id="payModalTitle">Виплатити зарплату</div>
-    <div style="font-size:14px; opacity:.8; margin-bottom:16px;" id="payModalDesc"></div>
+  align-items:center; justify-content:center; padding:16px; overflow-y:auto;">
+  <div class="card" style="width:100%; max-width:420px; padding:20px; margin:auto;">
+    <div style="font-weight:800; font-size:16px; margin-bottom:4px;" id="payModalTitle">Виплатити зарплату</div>
+    <div style="font-size:13px; opacity:.7; margin-bottom:16px;" id="payModalDesc"></div>
 
-    <div class="project-field-label">Гаманець для списання</div>
-    <select id="payWalletSelect" class="btn" style="width:100%; margin-bottom:16px;">
-      <option value="">Завантаження...</option>
+    {{-- USD частина --}}
+    <div class="project-field-label">Сума в $ (USD)</div>
+    <input id="payUsdAmount" type="number" min="0" step="1" class="btn"
+      style="width:100%; margin-bottom:8px; text-align:right;"
+      placeholder="0">
+
+    <div class="project-field-label">Гаманець USD</div>
+    <select id="payUsdWallet" class="btn" style="width:100%; margin-bottom:16px;">
+      <option value="">— не платити в $ —</option>
     </select>
+
+    {{-- UAH частина --}}
+    <div style="border-top:1px solid rgba(255,255,255,.12); padding-top:14px; margin-bottom:14px;">
+      <div class="project-field-label">Сума в ₴ (UAH)</div>
+      <input id="payUahAmount" type="number" min="0" step="1" class="btn"
+        style="width:100%; margin-bottom:4px; text-align:right;"
+        placeholder="0">
+      <div id="payRateHint" style="font-size:12px; opacity:.6; margin-bottom:8px;"></div>
+
+      <div class="project-field-label">Гаманець UAH</div>
+      <select id="payUahWallet" class="btn" style="width:100%; margin-bottom:0;">
+        <option value="">— не платити в ₴ —</option>
+      </select>
+    </div>
+
+    <div id="payTotalHint" style="font-size:13px; opacity:.75; margin-bottom:16px; text-align:right;"></div>
 
     <div style="display:flex; gap:8px;">
       <button id="payConfirmBtn" type="button" class="btn save" style="flex:1;">Виплатити</button>
@@ -38,35 +60,78 @@
 <script>
 const CSRF = document.querySelector('meta[name="csrf-token"]').content;
 let walletsCache = [];
+let fxRate = 0;
 let currentPayUserId = null;
+let currentPayTotal = 0;
+let currentPayCurrency = 'USD';
 
 function fmoney(amount, currency) {
   const sym = { UAH: '₴', USD: '$', EUR: '€' };
-  return new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 })
+  return new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 })
     .format(Number(amount) || 0) + '\u00a0' + (sym[currency] || currency || '');
+}
+
+function updateTotalHint() {
+  const usd = parseFloat(document.getElementById('payUsdAmount').value) || 0;
+  const uah = parseFloat(document.getElementById('payUahAmount').value) || 0;
+  const hint = document.getElementById('payTotalHint');
+  const parts = [];
+  if (usd > 0) parts.push(fmoney(usd, 'USD'));
+  if (uah > 0) parts.push(fmoney(uah, 'UAH'));
+  hint.textContent = parts.length ? 'Разом: ' + parts.join(' + ') : '';
+}
+
+function updateUahFromRemainder() {
+  if (currentPayCurrency !== 'USD' || fxRate <= 0) return;
+  const usdInput = parseFloat(document.getElementById('payUsdAmount').value) || 0;
+  const remainder = Math.max(0, currentPayTotal - usdInput);
+  const uah = remainder > 0 ? Math.round(remainder * fxRate) : 0;
+  document.getElementById('payUahAmount').value = uah || '';
+  document.getElementById('payRateHint').textContent =
+    remainder > 0 ? `${fmoney(remainder, 'USD')} × ${fxRate} = ${fmoney(uah, 'UAH')}` : '';
+  updateTotalHint();
 }
 
 async function openPayModal(userId, userName, total, currency) {
   currentPayUserId = userId;
+  currentPayTotal  = total;
+  currentPayCurrency = currency;
+
   document.getElementById('payModalTitle').textContent = `Виплатити — ${userName}`;
-  document.getElementById('payModalDesc').textContent  = `Сума: ${fmoney(total, currency)}`;
+  document.getElementById('payModalDesc').textContent  = `Нараховано: ${fmoney(total, currency)}`;
 
-  const sel = document.getElementById('payWalletSelect');
-  sel.innerHTML = '<option value="">Завантаження...</option>';
+  // Defaults
+  document.getElementById('payUsdAmount').value = currency === 'USD' ? total : 0;
+  document.getElementById('payUahAmount').value = '';
+  document.getElementById('payRateHint').textContent = '';
+  document.getElementById('payTotalHint').textContent = '';
 
-  try {
-    if (!walletsCache.length) {
-      const r = await fetch('/api/quality-checks/wallets');
-      walletsCache = r.ok ? await r.json() : [];
-    }
-    const matching = walletsCache.filter(w => w.currency === currency);
-    sel.innerHTML = matching.length
-      ? matching.map(w => `<option value="${w.id}">${String(w.name ?? '').replace(/"/g,'&quot;')} (${w.currency})</option>`).join('')
-      : `<option value="">Немає гаманців у ${currency}</option>`;
-  } catch (_) {
-    sel.innerHTML = '<option value="">Помилка завантаження</option>';
+  // Load wallets + FX in parallel
+  const [walletsRes, fxRes] = await Promise.all([
+    walletsCache.length ? Promise.resolve(null) : fetch('/api/quality-checks/wallets'),
+    fxRate > 0          ? Promise.resolve(null) : fetch('/api/salary/fx-rate'),
+  ]);
+
+  if (walletsRes) walletsCache = walletsRes.ok ? await walletsRes.json() : [];
+  if (fxRes)      fxRate = fxRes.ok ? (await fxRes.json()).usd_buy || 0 : 0;
+
+  // Populate USD wallets
+  const usdSel = document.getElementById('payUsdWallet');
+  const usdWallets = walletsCache.filter(w => w.currency === 'USD');
+  usdSel.innerHTML = '<option value="">— не платити в $ —</option>' +
+    usdWallets.map(w => `<option value="${w.id}">${String(w.name ?? '').replace(/"/g,'&quot;')}</option>`).join('');
+
+  // Populate UAH wallets
+  const uahSel = document.getElementById('payUahWallet');
+  const uahWallets = walletsCache.filter(w => w.currency === 'UAH');
+  uahSel.innerHTML = '<option value="">— не платити в ₴ —</option>' +
+    uahWallets.map(w => `<option value="${w.id}">${String(w.name ?? '').replace(/"/g,'&quot;')}</option>`).join('');
+
+  if (fxRate > 0) {
+    document.getElementById('payRateHint').textContent = `Курс обмінника: ${fxRate} ₴/$ (залишок конвертується автоматично)`;
   }
 
+  updateTotalHint();
   document.getElementById('payModal').style.display = 'flex';
 }
 
@@ -76,18 +141,34 @@ function closePayModal() {
 }
 
 async function paySalary() {
-  const walletId = document.getElementById('payWalletSelect').value;
-  if (!walletId) { alert('Оберіть гаманець'); return; }
+  const usdAmount = parseFloat(document.getElementById('payUsdAmount').value) || 0;
+  const uahAmount = parseFloat(document.getElementById('payUahAmount').value) || 0;
+  const usdWalletId = document.getElementById('payUsdWallet').value;
+  const uahWalletId = document.getElementById('payUahWallet').value;
+
+  if (usdAmount <= 0 && uahAmount <= 0) {
+    alert('Введіть суму для виплати');
+    return;
+  }
+  if (usdAmount > 0 && !usdWalletId) { alert('Оберіть USD гаманець'); return; }
+  if (uahAmount > 0 && !uahWalletId) { alert('Оберіть UAH гаманець'); return; }
 
   const btn = document.getElementById('payConfirmBtn');
   btn.disabled = true;
   btn.textContent = 'Виплата...';
 
+  const body = {
+    usd_wallet_id: usdWalletId ? parseInt(usdWalletId) : 0,
+    uah_wallet_id: uahWalletId ? parseInt(uahWalletId) : 0,
+    usd_paid:      usdAmount,
+    uah_paid:      uahAmount,
+  };
+
   try {
     const r = await fetch(`/api/salary/pay/${currentPayUserId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF },
-      body: JSON.stringify({ wallet_id: walletId }),
+      body: JSON.stringify(body),
     });
     const data = await r.json();
     if (r.ok && data.ok) {
@@ -105,6 +186,7 @@ async function paySalary() {
 }
 
 document.getElementById('payConfirmBtn').addEventListener('click', paySalary);
+document.getElementById('payUsdAmount').addEventListener('input', updateUahFromRemainder);
 
 document.addEventListener('click', function (e) {
   const btn = e.target.closest('.pay-btn');
