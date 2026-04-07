@@ -294,7 +294,8 @@ document.addEventListener('DOMContentLoaded', function () {
                   `
                 : '';
 
-            const canAccept = IS_OWNER && t.target_owner && (t.target_owner === AUTH_USER.actor);
+            const IS_ACCOUNTANT = AUTH_USER && AUTH_USER.role === 'accountant';
+            const canAccept = (IS_OWNER || IS_ACCOUNTANT) && t.target_owner && (t.target_owner === AUTH_USER.actor);
             const today = new Date();
             const todayFormatted = today.toLocaleDateString('uk-UA');
             const isToday = t.created_at.startsWith(todayFormatted);
@@ -305,8 +306,10 @@ document.addEventListener('DOMContentLoaded', function () {
             // "Скасувати" — лише pending
             const canCancel  = t.status === 'pending';
 
+            const ownerLabels = { accountant: 'Бухгалтер', hlushchenko: 'Глущенко', kolisnyk: 'Колісник' };
+            const acceptedByLabel = t.accepted_by ? (ownerLabels[t.accepted_by] ?? t.accepted_by) : '';
             const statusBlock = t.status === 'accepted'
-              ? `— ✅ Прийнято`
+              ? `— ✅ Прийнято${acceptedByLabel ? ' ' + acceptedByLabel : ''}`
               : isCancelled
               ? `— <span style="color:#888;">🔴 Не активно</span>`
               : `
@@ -360,23 +363,52 @@ document.addEventListener('DOMContentLoaded', function () {
             `;
         }).join('');
 
-      const transferButtonsHtml = (AUTH_USER && AUTH_USER.role !== 'owner' && p.pending_target_owner)
-        ? `
-            <button 
-              class="btn cancel-owner-btn"
-              data-project="${p.id}"
-              style="width:100%; background:#333;">
-              ↩️ Відмінити переказ
-            </button>
-          `
-        : `
-            <button class="btn send-owner-btn" data-project="${p.id}" data-owner="hlushchenko" style="margin-right:5px;">
+      const IS_ACCOUNTANT_USER = AUTH_USER && AUTH_USER.role === 'accountant';
+
+      // Бухгалтер: є accepted transfer до нього, і ще немає pending до власника
+      const accountantAccepted = p.transfers.find(t =>
+        t.status === 'accepted' && t.target_owner === 'accountant'
+      );
+      const forwardPending = p.transfers.find(t =>
+        t.status === 'pending' && (t.target_owner === 'hlushchenko' || t.target_owner === 'kolisnyk')
+      );
+
+      let transferButtonsHtml = '';
+
+      if (IS_ACCOUNTANT_USER) {
+        if (accountantAccepted && !forwardPending) {
+          transferButtonsHtml = `
+            <button class="btn forward-owner-btn" data-project="${p.id}" data-owner="hlushchenko" style="margin-right:5px;">
               💸 Глущенко
             </button>
-            <button class="btn send-owner-btn" data-project="${p.id}" data-owner="kolisnyk">
+            <button class="btn forward-owner-btn" data-project="${p.id}" data-owner="kolisnyk">
               💸 Колісник
             </button>
           `;
+        } else if (forwardPending) {
+          transferButtonsHtml = `<div style="font-size:13px; opacity:.6;">⏳ Очікує підтвердження від власника</div>`;
+        }
+      } else if (!IS_OWNER) {
+        if (p.pending_target_owner) {
+          transferButtonsHtml = `
+            <button class="btn cancel-owner-btn" data-project="${p.id}" style="width:100%; background:#333;">
+              ↩️ Відмінити переказ
+            </button>
+          `;
+        } else {
+          transferButtonsHtml = `
+            <button class="btn send-owner-btn" data-project="${p.id}" data-owner="hlushchenko" style="margin-right:5px;">
+              💸 Глущенко
+            </button>
+            <button class="btn send-owner-btn" data-project="${p.id}" data-owner="kolisnyk" style="margin-right:5px;">
+              💸 Колісник
+            </button>
+            <button class="btn send-owner-btn" data-project="${p.id}" data-owner="accountant">
+              💸 Бухгалтер
+            </button>
+          `;
+        }
+      }
 
       const hasNtoMoney = Number(p.pending_amount || 0) > 0;
       if (hasNtoMoney) {
@@ -428,7 +460,7 @@ document.addEventListener('DOMContentLoaded', function () {
               Очікує підтвердження: ${formatMoney(p.pending_amount, p.currency)}
             </div>
             
-            ${(AUTH_USER && (AUTH_USER.role === 'ntv' || AUTH_USER.role === 'owner' || AUTH_USER.role === 'accountant')) ? `
+            ${(AUTH_USER && (AUTH_USER.role === 'ntv' || AUTH_USER.role === 'owner' || AUTH_USER.role === 'accountant' || AUTH_USER.role === 'manager')) ? `
             <div style="margin-top:12px;">
               <button class="btn create-advance-btn" style="width:100%;" data-id="${p.id}" data-currency="${p.currency}">
                 ➕ Створити аванс
@@ -867,6 +899,32 @@ document.addEventListener('click', function(e){
     }
   });
 
+});
+
+// ===== Бухгалтер: forward до власника =====
+document.addEventListener('click', function(e){
+  if(!e.target.classList.contains('forward-owner-btn')) return;
+
+  const projectId = e.target.dataset.project;
+  const owner = e.target.dataset.owner;
+
+  fetch(`/api/sales-projects/${projectId}/forward-to-owner`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+    },
+    body: JSON.stringify({ target_owner: owner })
+  })
+  .then(r => r.json())
+  .then(res => {
+    if(res.ok){
+      localStorage.setItem('finance_open_project_id', String(projectId));
+      window.refreshSalesProjects?.();
+    } else {
+      alert(res.error || 'Помилка');
+    }
+  });
 });
 
 // ===== НТО: вибір власника =====

@@ -48,7 +48,7 @@ class CashTransferController extends Controller
         // 🟢 Якщо це аванс проекту
         if ($transfer->project_id) {
 
-            if ($user->role !== 'owner') {
+            if (!in_array($user->role, ['owner', 'accountant'], true)) {
                 return response()->json(['error' => 'Forbidden'], 403);
             }
             if ($transfer->target_owner && $transfer->target_owner !== $user->actor) {
@@ -57,10 +57,11 @@ class CashTransferController extends Controller
 
             DB::transaction(function () use ($transfer) {
 
-                // 1️⃣ Знаходимо кеш власника по валюті
+                // 1️⃣ Знаходимо службовий рахунок власника по валюті
                 $wallet = DB::table('wallets')
                     ->where('owner', auth()->user()->actor)
                     ->where('currency', $transfer->currency)
+                    ->where('name', 'like', '%(' . $transfer->currency . ')')
                     ->first();
 
                 if (!$wallet) {
@@ -77,7 +78,7 @@ class CashTransferController extends Controller
                         $fromWalletId = DB::table('wallets')
                             ->where('owner', $creator->actor)
                             ->where('currency', $transfer->currency)
-                            ->where('type', 'cash')
+                            ->where('name', 'like', '%(' . $transfer->currency . ')')
                             ->value('id');
                     }
                 }
@@ -178,16 +179,18 @@ class CashTransferController extends Controller
 
         $currency = $project->currency;
 
-        // 1️⃣ Знаходимо кеш власника
+        // 1️⃣ Знаходимо службовий рахунок власника
         $fromWallet = DB::table('wallets')
             ->where('owner', auth()->user()->actor)
             ->where('currency', $currency)
+            ->where('name', 'like', '%(' . $currency . ')')
             ->first();
 
-        // 2️⃣ Знаходимо кеш отримувача
+        // 2️⃣ Знаходимо службовий рахунок отримувача
         $toWallet = DB::table('wallets')
             ->where('owner', $data['target'])
             ->where('currency', $currency)
+            ->where('name', 'like', '%(' . $currency . ')')
             ->first();
 
         if (!$fromWallet || !$toWallet) {

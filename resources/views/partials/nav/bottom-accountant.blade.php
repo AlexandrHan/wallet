@@ -92,6 +92,8 @@
 
         <a class="tg-menu__item" style="margin-bottom:15px;" href="/finance">📊 Продажі</a>
 
+        <a class="tg-menu__item" style="margin-bottom:15px;" href="/equipment-orders">📋 Залишки</a>
+
         <a class="tg-menu__item" href="/profile">👤 Профіль</a>
 
 

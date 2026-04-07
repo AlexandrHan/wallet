@@ -578,6 +578,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         Route::post('/send-project-money', [\App\Http\Controllers\CashTransferController::class, 'sendProjectMoney']);
 
         Route::post('/sales-projects/{id}/target-owner', [\App\Http\Controllers\SalesProjectController::class, 'setTargetOwner']);
+        Route::post('/sales-projects/{id}/forward-to-owner', [\App\Http\Controllers\SalesProjectController::class, 'forwardToOwner']);
 
         Route::post('/sales-projects/{id}/target-owner-cancel', [\App\Http\Controllers\SalesProjectController::class, 'cancelTargetOwner']);
 
@@ -1499,7 +1500,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
 
     Route::get('/finance', function () {
         $u = auth()->user();
-        if (!$u || !in_array($u->role, ['owner', 'ntv', 'accountant'], true)) abort(403);
+        if (!$u || !in_array($u->role, ['owner', 'ntv', 'accountant', 'manager'], true)) abort(403);
 
         return view('finance.finance');
     });
@@ -1789,7 +1790,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
 
     Route::middleware(['auth'])->get('/equipment-orders', function () {
         $user = auth()->user();
-        if (!$user || !in_array($user->role, ['owner', 'ntv'], true)) abort(403);
+        if (!$user || !in_array($user->role, ['owner', 'ntv', 'manager', 'accountant'], true)) abort(403);
         return view('projects.equipment-orders');
     });
 
@@ -1892,7 +1893,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
 
     Route::middleware(['auth'])->get('/api/equipment-orders', function () {
         $user = auth()->user();
-        if (!$user || !in_array($user->role, ['owner', 'ntv'], true)) return response()->json(['error' => 'Forbidden'], 403);
+        if (!$user || !in_array($user->role, ['owner', 'ntv', 'manager', 'accountant'], true)) return response()->json(['error' => 'Forbidden'], 403);
         $kompl = 69586234;
 
         $projects = \Illuminate\Support\Facades\DB::table('sales_projects as sp')
@@ -2204,7 +2205,9 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
 
         // Додаткове обладнання: Сонячний кабель та Профіль монтажний
         $stockCable   = (int) \Illuminate\Support\Facades\DB::table('solarglass_stock')
-            ->where('item_name', 'like', 'Кабель для сонячних панелей%')->sum('qty');
+            ->where('item_name', 'like', '%Кабел%')
+            ->where('item_name', 'like', '%оняч%')
+            ->sum('qty');
         $stockProfile = (int) \Illuminate\Support\Facades\DB::table('solarglass_stock')
             ->where('item_name', 'like', 'Профіль монтажний%')->sum('qty');
 

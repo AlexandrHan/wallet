@@ -19,6 +19,8 @@ class CashTransfer extends Model
         'transfer_type',
         'employee_user_id',
         'comment',
+        'target_owner',
+        'accepted_at',
         'cancelled_at',
         'cancelled_by',
     ];

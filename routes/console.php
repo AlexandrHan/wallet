@@ -45,10 +45,13 @@ Schedule::command('quality:prune-deficiencies')
     ->dailyAt('03:00');
 
 // 🔔 Перевірка залишку Сонячного кабелю — щодня о 10:00 (пн-пт)
+// Рахуємо SUM по всіх позиціях категорії (item_name містить "кабел" + "соняч")
+// ID00238 (старий) + ID00366/ID00367 (нові) — всі м
 Schedule::call(function () {
     $qty = (int) \Illuminate\Support\Facades\DB::table('solarglass_stock')
-        ->where('item_code', 'ID00238')
-        ->value('qty');
+        ->where('item_name', 'like', '%Кабел%')
+        ->where('item_name', 'like', '%оняч%')
+        ->sum('qty');
 
     if ($qty < 1000) {
         app(\App\Services\NotificationService::class)->sendToRole(

@@ -429,6 +429,16 @@ class SalesProjectController extends Controller
                 ->get()
                 ->groupBy('project_id');
 
+        // Bulk-load wallet owners для accepted transfers (показуємо хто прийняв)
+        $allToWalletIds = $workerMode ? [] : $transfersByProjectId->flatten()
+            ->filter(fn($t) => $t->status === 'accepted' && $t->to_wallet_id)
+            ->pluck('to_wallet_id')
+            ->unique()
+            ->all();
+        $walletOwnerById = !empty($allToWalletIds)
+            ? DB::table('wallets')->whereIn('id', $allToWalletIds)->pluck('owner', 'id')
+            : collect();
+
         // For projects layer: load amo_status_id from deal map
         $amoStatusByProjectId = (!$workerMode && $layer === 'projects' && Schema::hasTable('amocrm_deal_map'))
             ? DB::table('amocrm_deal_map')
@@ -471,7 +481,7 @@ class SalesProjectController extends Controller
             'installation_completed_at'=> Schema::hasColumn('sales_projects', 'installation_completed_at'),
         ];
 
-        $projects = $projects->map(function ($project) use ($userNames, $amoComplectationByProjectId, $transfersByProjectId, $amoStatusByProjectId, $qcByProject, $attachmentsByProject, $scheduleEntriesByProject, $col) {
+        $projects = $projects->map(function ($project) use ($userNames, $amoComplectationByProjectId, $transfersByProjectId, $amoStatusByProjectId, $qcByProject, $attachmentsByProject, $scheduleEntriesByProject, $col, $walletOwnerById) {
 
             $transfers = $transfersByProjectId->get($project->id, collect());
 
@@ -609,7 +619,7 @@ class SalesProjectController extends Controller
                         'is_image' => $isImage,
                     ];
                 })->values(),
-                'transfers' => $transfers->map(function ($t) use ($projectCurrency) {
+                'transfers' => $transfers->map(function ($t) use ($projectCurrency, $walletOwnerById) {
                     $projectAmount = null;
                     try {
                         $projectAmount = $this->toProjectAmount(
@@ -631,6 +641,9 @@ class SalesProjectController extends Controller
                         'project_amount' => (float)$projectAmount,
                         'status' => $t->status,
                         'target_owner' => $t->target_owner,
+                        'accepted_by' => ($t->status === 'accepted' && $t->to_wallet_id)
+                            ? ($walletOwnerById->get($t->to_wallet_id) ?? null)
+                            : null,
                         'created_at' => \Carbon\Carbon::parse($t->created_at)->format('d.m.Y H:i'),
                     ];
                 })->values(),
@@ -746,11 +759,12 @@ class SalesProjectController extends Controller
             $ownerWallet = DB::table('wallets')
                 ->where('owner', $user->actor)
                 ->where('currency', $currency)
-                ->where('type', 'cash')
+                ->where('name', 'like', '%(' . $currency . ')')
                 ->first();
 
             if (!$ownerWallet) {
-                return response()->json(['error' => 'Wallet not found'], 422);
+                \Log::warning('Service wallet not found for ' . $user->actor . ' ' . $currency);
+                return response()->json(['error' => 'Службовий рахунок не знайдено для ' . $currency], 422);
             }
 
             $transfer = null;
@@ -795,22 +809,13 @@ class SalesProjectController extends Controller
         // =========================
         $ntvWallet = DB::table('wallets')
             ->where('owner', $user->actor)
-            ->where('type', 'cash')
             ->where('currency', $currency)
+            ->where('name', 'like', '%(' . $currency . ')')
             ->first();
 
         if (!$ntvWallet) {
-            $walletId = DB::table('wallets')->insertGetId([
-                'name'       => 'КЕШ НТВ (' . $currency . ')',
-                'currency'   => $currency,
-                'type'       => 'cash',
-                'owner'      => $user->actor,
-                'is_active'  => 1,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-
-            $ntvWallet = (object)['id' => $walletId];
+            \Log::warning('Service wallet not found for ' . $user->actor . ' ' . $currency);
+            return response()->json(['error' => 'Службовий рахунок не знайдено для ' . $currency], 422);
         }
 
         // ✅ прихід у кеш НТВ (ОДИН раз)
@@ -851,7 +856,7 @@ class SalesProjectController extends Controller
         }
 
         $data = $request->validate([
-            'target_owner' => 'required|in:hlushchenko,kolisnyk',
+            'target_owner' => 'required|in:hlushchenko,kolisnyk,accountant',
         ]);
 
         $project = SalesProject::find($id);
@@ -866,6 +871,69 @@ class SalesProjectController extends Controller
                 'target_owner' => $data['target_owner'],
                 'updated_at' => now(),
             ]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function forwardToOwner(Request $request, $id)
+    {
+        $u = auth()->user();
+        if (!$u || $u->role !== 'accountant') {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
+        $data = $request->validate([
+            'target_owner' => 'required|in:hlushchenko,kolisnyk',
+        ]);
+
+        $project = SalesProject::find($id);
+        if (!$project) {
+            return response()->json(['error' => 'Проект не знайдено'], 404);
+        }
+
+        $accepted = DB::table('cash_transfers')
+            ->where('project_id', $project->id)
+            ->where('status', 'accepted')
+            ->where('target_owner', 'accountant')
+            ->orderByDesc('id')
+            ->first();
+
+        if (!$accepted) {
+            return response()->json(['error' => 'Не знайдено прийнятого авансу'], 422);
+        }
+
+        $fromWallet = DB::table('wallets')
+            ->where('owner', 'accountant')
+            ->where('currency', $accepted->currency)
+            ->where('name', 'like', '%(' . $accepted->currency . ')')
+            ->first();
+
+        if (!$fromWallet) {
+            return response()->json(['error' => 'Гаманець бухгалтера не знайдено'], 422);
+        }
+
+        $alreadyPending = DB::table('cash_transfers')
+            ->where('project_id', $project->id)
+            ->where('status', 'pending')
+            ->whereIn('target_owner', ['hlushchenko', 'kolisnyk'])
+            ->exists();
+
+        if ($alreadyPending) {
+            return response()->json(['error' => 'Вже є очікуючий переказ до власника'], 422);
+        }
+
+        CashTransfer::create([
+            'project_id'     => $project->id,
+            'from_wallet_id' => $fromWallet->id,
+            'to_wallet_id'   => null,
+            'amount'         => $accepted->amount,
+            'currency'       => $accepted->currency,
+            'exchange_rate'  => $accepted->exchange_rate,
+            'usd_amount'     => $accepted->usd_amount,
+            'status'         => 'pending',
+            'target_owner'   => $data['target_owner'],
+            'created_by'     => $u->id,
+        ]);
 
         return response()->json(['ok' => true]);
     }
@@ -1422,57 +1490,98 @@ class SalesProjectController extends Controller
 
             foreach ($transfers as $transfer) {
 
-                // ── 2. Визначити гаманець з позитивним залишком ───────────────
-                //   accepted → гроші осіли в to_wallet_id (власник)
-                //   pending  → гроші осіли в from_wallet_id (НТВ)
-                $walletId = $transfer->status === 'accepted'
-                    ? $transfer->to_wallet_id
-                    : $transfer->from_wallet_id;
-
-                if (!$walletId) {
-                    continue;
-                }
-
                 $amount   = (float) $transfer->amount;
                 $currency = $transfer->currency;
 
-                // ── 3. Захист від дублювання: шукаємо оригінальний income entry
-                //    (той що не має reversal і ще не скасований)
-                $originalEntry = DB::table('entries')
-                    ->where('wallet_id', $walletId)
-                    ->where('entry_type', 'income')
-                    ->where('amount', $amount)
-                    ->whereNull('reversal_of_id')
-                    ->whereNotExists(function ($q) {
-                        $q->from('entries as rev')
-                          ->whereColumn('rev.reversal_of_id', 'entries.id');
-                    })
-                    ->orderByDesc('created_at')
-                    ->first(['id']);
+                if ($transfer->status === 'pending') {
+                    // ── pending: тільки скасовуємо transfer, reversal expense на from_wallet
+                    $fromWalletId = $transfer->from_wallet_id;
+                    if ($fromWalletId) {
+                        $pendingIncome = DB::table('entries')
+                            ->where('wallet_id', $fromWalletId)
+                            ->where('entry_type', 'income')
+                            ->where('amount', $amount)
+                            ->whereNull('reversal_of_id')
+                            ->whereNotExists(fn($q) => $q->from('entries as rev')->whereColumn('rev.reversal_of_id', 'entries.id'))
+                            ->orderByDesc('created_at')
+                            ->first(['id']);
 
-                // Якщо reversal вже існує — пропускаємо (дублікат)
-                if ($originalEntry && DB::table('entries')
-                        ->where('reversal_of_id', $originalEntry->id)
-                        ->exists()) {
-                    continue;
+                        if (!($pendingIncome && DB::table('entries')->where('reversal_of_id', $pendingIncome->id)->exists())) {
+                            DB::table('entries')->insert([
+                                'wallet_id'      => $fromWalletId,
+                                'entry_type'     => 'expense',
+                                'amount'         => $amount,
+                                'comment'        => $comment,
+                                'posting_date'   => $now->format('Y-m-d'),
+                                'reversal_of_id' => $pendingIncome?->id,
+                                'created_by'     => $user->id,
+                                'created_at'     => $now,
+                                'updated_at'     => $now,
+                            ]);
+                            $reversedByCurrency[$currency] = ($reversedByCurrency[$currency] ?? 0) + $amount;
+                        }
+                    }
+
+                } elseif ($transfer->status === 'accepted' && $transfer->accepted_at) {
+                    // ── accepted: реверсуємо обидві записи з accept()
+                    //   expense → from_wallet (reversing: accept списало з from)
+                    //   income  → to_wallet   (reversing: accept нарахувало на to)
+
+                    // 1) income → from_wallet (якщо існує)
+                    if ($transfer->from_wallet_id) {
+                        $acceptExpense = DB::table('entries')
+                            ->where('wallet_id', $transfer->from_wallet_id)
+                            ->where('entry_type', 'expense')
+                            ->where('amount', $amount)
+                            ->whereNull('reversal_of_id')
+                            ->whereNotExists(fn($q) => $q->from('entries as rev')->whereColumn('rev.reversal_of_id', 'entries.id'))
+                            ->orderByDesc('created_at')
+                            ->first(['id']);
+
+                        if (!($acceptExpense && DB::table('entries')->where('reversal_of_id', $acceptExpense->id)->exists())) {
+                            DB::table('entries')->insert([
+                                'wallet_id'      => $transfer->from_wallet_id,
+                                'entry_type'     => 'income',
+                                'amount'         => $amount,
+                                'comment'        => $comment,
+                                'posting_date'   => $now->format('Y-m-d'),
+                                'reversal_of_id' => $acceptExpense?->id,
+                                'created_by'     => $user->id,
+                                'created_at'     => $now,
+                                'updated_at'     => $now,
+                            ]);
+                        }
+                    }
+
+                    // 2) expense → to_wallet
+                    if ($transfer->to_wallet_id) {
+                        $acceptIncome = DB::table('entries')
+                            ->where('wallet_id', $transfer->to_wallet_id)
+                            ->where('entry_type', 'income')
+                            ->where('amount', $amount)
+                            ->whereNull('reversal_of_id')
+                            ->whereNotExists(fn($q) => $q->from('entries as rev')->whereColumn('rev.reversal_of_id', 'entries.id'))
+                            ->orderByDesc('created_at')
+                            ->first(['id']);
+
+                        if (!($acceptIncome && DB::table('entries')->where('reversal_of_id', $acceptIncome->id)->exists())) {
+                            DB::table('entries')->insert([
+                                'wallet_id'      => $transfer->to_wallet_id,
+                                'entry_type'     => 'expense',
+                                'amount'         => $amount,
+                                'comment'        => $comment,
+                                'posting_date'   => $now->format('Y-m-d'),
+                                'reversal_of_id' => $acceptIncome?->id,
+                                'created_by'     => $user->id,
+                                'created_at'     => $now,
+                                'updated_at'     => $now,
+                            ]);
+                            $reversedByCurrency[$currency] = ($reversedByCurrency[$currency] ?? 0) + $amount;
+                        }
+                    }
                 }
 
-                // ── 4. Створити reversal (expense) ────────────────────────────
-                DB::table('entries')->insert([
-                    'wallet_id'      => $walletId,
-                    'entry_type'     => 'expense',
-                    'amount'         => $amount,
-                    'comment'        => $comment,
-                    'posting_date'   => $now->format('Y-m-d'),
-                    'reversal_of_id' => $originalEntry?->id,
-                    'created_by'     => $user->id,
-                    'created_at'     => $now,
-                    'updated_at'     => $now,
-                ]);
-
-                $reversedByCurrency[$currency] = ($reversedByCurrency[$currency] ?? 0) + $amount;
-
-                // ── 5. Скасувати cash_transfer ────────────────────────────────
+                // ── Скасувати cash_transfer ────────────────────────────────
                 DB::table('cash_transfers')
                     ->where('id', $transfer->id)
                     ->update([
