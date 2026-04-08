@@ -15,6 +15,7 @@ use App\Http\Controllers\AI\AIChatController;
 use App\Http\Controllers\EmployeeTransferController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\MessageController;
+use App\Http\Controllers\CashDeskController;
 use App\Services\GoogleSheetsService;
 use App\Services\NameMatcher;
 
@@ -1414,12 +1415,42 @@ Route::middleware(['web', 'auth'])->get('/wallets/{walletId}/entries', function 
         ->where('wallet_id', $walletId)
         ->orderByDesc('posting_date')
         ->orderByDesc('id')
-        ->get()
-        ->map(function ($e) {
+        ->get();
+
+    $transferIds = $entries
+        ->pluck('cash_transfer_id')
+        ->filter()
+        ->map(fn ($id) => (int) $id)
+        ->unique()
+        ->values();
+
+    $transfersById = $transferIds->isEmpty()
+        ? collect()
+        : DB::table('cash_transfers')
+            ->whereIn('id', $transferIds)
+            ->get(['id', 'from_wallet_id', 'to_wallet_id'])
+            ->keyBy('id');
+
+    $walletIds = $transfersById
+        ->flatMap(fn ($t) => array_filter([(int) ($t->from_wallet_id ?? 0), (int) ($t->to_wallet_id ?? 0)]))
+        ->unique()
+        ->values();
+
+    $walletOwnersById = $walletIds->isEmpty()
+        ? collect()
+        : DB::table('wallets')
+            ->whereIn('id', $walletIds)
+            ->pluck('owner', 'id');
+
+    $entries = $entries->map(function ($e) use ($transfersById, $walletOwnersById) {
 
             $signed = $e->entry_type === 'income'
                 ? (float)$e->amount
                 : (float)$e->amount * -1;
+
+            $transfer = isset($e->cash_transfer_id)
+                ? $transfersById->get((int) $e->cash_transfer_id)
+                : null;
 
             return [
                 'id' => (int)$e->id,
@@ -1436,6 +1467,8 @@ Route::middleware(['web', 'auth'])->get('/wallets/{walletId}/entries', function 
                 'receipt_url'      => $e->receipt_path ? Storage::disk('public')->url($e->receipt_path) : null,
                 'cash_transfer_id' => isset($e->cash_transfer_id) ? (int)$e->cash_transfer_id : null,
                 'source'           => $e->source ?? null,
+                'from_owner'       => $transfer ? ($walletOwnersById->get((int) ($transfer->from_wallet_id ?? 0)) ?? null) : null,
+                'to_owner'         => $transfer ? ($walletOwnersById->get((int) ($transfer->to_wallet_id ?? 0)) ?? null) : null,
             ];
 
         });
@@ -1538,6 +1571,10 @@ function notifyHlushchenko(string $title, string $body, array $data = []): void 
 } // end if !function_exists('notifyHlushchenko')
 
 Route::middleware(['web', 'auth'])->group(function () {
+    Route::post('/cash/submit', [CashDeskController::class, 'submit']);
+    Route::post('/cash/accept-all', [CashDeskController::class, 'acceptAll']);
+    Route::get('/cash/pending-list', [CashDeskController::class, 'pendingList']);
+    Route::get('/cash/pending-summary', [CashDeskController::class, 'pendingSummary']);
 
     Route::put('/entries/{id}', function (int $id, \Illuminate\Http\Request $request) {
 

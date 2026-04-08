@@ -108,6 +108,9 @@
 
       <button type="button" class="btn " id="addWallet">+</button>
       <button type="button" class="btn" id="refresh">Оновити</button>
+      @if(auth()->user()->role === 'accountant')
+      <button type="button" class="btn primary" id="cashSubmitBtn">Здати касу</button>
+      @endif
 
     @if(auth()->user()->role !== 'accountant')
       <span class="tag right rejym" id="viewHint"></span>
@@ -118,6 +121,14 @@
 <!-- SG HOLDING CARD start -->
 
 <div id="holdingCard" class="card {{ auth()->user()->role === 'owner' ? '' : 'hidden' }}"></div>
+
+<div id="cashPendingBox" class="card hidden" style="margin-top:14px;">
+  <div style="font-weight:800; font-size:16px; margin-bottom:10px;">Очікує здача каси</div>
+  <div id="cashPendingSummary" class="muted" style="line-height:1.8;"></div>
+  <button type="button" id="cashAcceptAllBtn" class="btn primary" style="width:100%; margin-top:12px;">
+    Прийняти касу
+  </button>
+</div>
 
 
 
@@ -353,6 +364,23 @@
         <a id="receiptDownload" class="btn" download>Зберегти</a>
       </div>
 
+    </div>
+  </div>
+</div>
+
+<div id="cashSubmitModal" class="sheet hidden">
+  <div class="sheet-backdrop" id="cashSubmitBackdrop"></div>
+  <div class="sheet-panel">
+    <div class="sheet-handle"></div>
+    <h3 style="margin-top:0;">Кому здати касу?</h3>
+
+    <div class="row" style="display:grid; gap:10px;">
+      <button type="button" class="btn" data-cash-owner="hlushchenko">Глущенко</button>
+      <button type="button" class="btn" data-cash-owner="kolisnyk">Колісник</button>
+    </div>
+
+    <div class="row" style="margin-top:14px;">
+      <button type="button" class="btn" id="cashSubmitCancel">Скасувати</button>
     </div>
   </div>
 </div>

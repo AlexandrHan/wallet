@@ -891,49 +891,56 @@ class SalesProjectController extends Controller
             return response()->json(['error' => 'Проект не знайдено'], 404);
         }
 
-        $accepted = DB::table('cash_transfers')
+        $acceptedTransfers = DB::table('cash_transfers')
             ->where('project_id', $project->id)
             ->where('status', 'accepted')
             ->where('target_owner', 'accountant')
-            ->orderByDesc('id')
-            ->first();
+            ->orderBy('id')
+            ->get();
 
-        if (!$accepted) {
+        if ($acceptedTransfers->isEmpty()) {
             return response()->json(['error' => 'Не знайдено прийнятого авансу'], 422);
         }
 
-        $fromWallet = DB::table('wallets')
-            ->where('owner', 'accountant')
-            ->where('currency', $accepted->currency)
-            ->where('name', 'like', '%(' . $accepted->currency . ')')
-            ->first();
+        DB::transaction(function () use ($acceptedTransfers, $project, $data, $u) {
+            foreach ($acceptedTransfers as $accepted) {
+                $fromWallet = DB::table('wallets')
+                    ->where('owner', 'accountant')
+                    ->where('currency', $accepted->currency)
+                    ->where('name', 'like', '%(' . $accepted->currency . ')')
+                    ->first();
 
-        if (!$fromWallet) {
-            return response()->json(['error' => 'Гаманець бухгалтера не знайдено'], 422);
-        }
+                if (!$fromWallet) {
+                    throw new \RuntimeException('Гаманець бухгалтера не знайдено');
+                }
 
-        $alreadyPending = DB::table('cash_transfers')
-            ->where('project_id', $project->id)
-            ->where('status', 'pending')
-            ->whereIn('target_owner', ['hlushchenko', 'kolisnyk'])
-            ->exists();
+                $alreadyPending = DB::table('cash_transfers')
+                    ->where('project_id', $project->id)
+                    ->where('from_wallet_id', $fromWallet->id)
+                    ->where('amount', $accepted->amount)
+                    ->where('currency', $accepted->currency)
+                    ->where('target_owner', $data['target_owner'])
+                    ->where('status', 'pending')
+                    ->exists();
 
-        if ($alreadyPending) {
-            return response()->json(['error' => 'Вже є очікуючий переказ до власника'], 422);
-        }
+                if ($alreadyPending) {
+                    continue;
+                }
 
-        CashTransfer::create([
-            'project_id'     => $project->id,
-            'from_wallet_id' => $fromWallet->id,
-            'to_wallet_id'   => null,
-            'amount'         => $accepted->amount,
-            'currency'       => $accepted->currency,
-            'exchange_rate'  => $accepted->exchange_rate,
-            'usd_amount'     => $accepted->usd_amount,
-            'status'         => 'pending',
-            'target_owner'   => $data['target_owner'],
-            'created_by'     => $u->id,
-        ]);
+                CashTransfer::create([
+                    'project_id'     => $project->id,
+                    'from_wallet_id' => $fromWallet->id,
+                    'to_wallet_id'   => null,
+                    'amount'         => $accepted->amount,
+                    'currency'       => $accepted->currency,
+                    'exchange_rate'  => $accepted->exchange_rate,
+                    'usd_amount'     => $accepted->usd_amount,
+                    'status'         => 'pending',
+                    'target_owner'   => $data['target_owner'],
+                    'created_by'     => $u->id,
+                ]);
+            }
+        });
 
         return response()->json(['ok' => true]);
     }

@@ -5,6 +5,11 @@ const FX_CACHE_TTL_MS = 60 * 1000;
 
 
 const AUTH_USER = window.AUTH_USER;
+const ownerNames = {
+  hlushchenko: 'Глущенко',
+  kolisnyk: 'Колісник',
+  accountant: 'Бухгалтер'
+};
 
 document.addEventListener('DOMContentLoaded', () => {
   if (AUTH_USER.role === 'owner') {
@@ -202,6 +207,13 @@ function checkOnline() {
 
   const roTag = document.getElementById('roTag');
   const viewHint = document.getElementById('viewHint');
+  const cashPendingBox = document.getElementById('cashPendingBox');
+  const cashPendingSummary = document.getElementById('cashPendingSummary');
+  const cashAcceptAllBtn = document.getElementById('cashAcceptAllBtn');
+  const cashSubmitBtn = document.getElementById('cashSubmitBtn');
+  const cashSubmitModal = document.getElementById('cashSubmitModal');
+  const cashSubmitCancel = document.getElementById('cashSubmitCancel');
+  const cashSubmitBackdrop = document.getElementById('cashSubmitBackdrop');
 
   const btnIncome = document.getElementById('addIncome');
   const btnExpense = document.getElementById('addExpense');
@@ -437,10 +449,11 @@ async function loadWallets() {
 
   try {
 
-    const res = await fetch('/api/wallets');
-    state.wallets = res.ok ? await res.json() : [];
+	    const res = await fetch('/api/wallets');
+	    state.wallets = res.ok ? await res.json() : [];
 
-    renderWallets();
+	    updateCashSubmitButtonVisibility();
+	    renderWallets();
 
     if (state.pendingOpenStaffWalletId) {
       const walletId = Number(state.pendingOpenStaffWalletId);
@@ -489,6 +502,7 @@ async function loadWallets() {
         await loadFx();
 
         renderHoldingCard();
+        await loadCashPendingSummary();
         renderWallets();
 
       } catch (e) {
@@ -503,6 +517,27 @@ async function loadWallets() {
     console.error('Wallet load failed', e);
     isLoadingWallets = false;
   }
+}
+
+function updateCashSubmitButtonVisibility() {
+  if (!cashSubmitBtn) return;
+  if (AUTH_USER.role !== 'accountant') {
+    cashSubmitBtn.classList.add('hidden');
+    return;
+  }
+
+  const hasPositiveServiceCash = state.wallets.some((wallet) => {
+    const owner = String(wallet?.owner || '');
+    const name = String(wallet?.name || '');
+    const balance = Number(wallet?.balance || 0);
+
+    if (owner !== 'accountant') return false;
+    if (!(name.includes('(USD)') || name.includes('(UAH)') || name.includes('(EUR)'))) return false;
+
+    return balance > 0;
+  });
+
+  cashSubmitBtn.classList.toggle('hidden', !hasPositiveServiceCash);
 }
 
 
@@ -752,7 +787,7 @@ const CURRENCY_SYMBOLS = {
         </td>
 
         <td class="entry-comment">
-          ${renderComment(e.comment)}
+          ${renderEntryComment(e)}
           ${isTransfer ? '<span class="transfer-badge">💸</span>' : ''}
 
           ${e.receipt_url ? `
@@ -903,6 +938,118 @@ card.innerHTML = `
   isRenderingWallets = false;
   initPirateDelete();
 
+}
+
+async function loadCashPendingSummary() {
+  if (AUTH_USER.role !== 'owner' || !cashPendingBox || !cashPendingSummary) return;
+
+  try {
+    const res = await fetch('/api/cash/pending-summary', {
+      headers: { 'Accept': 'application/json' }
+    });
+
+    if (!res.ok) {
+      cashPendingBox.classList.add('hidden');
+      return;
+    }
+
+    const data = await res.json();
+    const usd = Number(data?.USD || 0);
+    const uah = Number(data?.UAH || 0);
+    const eur = Number(data?.EUR || 0);
+    const hasPending = usd > 0 || uah > 0 || eur > 0;
+
+    if (!hasPending) {
+      cashPendingBox.classList.add('hidden');
+      return;
+    }
+
+    cashPendingSummary.innerHTML = `
+      <div>USD: ${fmt(usd)}</div>
+      <div>UAH: ${fmt(uah)}</div>
+      <div>EUR: ${fmt(eur)}</div>
+    `;
+    cashPendingBox.classList.remove('hidden');
+  } catch (e) {
+    console.error('Cash pending summary failed', e);
+    cashPendingBox.classList.add('hidden');
+  }
+}
+
+async function acceptAllCashPending() {
+  if (!cashAcceptAllBtn) return;
+  if (!checkOnline()) return;
+
+  cashAcceptAllBtn.disabled = true;
+
+  try {
+    const res = await fetch('/api/cash/accept-all', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': CSRF,
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({}),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data?.ok !== true) {
+      alert(data?.error || data?.message || 'Не вдалося прийняти касу');
+      return;
+    }
+
+    await loadWallets();
+    cashPendingBox?.classList.add('hidden');
+  } catch (e) {
+    console.error('Cash accept all failed', e);
+    alert('Не вдалося прийняти касу');
+  } finally {
+    cashAcceptAllBtn.disabled = false;
+  }
+}
+
+function openCashSubmitModal() {
+  if (AUTH_USER.role !== 'accountant' || !cashSubmitModal) return;
+  cashSubmitModal.classList.remove('hidden');
+}
+
+function closeCashSubmitModal() {
+  cashSubmitModal?.classList.add('hidden');
+}
+
+async function submitCashToOwner(targetOwner) {
+  if (AUTH_USER.role !== 'accountant') return;
+  if (!checkOnline()) return;
+
+  try {
+    const res = await fetch('/api/cash/submit', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': CSRF,
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        target_owner: targetOwner,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data?.ok !== true) {
+      alert(data?.error || data?.message || 'Не вдалося здати касу');
+      return;
+    }
+
+    const createdCount = Array.isArray(data?.created) ? data.created.length : 0;
+    const skippedCount = Array.isArray(data?.skipped) ? data.skipped.length : 0;
+    alert(`Касу здано. Створено: ${createdCount}. Пропущено: ${skippedCount}.`);
+    closeCashSubmitModal();
+    await loadWallets();
+  } catch (e) {
+    console.error('Cash submit failed', e);
+    alert('Не вдалося здати касу');
+  }
 }
 
 
@@ -1120,7 +1267,32 @@ function renderCategoryChart() {
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    function renderComment(text){
+  function renderEntryComment(entry){
+    const fromOwner = String(entry?.from_owner || '').trim();
+    const toOwner = String(entry?.to_owner || '').trim();
+
+    if (fromOwner && fromOwner === AUTH_USER.actor) {
+      const label = ownerNames[toOwner] || toOwner || '—';
+      return `
+        <div class="text-danger" style="font-weight:700;font-size:13px">
+          Відправлено → ${escapeHtml(label)}
+        </div>
+      `;
+    }
+
+    if (toOwner && toOwner === AUTH_USER.actor) {
+      const label = ownerNames[fromOwner] || fromOwner || '—';
+      return `
+        <div class="text-success" style="font-weight:700;font-size:13px">
+          Отримано ← ${escapeHtml(label)}
+        </div>
+      `;
+    }
+
+    return renderComment(entry?.comment);
+  }
+
+  function renderComment(text){
     if (!text) return '';
 
     const m = text.match(/^\[(.+?)\]\s*(.*)$/);
@@ -1442,6 +1614,25 @@ async function submitEntry(entry_type, amount, comment){
   // UI events
   document.getElementById('refresh').onclick = (e) => { e.preventDefault(); loadWallets(); };
   btnBack.onclick = (e) => { e.preventDefault(); showWallets(); };
+  cashSubmitBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    openCashSubmitModal();
+  });
+  cashAcceptAllBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    acceptAllCashPending();
+  });
+  cashSubmitCancel?.addEventListener('click', (e) => {
+    e.preventDefault();
+    closeCashSubmitModal();
+  });
+  cashSubmitBackdrop?.addEventListener('click', closeCashSubmitModal);
+  document.querySelectorAll('[data-cash-owner]').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      await submitCashToOwner(btn.dataset.cashOwner);
+    });
+  });
 
   btnIncome.onclick = (e) => { e.preventDefault(); openEntrySheet('income'); };
   btnExpense.onclick = (e) => { e.preventDefault(); openEntrySheet('expense'); };
