@@ -817,9 +817,14 @@ document.addEventListener('DOMContentLoaded', async function () {
     const grouped = new Map(days.map(day => [day.key, []]));
     const unscheduled = [];
 
+    function getPreferredInstallerEntries(project) {
+      const entries = Array.isArray(project?.installer_schedule_entries) ? project.installer_schedule_entries : [];
+      return entries.filter(e => String(e?.source || '') === 'google_sheet');
+    }
+
     // Build a map of installer_schedule_entries by date for quick lookup
     function getInstallerDescriptionForDate(project, dateKey) {
-      const entries = Array.isArray(project?.installer_schedule_entries) ? project.installer_schedule_entries : [];
+      const entries = getPreferredInstallerEntries(project);
       const entry = entries.find(e => String(e.date || '').slice(0, 10) === dateKey);
       return entry?.description || null;
     }
@@ -828,7 +833,7 @@ document.addEventListener('DOMContentLoaded', async function () {
       // For electrician view use only electric_schedule_dates (not installer entries which belong to another team)
       const useInstallerEntries = MATCH_FIELD !== 'electrician';
       const scheduleEntries = useInstallerEntries && Array.isArray(project?.installer_schedule_entries) && project.installer_schedule_entries.length > 0
-        ? project.installer_schedule_entries
+        ? getPreferredInstallerEntries(project)
         : null;
 
       const explicitDates = scheduleEntries
@@ -1135,7 +1140,13 @@ document.addEventListener('DOMContentLoaded', async function () {
       const unscheduled = [];
 
       items.forEach(project => {
-        const explicitDates = Array.isArray(project?.[SCHEDULE_DATES_KEY]) ? project[SCHEDULE_DATES_KEY] : [];
+        const scheduleEntries = MATCH_FIELD !== 'electrician' && Array.isArray(project?.installer_schedule_entries) && project.installer_schedule_entries.length > 0
+          ? project.installer_schedule_entries.filter(e => String(e?.source || '') === 'google_sheet')
+          : null;
+
+        const explicitDates = scheduleEntries
+          ? scheduleEntries.map(e => e.date)
+          : (Array.isArray(project?.[SCHEDULE_DATES_KEY]) ? project[SCHEDULE_DATES_KEY] : []);
         const normalizedKeys = new Set();
 
         explicitDates.forEach(rawDate => {

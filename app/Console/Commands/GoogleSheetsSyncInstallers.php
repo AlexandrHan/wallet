@@ -47,6 +47,42 @@ class GoogleSheetsSyncInstallers extends Command
         return $text;
     }
 
+    private function normalizeClientSurname(string $text): string
+    {
+        $parts = $this->normalizeClientTokens($text);
+        $surname = $parts[0] ?? '';
+
+        return $surname;
+    }
+
+    private function normalizeClientGivenName(string $text): string
+    {
+        $parts = $this->normalizeClientTokens($text);
+
+        return $parts[1] ?? '';
+    }
+
+    /**
+     * @return string[]
+     */
+    private function normalizeClientTokens(string $text): array
+    {
+        $text = preg_replace('/\(.*?\)/u', '', $text);
+        $text = trim((string) $text);
+        if ($text === '') return [];
+
+        $parts = preg_split('/[\s,;\/]+/u', $text);
+        $tokens = [];
+
+        foreach ($parts as $part) {
+            $part = trim((string) $part, '.,;:!?-');
+            if ($part === '') continue;
+            $tokens[] = $this->normalizeUkr($part);
+        }
+
+        return $tokens;
+    }
+
     /**
      * Extract significant keywords from a client name for fuzzy matching.
      * Removes content in brackets, splits by whitespace/comma, keeps words > 3 chars.
@@ -75,32 +111,35 @@ class GoogleSheetsSyncInstallers extends Command
     }
 
     /**
-     * Check whether a sheet column-C value matches a project client.
-     * Priority: exact (normalized) → keyword contains → similar_text
+     * Check whether a sheet column-C value matches a project client surname exactly.
      */
     private function colCMatchesClient(
         string $colC,
         string $clientNameNorm,
+        string $projectGivenNameNorm,
+        bool $requiresGivenName,
         array  $keywords,
         array  $normalizedKeywords
     ): bool {
         if ($colC === '') return false;
 
-        $colCNorm = $this->normalizeUkr($colC);
+        $sheetTokens = $this->normalizeClientTokens($colC);
+        if (empty($sheetTokens)) return false;
 
-        // 1. Exact normalized match
-        if ($colCNorm === $clientNameNorm) return true;
-
-        // 2. Any keyword appears inside colC
-        // Note: we do NOT check the reverse (colC inside keyword) to avoid false positives,
-        // e.g. "Петров" being a substring of "Петрович" (patronymic).
-        foreach ($normalizedKeywords as $kw) {
-            if (mb_strlen($kw) >= 4 && mb_strpos($colCNorm, $kw) !== false) return true;
+        if (($sheetTokens[0] ?? '') !== $clientNameNorm) {
+            return false;
         }
 
-        // 3. similar_text fallback (≥ 68%)
-        similar_text($clientNameNorm, $colCNorm, $pct);
-        return $pct >= 68.0;
+        if (!$requiresGivenName) {
+            return true;
+        }
+
+        $sheetGivenNameNorm = $sheetTokens[1] ?? '';
+        if ($sheetGivenNameNorm === '' || $projectGivenNameNorm === '') {
+            return false;
+        }
+
+        return $sheetGivenNameNorm === $projectGivenNameNorm;
     }
 
     // ── Date normalization ───────────────────────────────────────────────────
@@ -150,7 +189,7 @@ class GoogleSheetsSyncInstallers extends Command
                 'panel_work_start_date', 'panel_work_days',
                 'installation_team_note', 'installation_team_task_note',
             ])
-            ->where('status', '!=', 'completed')
+            ->where('status', 'active')
             ->where(function ($q) {
                 $q->whereNull('construction_status')
                   ->orWhereNotIn('construction_status', ['salary_paid', 'salary_pending']);
@@ -236,6 +275,22 @@ class GoogleSheetsSyncInstallers extends Command
             }
         }
 
+        // ── Pre-compute ambiguous surname matches ────────────────────────────
+        // If multiple active projects share the same surname, sync requires
+        // exact given-name match from the sheet to disambiguate them.
+        $projectsBySurname = [];
+        foreach ($projects as $p) {
+            $pName = trim((string) $p->client_name);
+            if (preg_match('/^(.+),\s+\S+(?:\s+\S+){0,2}\s*$/su', $pName, $sm)) {
+                $pName = trim($sm[1]);
+            }
+
+            $surnameNorm = $this->normalizeClientSurname($pName);
+            if ($surnameNorm === '') continue;
+
+            $projectsBySurname[$surnameNorm][] = $p->id;
+        }
+
         // ── Phase 1: Search every project across ALL tabs ─────────────────────
         // projectMatches[project_id][tabName] = ['workDays' => [...], 'effectiveClientName' => ...]
         $projectMatches         = [];
@@ -256,7 +311,9 @@ class GoogleSheetsSyncInstallers extends Command
                 $currentSettlement  = trim($csm[2]);
             }
 
-            $clientNameNorm = $this->normalizeUkr($matchingClientName);
+            $clientNameNorm = $this->normalizeClientSurname($matchingClientName);
+            $projectGivenNameNorm = $this->normalizeClientGivenName($matchingClientName);
+            $requiresGivenName = count($projectsBySurname[$clientNameNorm] ?? []) > 1;
             $kw             = $this->extractKeywords($matchingClientName);
             $keywords       = $kw['keywords'];
             $normalizedKws  = $kw['normalized'];
@@ -273,7 +330,7 @@ class GoogleSheetsSyncInstallers extends Command
                         if (!empty($allMatchingRows)) $allMatchingRows[] = $cols;
                         continue;
                     }
-                    if ($this->colCMatchesClient($colC, $clientNameNorm, $keywords, $normalizedKws)) {
+                    if ($this->colCMatchesClient($colC, $clientNameNorm, $projectGivenNameNorm, $requiresGivenName, $keywords, $normalizedKws)) {
                         $allMatchingRows[] = $cols;
                     }
                 }
