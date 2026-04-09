@@ -1072,11 +1072,16 @@ document.addEventListener('DOMContentLoaded', async function () {
   function renderAccordionProjects(projects) {
     const schedule          = [];
     const pending           = [];
+    const built             = [];
     const defective         = [];
     const completedInstalls = [];
     const completedServices = [];
 
     const isElecView = MATCH_FIELD === 'electrician';
+
+    // Проекти які вважаються "підтвердженими" (зарплата ще не нарахована, але монтаж завершено)
+    // "Придаток" залишається в "Очікують підтвердження" для ручного QA
+    const isPridatok = (p) => String(p?.client_name || '').toLowerCase().includes('придаток');
 
     projects.forEach(project => {
       const cs = String(project?.construction_status || '');
@@ -1093,12 +1098,11 @@ document.addEventListener('DOMContentLoaded', async function () {
 
       if (isElecView && (cs === 'salary_pending' || cs === 'salary_paid')) {
         completedInstalls.push(project);
+      } else if (cs === 'salary_pending' || cs === 'salary_paid') {
+        built.push(project);
       } else if (cs === 'has_deficiencies') {
         defective.push(project);
       } else if (project?.installation_completed_at || cs === 'waiting_quality_check' || cs === 'deficiencies_fixed') {
-        pending.push(project);
-      } else if (cs === 'salary_pending' || cs === 'salary_paid') {
-        // non-electrician view: salary_pending goes to "done" (shown as pending confirmation)
         pending.push(project);
       } else {
         schedule.push(project);
@@ -1217,6 +1221,7 @@ document.addEventListener('DOMContentLoaded', async function () {
       { key: 'pending',   label: '⏳ Очікують підтвердження', projects: pending,   defaultOpen: false, isSchedule: false },
       { key: 'defective', label: '⚠️ Потребують виправлення', projects: defective, defaultOpen: false, isSchedule: false },
       { key: 'schedule',  label: '📅 Графік будівництва',     projects: schedule,  defaultOpen: true,  isSchedule: true  },
+      { key: 'built',     label: '🏗 Збудовані',              projects: built,     defaultOpen: false, isArchive: true, archiveField: 'installation_completed_at', archivePrefix: 'bl' },
     ];
 
     const sections = isElecView

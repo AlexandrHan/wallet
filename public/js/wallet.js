@@ -5,11 +5,10 @@ const FX_CACHE_TTL_MS = 60 * 1000;
 
 
 const AUTH_USER = window.AUTH_USER;
-const ownerNames = {
-  hlushchenko: 'Глущенко',
-  kolisnyk: 'Колісник',
-  accountant: 'Бухгалтер'
-};
+const ownerNames = Object.assign(
+  { hlushchenko: 'Глущенко', kolisnyk: 'Колісник', accountant: 'Бухгалтер' },
+  window.WALLET_OWNER_NAMES || {}
+);
 
 document.addEventListener('DOMContentLoaded', () => {
   if (AUTH_USER.role === 'owner') {

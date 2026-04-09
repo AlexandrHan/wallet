@@ -14,6 +14,47 @@
   <div id="qcContainer">
     <div class="card" style="text-align:center; opacity:.7;">Завантаження...</div>
   </div>
+  <div id="qcSections" style="display:none;">
+    <!-- ⚡ Електрики -->
+    <div style="margin-bottom:12px;">
+      <div class="qc-section-header" onclick="toggleQcSection('electric')"
+        style="display:flex; align-items:center; gap:10px; padding:12px 16px;
+          background:rgba(255,255,255,.06); border-radius:12px; cursor:pointer;
+          user-select:none; margin-bottom:6px;">
+        <span style="font-weight:700; font-size:15px; flex:1;">⚡ Електрики</span>
+        <span id="qcBadge_electric" style="display:none; background:rgba(255,200,50,.2);
+          color:#f4c842; padding:2px 9px; border-radius:10px; font-size:13px; font-weight:700;"></span>
+        <span id="qcArrow_electric" style="opacity:.5; font-size:13px;">▼</span>
+      </div>
+      <div id="qcSection_electric"></div>
+    </div>
+    <!-- 🏗 Монтажники -->
+    <div style="margin-bottom:12px;">
+      <div class="qc-section-header" onclick="toggleQcSection('panel')"
+        style="display:flex; align-items:center; gap:10px; padding:12px 16px;
+          background:rgba(255,255,255,.06); border-radius:12px; cursor:pointer;
+          user-select:none; margin-bottom:6px;">
+        <span style="font-weight:700; font-size:15px; flex:1;">🏗 Монтажники</span>
+        <span id="qcBadge_panel" style="display:none; background:rgba(100,200,100,.2);
+          color:#7ec87e; padding:2px 9px; border-radius:10px; font-size:13px; font-weight:700;"></span>
+        <span id="qcArrow_panel" style="opacity:.5; font-size:13px;">▼</span>
+      </div>
+      <div id="qcSection_panel"></div>
+    </div>
+    <!-- 🔧 Сервіси -->
+    <div id="qcServiceBlock" style="display:none; margin-bottom:12px;">
+      <div class="qc-section-header" onclick="toggleQcSection('service')"
+        style="display:flex; align-items:center; gap:10px; padding:12px 16px;
+          background:rgba(255,255,255,.06); border-radius:12px; cursor:pointer;
+          user-select:none; margin-bottom:6px;">
+        <span style="font-weight:700; font-size:15px; flex:1;">🔧 Сервіси</span>
+        <span id="qcBadge_service" style="display:none; background:rgba(100,180,255,.2);
+          color:#7ec8e3; padding:2px 9px; border-radius:10px; font-size:13px; font-weight:700;"></span>
+        <span id="qcArrow_service" style="opacity:.5; font-size:13px;">▼</span>
+      </div>
+      <div id="qcSection_service"></div>
+    </div>
+  </div>
 
 </main>
 
@@ -249,7 +290,8 @@ function renderCheck(c) {
   let approveOpacity  = '';
   let statusNote      = '';
 
-  const workerLabel = isService ? 'електрика' : 'монтажника';
+  const isElectric  = c.check_type === 'electric';
+  const workerLabel = isService ? 'електрика' : (isElectric ? 'електрика' : 'монтажника');
 
   if (status === 'has_deficiencies') {
     borderStyle     = 'border:2px solid #e53e3e;';
@@ -312,7 +354,9 @@ function renderCheck(c) {
     `;
   }
 
-  const approveBtnLabel = isService ? '✅ Сервіс прийнятий' : '✅ Проект прийнятий';
+  const approveBtnLabel = isService
+    ? '✅ Сервіс прийнятий'
+    : (isElectric ? '✅ Електрику прийнято' : '✅ Монтаж прийнятий');
 
   return `
     <div class="card" style="margin-bottom:14px; ${borderStyle}" data-check-id="${c.id}" data-check-status="${esc(status)}">
@@ -351,6 +395,7 @@ function renderCheck(c) {
 
       <div style="display:flex; gap:8px; margin-top:4px;">
         <button type="button" class="btn save qc-approve-btn" data-id="${c.id}"
+          data-orig-label="${esc(approveBtnLabel)}"
           style="flex:1; ${approveOpacity}" ${approveDisabled}>
           ${approveBtnLabel}
         </button>
@@ -411,30 +456,73 @@ function insertCard(c, container) {
   bindCardListeners(card);
 }
 
+// ── Accordion helpers ─────────────────────────────────────────────────────
+
+function toggleQcSection(key) {
+  const section = document.getElementById(`qcSection_${key}`);
+  const arrow   = document.getElementById(`qcArrow_${key}`);
+  if (!section) return;
+  const isHidden = section.style.display === 'none';
+  section.style.display = isHidden ? '' : 'none';
+  if (arrow) arrow.textContent = isHidden ? '▼' : '▶';
+}
+
+function getSectionKey(c) {
+  if (c.check_type === 'electric') return 'electric';
+  if (c.check_type === 'service')  return 'service';
+  return 'panel';
+}
+
+function updateSectionBadge(key) {
+  const section = document.getElementById(`qcSection_${key}`);
+  const badge   = document.getElementById(`qcBadge_${key}`);
+  if (!section || !badge) return;
+  const count = section.querySelectorAll('[data-check-id]').length;
+  badge.textContent = count;
+  badge.style.display = count > 0 ? '' : 'none';
+}
+
 // ── Initial load + smart polling ─────────────────────────────────────────
 
 let firstLoad = true;
 
 async function loadChecks() {
-  const container = document.getElementById('qcContainer');
+  const loader    = document.getElementById('qcContainer');
+  const sections  = document.getElementById('qcSections');
+
   try {
     const r = await fetch('/api/quality-checks');
     const checks = await r.json();
 
     if (!r.ok) {
-      if (firstLoad) container.innerHTML = `<div class="card" style="text-align:center; color:#f66;">${esc(checks.error || 'Помилка')}</div>`;
+      if (firstLoad) loader.innerHTML = `<div class="card" style="text-align:center; color:#f66;">${esc(checks.error || 'Помилка')}</div>`;
       return;
     }
 
     // ── First load: full render ──
     if (firstLoad) {
       firstLoad = false;
+      loader.style.display = 'none';
+
       if (!checks.length) {
-        container.innerHTML = `<div class="card" style="text-align:center; opacity:.7;">Немає проєктів, що очікують перевірки 🎉</div>`;
+        loader.style.display = '';
+        loader.innerHTML = `<div class="card" style="text-align:center; opacity:.7;">Немає проєктів, що очікують перевірки 🎉</div>`;
         return;
       }
-      container.innerHTML = '';
-      checks.forEach(c => insertCard(c, container));
+
+      sections.style.display = '';
+
+      // Show service block only if there are service checks
+      const hasServices = checks.some(c => c.check_type === 'service');
+      document.getElementById('qcServiceBlock').style.display = hasServices ? '' : 'none';
+
+      checks.forEach(c => {
+        const key = getSectionKey(c);
+        const container = document.getElementById(`qcSection_${key}`);
+        if (container) insertCard(c, container);
+      });
+
+      ['electric', 'panel', 'service'].forEach(updateSectionBadge);
       return;
     }
 
@@ -442,22 +530,28 @@ async function loadChecks() {
     const byId = new Map(checks.map(c => [c.id, c]));
 
     // Remove cards that are no longer in the response
-    container.querySelectorAll('[data-check-id]').forEach(card => {
-      if (!byId.has(+card.dataset.checkId)) card.remove(); // dataset.checkId = data-check-id in camelCase
+    document.querySelectorAll('[data-check-id]').forEach(card => {
+      const cardId = card.dataset.checkId;
+      // byId uses original IDs (may be string like "orphan-771")
+      if (!byId.has(cardId) && !byId.has(+cardId)) card.remove();
     });
 
     // Update changed cards / add new ones
     checks.forEach(c => {
-      const existing = container.querySelector(`[data-check-id="${c.id}"]`);
+      const existing = document.querySelector(`[data-check-id="${c.id}"]`);
 
       if (!existing) {
-        // New check appeared — prepend it
-        const div = document.createElement('div');
-        div.innerHTML = renderCheck(c).trim();
-        const card = div.firstElementChild;
-        container.prepend(card);
-        renderVoiceBlock(c.id);
-        bindCardListeners(card);
+        // New check appeared — add to correct section
+        const key = getSectionKey(c);
+        const container = document.getElementById(`qcSection_${key}`);
+        if (container) {
+          const div = document.createElement('div');
+          div.innerHTML = renderCheck(c).trim();
+          const card = div.firstElementChild;
+          container.prepend(card);
+          renderVoiceBlock(c.id);
+          bindCardListeners(card);
+        }
         return;
       }
 
@@ -473,13 +567,26 @@ async function loadChecks() {
       }
     });
 
-    // Show empty state if all cards removed
-    if (!container.querySelector('[data-check-id]') && !checks.length) {
-      container.innerHTML = `<div class="card" style="text-align:center; opacity:.7;">Немає проєктів, що очікують перевірки 🎉</div>`;
+    // Update badges
+    ['electric', 'panel', 'service'].forEach(updateSectionBadge);
+
+    // Show service block only if it has cards
+    const serviceSection = document.getElementById('qcSection_service');
+    if (serviceSection) {
+      document.getElementById('qcServiceBlock').style.display =
+        serviceSection.querySelectorAll('[data-check-id]').length > 0 ? '' : 'none';
+    }
+
+    // If all sections are empty — show global empty state
+    const totalCards = document.querySelectorAll('[data-check-id]').length;
+    if (totalCards === 0 && !checks.length) {
+      sections.style.display = 'none';
+      loader.style.display = '';
+      loader.innerHTML = `<div class="card" style="text-align:center; opacity:.7;">Немає проєктів, що очікують перевірки 🎉</div>`;
     }
 
   } catch (e) {
-    if (firstLoad) container.innerHTML = `<div class="card" style="text-align:center; color:#f66;">Помилка з'єднання</div>`;
+    if (firstLoad) loader.innerHTML = `<div class="card" style="text-align:center; color:#f66;">Помилка з'єднання</div>`;
   }
 }
 
@@ -511,16 +618,45 @@ async function approveCheck(id, btn) {
       card.style.opacity = '.4';
       card.style.pointerEvents = 'none';
       btn.textContent = '✅ Прийнято';
-      setTimeout(() => card.remove(), 1200);
+      setTimeout(() => { card.remove(); ['electric','panel','service'].forEach(updateSectionBadge); }, 1200);
     } else {
       alert(data.error || 'Помилка');
       btn.disabled = false;
-      btn.textContent = '✅ Проект прийнятий';
+      btn.textContent = btn.dataset.origLabel || '✅ Прийнятий';
     }
   } catch (e) {
     alert('Помилка з\'єднання');
     btn.disabled = false;
-    btn.textContent = '✅ Проект прийнятий';
+    btn.textContent = btn.dataset.origLabel || '✅ Прийнятий';
+  }
+}
+
+async function approveOrphan(projectId, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Збереження...';
+  const card = btn.closest('[data-check-id]');
+
+  try {
+    const r = await fetch(`/api/projects/${projectId}/orphan-approve`, {
+      method: 'POST',
+      headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content },
+    });
+    const data = await r.json();
+
+    if (r.ok && data.ok) {
+      card.style.opacity = '.4';
+      card.style.pointerEvents = 'none';
+      btn.textContent = '✅ Прийнято';
+      setTimeout(() => { card.remove(); ['electric','panel','service'].forEach(updateSectionBadge); }, 1200);
+    } else {
+      alert(data.error || 'Помилка');
+      btn.disabled = false;
+      btn.textContent = btn.dataset.origLabel || '✅ Прийнятий';
+    }
+  } catch (e) {
+    alert('Помилка з\'єднання');
+    btn.disabled = false;
+    btn.textContent = btn.dataset.origLabel || '✅ Прийнятий';
   }
 }
 
@@ -540,7 +676,7 @@ async function cancelCheck(id, btn) {
     if (r.ok && data.ok) {
       card.style.opacity = '.4';
       card.style.pointerEvents = 'none';
-      setTimeout(() => card.remove(), 800);
+      setTimeout(() => { card.remove(); ['electric','panel','service'].forEach(updateSectionBadge); }, 800);
     } else {
       alert(data.error || 'Помилка');
       btn.disabled = false;
@@ -561,14 +697,27 @@ document.addEventListener('DOMContentLoaded', () => {
 document.addEventListener('click', function (e) {
   const approveBtn = e.target.closest('.qc-approve-btn');
   if (approveBtn && !approveBtn.disabled) {
-    const id = parseInt(approveBtn.dataset.id);
+    const rawId = approveBtn.dataset.id;
     const card = approveBtn.closest('[data-check-id]');
-    const isService = card?.querySelector('[style*="Сервісний виклик"]') !== null;
-    const confirmText = isService
-      ? 'Підтвердити прийняття сервісного виклику?'
-      : 'Підтвердити прийняття проєкту?';
+    const sectionEl = card?.closest('[id^="qcSection_"]');
+    const sectionKey = sectionEl?.id?.replace('qcSection_', '') || '';
+    let confirmText;
+    if (sectionKey === 'service') {
+      confirmText = 'Підтвердити прийняття сервісного виклику?';
+    } else if (sectionKey === 'electric') {
+      confirmText = 'Підтвердити прийняття електромонтажу?';
+    } else {
+      confirmText = 'Підтвердити прийняття монтажу?';
+    }
     if (confirm(confirmText)) {
-      approveCheck(id, approveBtn);
+      const isOrphan = String(rawId).startsWith('orphan-');
+      if (isOrphan) {
+        // orphan-e-771 or orphan-p-771 → project_id = 771
+        const projectId = parseInt(String(rawId).replace(/^orphan-[ep]-/, ''));
+        approveOrphan(projectId, approveBtn);
+      } else {
+        approveCheck(parseInt(rawId), approveBtn);
+      }
     }
     return;
   }
@@ -577,10 +726,16 @@ document.addEventListener('click', function (e) {
   if (cancelBtn) {
     const id = parseInt(cancelBtn.dataset.id);
     const card = cancelBtn.closest('[data-check-id]');
-    const isService = card?.querySelector('[style*="Сервісний виклик"]') !== null;
-    const confirmText = isService
-      ? 'Скасувати відправку сервісного виклику? Електрик зможе відправити повторно.'
-      : 'Скасувати відправку проєкту на перевірку? Монтажник зможе відправити повторно.';
+    const sectionEl = card?.closest('[id^="qcSection_"]');
+    const sectionKey = sectionEl?.id?.replace('qcSection_', '') || '';
+    let confirmText;
+    if (sectionKey === 'service') {
+      confirmText = 'Скасувати відправку сервісного виклику? Електрик зможе відправити повторно.';
+    } else if (sectionKey === 'electric') {
+      confirmText = 'Скасувати відправку електрики на перевірку? Електрик зможе відправити повторно.';
+    } else {
+      confirmText = 'Скасувати відправку монтажу на перевірку? Монтажник зможе відправити повторно.';
+    }
     if (confirm(confirmText)) {
       cancelCheck(id, cancelBtn);
     }

@@ -115,6 +115,7 @@ class CashDeskController extends Controller
         $totals = DB::table('cash_transfers')
             ->where('status', 'pending')
             ->where('target_owner', $actor)
+            ->whereNull('project_id')
             ->selectRaw('currency, SUM(amount) as total')
             ->groupBy('currency')
             ->pluck('total', 'currency');

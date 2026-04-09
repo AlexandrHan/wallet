@@ -9,8 +9,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class QualityCheck extends Model
 {
     protected $fillable = [
-        'project_id', 'created_by', 'approved_by',
-        'status', 'deficiencies', 'approved_at',
+        'project_id', 'service_request_id', 'created_by', 'approved_by',
+        'status', 'deficiencies', 'voice_memo_path', 'approved_at', 'check_type',
     ];
 
     protected $casts = [

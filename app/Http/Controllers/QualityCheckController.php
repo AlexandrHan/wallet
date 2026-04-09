@@ -235,6 +235,76 @@ class QualityCheckController extends Controller
         }
     }
 
+    /**
+     * Accrue salary only for the installation_team assigned to the project.
+     * Used when an installer's quality check is approved.
+     */
+    private function accrueForInstallationTeam(int $projectId): void
+    {
+        $project = DB::table('sales_projects')->where('id', $projectId)->first();
+        if (!$project) return;
+
+        $team = trim((string) ($project->installation_team ?? ''));
+        if (!$team || $team === 'Без монтажних робіт') return;
+
+        $rule = DB::table('salary_rules')
+            ->where('staff_group', 'installation_team')
+            ->where('staff_name', $team)
+            ->whereNotNull('user_id')
+            ->first();
+
+        if (!$rule) {
+            Log::warning("quality-check accrual: no user found for installation_team '{$team}'");
+            return;
+        }
+
+        $exists = DB::table('salary_accruals')
+            ->where('project_id', $projectId)
+            ->where('user_id', $rule->user_id)
+            ->exists();
+        if ($exists) return;
+
+        $salary = $this->calcSalary($project, 'installation_team', $team);
+
+        DB::table('salary_accruals')->insert([
+            'project_id'  => $projectId,
+            'user_id'     => $rule->user_id,
+            'staff_group' => 'installation_team',
+            'staff_name'  => $team,
+            'amount'      => $salary['amount'],
+            'currency'    => $salary['currency'],
+            'details'     => $salary['details'],
+            'status'      => 'pending',
+            'created_at'  => now(),
+            'updated_at'  => now(),
+        ]);
+    }
+
+    /**
+     * Transition project to salary_pending if both check types are done.
+     * Edge cases: missing electrician → only panel needed; missing team → only electric needed.
+     */
+    private function checkAndFinalize(int $projectId): void
+    {
+        $project = DB::table('sales_projects')->where('id', $projectId)->first();
+        if (!$project) return;
+
+        $hasElectrician = trim((string) ($project->electrician ?? '')) !== ''
+            && trim((string) ($project->electrician ?? '')) !== 'Без монтажних робіт';
+        $hasInstaller   = trim((string) ($project->installation_team ?? '')) !== ''
+            && trim((string) ($project->installation_team ?? '')) !== 'Без монтажних робіт';
+
+        $electricDone = !$hasElectrician || $project->electric_check_status === 'done';
+        $panelDone    = !$hasInstaller   || $project->panel_check_status   === 'done';
+
+        if ($electricDone && $panelDone) {
+            DB::table('sales_projects')->where('id', $projectId)->update([
+                'construction_status' => 'salary_pending',
+                'updated_at'          => now(),
+            ]);
+        }
+    }
+
     // ── Actions ───────────────────────────────────────────────────────────────
 
     /**
@@ -254,8 +324,16 @@ class QualityCheckController extends Controller
             return response()->json(['error' => 'Проект не знайдено'], 404);
         }
 
-        if ($project->construction_status === 'waiting_quality_check') {
-            return response()->json(['error' => 'Вже очікує перевірки'], 422);
+        // Per-type guard: prevent double submission for the same check type
+        $isElectricianUser = $this->isElectrician($user);
+        if ($isElectricianUser) {
+            if (in_array($project->electric_check_status, ['waiting', 'done', 'defect'], true)) {
+                return response()->json(['error' => 'Електромонтаж вже завершено або очікує перевірки'], 422);
+            }
+        } else {
+            if (in_array($project->panel_check_status, ['waiting', 'done', 'defect'], true)) {
+                return response()->json(['error' => 'Монтаж вже завершено або очікує перевірки'], 422);
+            }
         }
 
         // Заборона завершувати майбутні проекти (тільки сьогодні або минулі)
@@ -274,26 +352,34 @@ class QualityCheckController extends Controller
         }
 
         $completedAt = now();
-        $isElectricianUser = $this->isElectrician($user);
+        $checkType = $isElectricianUser ? 'electric' : 'panel';
 
-        DB::transaction(function () use ($id, $user, $completedAt) {
-            DB::table('sales_projects')->where('id', $id)->update([
+        DB::transaction(function () use ($id, $user, $completedAt, $isElectricianUser, $checkType) {
+            $projectUpdate = [
                 'construction_status'       => 'waiting_quality_check',
                 'installation_completed_at' => $completedAt,
                 'installation_completed_by' => $user->name,
                 'updated_at'                => $completedAt,
-            ]);
+            ];
+            if ($isElectricianUser) {
+                $projectUpdate['electric_check_status'] = 'waiting';
+            } else {
+                $projectUpdate['panel_check_status'] = 'waiting';
+            }
+            DB::table('sales_projects')->where('id', $id)->update($projectUpdate);
 
-            // Remove any old pending check for this project before creating new one
+            // Remove any old pending check of the same type for this project
             DB::table('quality_checks')
                 ->where('project_id', $id)
                 ->where('status', 'pending')
+                ->where('check_type', $checkType)
                 ->delete();
 
             DB::table('quality_checks')->insert([
                 'project_id' => $id,
                 'created_by' => $user->id,
                 'status'     => 'pending',
+                'check_type' => $checkType,
                 'created_at' => $completedAt,
                 'updated_at' => $completedAt,
             ]);
@@ -449,6 +535,7 @@ class QualityCheckController extends Controller
                 'qc.status as check_status',
                 'qc.deficiencies',
                 'qc.voice_memo_path',
+                'qc.check_type',
                 'qc.created_at',
                 'sp.client_name',
                 'sp.installation_team',
@@ -457,11 +544,20 @@ class QualityCheckController extends Controller
                 'sp.panel_qty',
                 'sp.inverter',
                 'sp.construction_status',
+                'sp.electric_check_status',
+                'sp.panel_check_status',
                 'u.name as submitted_by',
             ])
             ->orderBy('qc.created_at')
             ->get()
-            ->map(function ($c) { $c->check_type = 'project'; $c->service_request_id = null; return $c; });
+            ->map(function ($c) {
+                $c->service_request_id = null;
+                // Fallback for old records that might not have check_type set
+                if (!$c->check_type) {
+                    $c->check_type = 'panel';
+                }
+                return $c;
+            });
 
         // ── Service checks ──────────────────────────────────────────────────────
         $serviceChecks = DB::table('quality_checks as qc')
@@ -485,20 +581,99 @@ class QualityCheckController extends Controller
             ->orderBy('qc.created_at')
             ->get()
             ->map(function ($c) {
-                $c->check_type       = 'service';
-                $c->project_id       = null;
-                $c->installation_team = null;
-                $c->panel_name       = null;
-                $c->panel_qty        = null;
-                $c->inverter         = null;
-                $c->construction_status = null;
+                $c->check_type           = 'service';
+                $c->project_id           = null;
+                $c->installation_team    = null;
+                $c->panel_name           = null;
+                $c->panel_qty            = null;
+                $c->inverter             = null;
+                $c->construction_status  = null;
+                $c->electric_check_status = null;
+                $c->panel_check_status    = null;
                 return $c;
             });
 
-        $checks = $projectChecks->concat($serviceChecks)->sortBy('created_at')->values();
+        // ── Projects with salary_pending but no quality_check record ────────────
+        // Виникає коли construction_status виставлено bulk-оновленням без flow через completeConstruction()
+        $alreadyInQc = $projectChecks->pluck('project_id')->filter()->unique()->values()->all();
 
-        // Attach photos
-        $checkIds = $checks->pluck('id')->all();
+        $orphanProjects = DB::table('sales_projects as sp')
+            ->where('sp.construction_status', 'salary_pending')
+            ->where('sp.status', '!=', 'cancelled')
+            ->whereNotIn('sp.id', $alreadyInQc)
+            ->whereNotNull('sp.installation_completed_at')
+            ->select([
+                'sp.id as project_id',
+                'sp.client_name',
+                'sp.installation_team',
+                'sp.electrician',
+                'sp.panel_name',
+                'sp.panel_qty',
+                'sp.inverter',
+                'sp.construction_status',
+                'sp.electric_check_status',
+                'sp.panel_check_status',
+                'sp.installation_completed_at as created_at',
+            ])
+            ->get()
+            ->flatMap(function ($p) {
+                $hasElectrician = trim((string) ($p->electrician ?? '')) !== ''
+                    && trim((string) ($p->electrician ?? '')) !== 'Без монтажних робіт';
+                $hasInstaller   = trim((string) ($p->installation_team ?? '')) !== ''
+                    && trim((string) ($p->installation_team ?? '')) !== 'Без монтажних робіт';
+
+                $base = [
+                    'project_id'         => $p->project_id,
+                    'client_name'        => $p->client_name,
+                    'installation_team'  => $p->installation_team,
+                    'electrician'        => $p->electrician,
+                    'panel_name'         => $p->panel_name,
+                    'panel_qty'          => $p->panel_qty,
+                    'inverter'           => $p->inverter,
+                    'construction_status'=> $p->construction_status,
+                    'electric_check_status' => $p->electric_check_status,
+                    'panel_check_status'    => $p->panel_check_status,
+                    'created_at'         => $p->installation_completed_at ?? $p->created_at,
+                    'check_status'       => 'pending',
+                    'service_request_id' => null,
+                    'deficiencies'       => null,
+                    'voice_memo_path'    => null,
+                    'submitted_by'       => null,
+                    'photos'             => [],
+                    'voice_memo_url'     => null,
+                ];
+
+                $records = [];
+
+                if ($hasElectrician) {
+                    $r = (object) $base;
+                    $r->id         = 'orphan-e-' . $p->project_id;
+                    $r->check_type = 'electric';
+                    $records[] = $r;
+                }
+
+                if ($hasInstaller) {
+                    $r = (object) $base;
+                    $r->id         = 'orphan-p-' . $p->project_id;
+                    $r->check_type = 'panel';
+                    $records[] = $r;
+                }
+
+                // Fallback: no electrician, no team — put in panel
+                if (empty($records)) {
+                    $r = (object) $base;
+                    $r->id         = 'orphan-p-' . $p->project_id;
+                    $r->check_type = 'panel';
+                    $records[] = $r;
+                }
+
+                return $records;
+            });
+
+        $checks = $projectChecks->concat($serviceChecks)->concat($orphanProjects)->sortBy('created_at')->values();
+
+        // Attach photos (тільки для реальних quality_check записів, не orphan)
+        $checkIds = $checks->pluck('id')->filter(fn($id) => is_int($id) || ctype_digit((string)$id))->map(fn($id) => (int)$id)->all();
         $photosByCheck = DB::table('quality_photos')
             ->whereIn('quality_check_id', $checkIds)
             ->select('quality_check_id', 'file_path')
@@ -543,10 +718,9 @@ class QualityCheckController extends Controller
 
         $deficiencies = trim((string) $request->input('deficiencies', ''));
 
-        // Determine check type and submitter role
-        $isServiceCheck = !empty($check->service_request_id);
-        $submitter = DB::table('users')->where('id', $check->created_by)->first();
-        $isElectricianCheck = !$isServiceCheck && $submitter && $submitter->position === 'electrician';
+        // Determine check type from the stored check_type field
+        $isServiceCheck     = !empty($check->service_request_id);
+        $isElectricianCheck = !$isServiceCheck && $check->check_type === 'electric';
 
         DB::transaction(function () use ($id, $check, $deficiencies, $user, $request, $isServiceCheck, $isElectricianCheck) {
             // Update quality check
@@ -588,27 +762,60 @@ class QualityCheckController extends Controller
                         ->update(['defects_note' => $deficiencies, 'updated_at' => now()]);
                 }
 
-                $isPiecework = $this->accrueForElectrician($check->project_id);
-                $finalStatus = $isPiecework ? 'salary_pending' : 'salary_paid';
+                $this->accrueForElectrician($check->project_id);
 
                 DB::table('sales_projects')->where('id', $check->project_id)->update([
-                    'construction_status' => $finalStatus,
-                    'updated_at'          => now(),
+                    'electric_check_status' => 'done',
+                    'updated_at'            => now(),
                 ]);
+
+                $this->checkAndFinalize($check->project_id);
                 return;
             }
 
-            // ── Installer project check (unchanged) ────────────────────────────
-            $projectUpdate = ['construction_status' => 'quality_approved', 'updated_at' => now()];
+            // ── Installer project check ────────────────────────────────────────
+            $projectUpdate = ['panel_check_status' => 'done', 'updated_at' => now()];
             if ($deficiencies) {
                 $projectUpdate['defects_note'] = $deficiencies;
             }
             DB::table('sales_projects')->where('id', $check->project_id)->update($projectUpdate);
 
-            $this->accrueForProject($check->project_id);
+            $this->accrueForInstallationTeam($check->project_id);
 
-            DB::table('sales_projects')->where('id', $check->project_id)->update([
-                'construction_status' => 'salary_pending',
+            $this->checkAndFinalize($check->project_id);
+        });
+
+        return response()->json(['ok' => true]);
+    }
+
+    /**
+     * POST /api/projects/{id}/orphan-approve
+     * Foreman/owner approves an orphan project (no quality_checks record).
+     * Accrues salary for installation_team and electrician, then marks salary_paid.
+     */
+    public function approveOrphan(Request $request, int $id): JsonResponse
+    {
+        $user = auth()->user();
+        if (!$this->isForeman($user)) {
+            return response()->json(['error' => 'Немає доступу'], 403);
+        }
+
+        $project = DB::table('sales_projects')->where('id', $id)->first();
+        if (!$project) {
+            return response()->json(['error' => 'Проект не знайдено'], 404);
+        }
+
+        if ($project->construction_status !== 'salary_pending') {
+            return response()->json(['error' => 'Проект не в статусі очікування'], 422);
+        }
+
+        DB::transaction(function () use ($id) {
+            // Accrue salary for both worker types (each method skips if already accrued)
+            $this->accrueForInstallationTeam($id);
+            $this->accrueForElectrician($id);
+
+            DB::table('sales_projects')->where('id', $id)->update([
+                'construction_status' => 'salary_paid',
                 'updated_at'          => now(),
             ]);
         });
@@ -645,13 +852,31 @@ class QualityCheckController extends Controller
                     'updated_at' => now(),
                 ]);
             } else {
-                // Project check: revert project status
-                DB::table('sales_projects')->where('id', $check->project_id)->update([
-                    'construction_status'       => 'in_progress',
-                    'installation_completed_at' => null,
-                    'installation_completed_by' => null,
-                    'updated_at'                => now(),
-                ]);
+                // Project check: reset per-type status
+                $projectUpdate = ['updated_at' => now()];
+                if ($check->check_type === 'electric') {
+                    $projectUpdate['electric_check_status'] = null;
+                } elseif ($check->check_type === 'panel') {
+                    $projectUpdate['panel_check_status'] = null;
+                }
+
+                // Reload to check whether the OTHER type is still waiting
+                $project = DB::table('sales_projects')->where('id', $check->project_id)->first();
+                $electricStillActive = $check->check_type !== 'electric'
+                    && $project
+                    && $project->electric_check_status !== null;
+                $panelStillActive = $check->check_type !== 'panel'
+                    && $project
+                    && $project->panel_check_status !== null;
+
+                // Only revert construction_status if no other check type is still in progress
+                if (!$electricStillActive && !$panelStillActive) {
+                    $projectUpdate['construction_status']       = 'in_progress';
+                    $projectUpdate['installation_completed_at'] = null;
+                    $projectUpdate['installation_completed_by'] = null;
+                }
+
+                DB::table('sales_projects')->where('id', $check->project_id)->update($projectUpdate);
             }
         });
 
@@ -691,9 +916,8 @@ class QualityCheckController extends Controller
             $voicePath = $request->file('voice_memo')->store('quality-voice', 'public');
         }
 
-        $isServiceCheck  = !empty($check->service_request_id);
-        $submitterUser   = DB::table('users')->where('id', $check->created_by)->first();
-        $isInstallerCheck = !$isServiceCheck && $submitterUser && $submitterUser->position !== 'electrician';
+        $isServiceCheck   = !empty($check->service_request_id);
+        $isInstallerCheck = !$isServiceCheck && $check->check_type === 'panel';
 
         DB::transaction(function () use ($id, $check, $deficiencies, $photoPaths, $voicePath, $isServiceCheck, $isInstallerCheck) {
             $qcUpdate = [
@@ -720,6 +944,12 @@ class QualityCheckController extends Controller
                     'construction_status' => 'has_deficiencies',
                     'updated_at'          => now(),
                 ];
+                // Track per-type defect status
+                if ($check->check_type === 'electric') {
+                    $projectUpdate['electric_check_status'] = 'defect';
+                } elseif ($check->check_type === 'panel') {
+                    $projectUpdate['panel_check_status'] = 'defect';
+                }
                 if ($deficiencies) {
                     $projectUpdate['defects_note'] = $deficiencies;
                 }
@@ -838,10 +1068,17 @@ class QualityCheckController extends Controller
                     'updated_at' => now(),
                 ]);
             } else {
-                DB::table('sales_projects')->where('id', $id)->update([
+                $projectStatusUpdate = [
                     'construction_status' => 'waiting_quality_check',
                     'updated_at'          => now(),
-                ]);
+                ];
+                // Reset per-type status from 'defect' back to 'waiting'
+                if ($check->check_type === 'electric') {
+                    $projectStatusUpdate['electric_check_status'] = 'waiting';
+                } elseif ($check->check_type === 'panel') {
+                    $projectStatusUpdate['panel_check_status'] = 'waiting';
+                }
+                DB::table('sales_projects')->where('id', $id)->update($projectStatusUpdate);
             }
         });
 

@@ -423,6 +423,7 @@
 
 <script>
   window.AUTH_USER = @json(auth()->user());
+  window.WALLET_OWNER_NAMES = @json(\Illuminate\Support\Facades\DB::table('users')->whereNotNull('actor')->pluck('name', 'actor'));
 </script>
 <script src="/js/employee-transfer.js?v={{ filemtime(public_path('js/employee-transfer.js')) }}" defer></script>
 

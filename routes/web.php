@@ -1745,6 +1745,9 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         Route::post('/api/quality-checks/{id}/approve',
             [\App\Http\Controllers\QualityCheckController::class, 'approve']);
 
+        Route::post('/api/projects/{id}/orphan-approve',
+            [\App\Http\Controllers\QualityCheckController::class, 'approveOrphan']);
+
         Route::post('/api/quality-checks/{id}/save-deficiencies',
             [\App\Http\Controllers\QualityCheckController::class, 'saveDeficiencies']);
 
