@@ -133,7 +133,11 @@ document.addEventListener('DOMContentLoaded', async function () {
     const a = String(projectValue || '').trim().toLowerCase();
     const b = expectedValue.toLowerCase();
     const c = String(AUTH_USER?.name || '').trim().toLowerCase();
-    return a !== '' && (a === b || (c && a === c));
+    if (a === '') return false;
+    if (a === b || (c && a === c)) return true;
+    // Multi-team: "Кукуяка, Шевченко" → split by comma and check each part
+    const parts = a.split(',').map(s => s.trim());
+    return parts.includes(b) || (c && parts.includes(c));
   }
 
   function normalizeExternalUrl(url) {

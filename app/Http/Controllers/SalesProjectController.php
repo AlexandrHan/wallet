@@ -381,10 +381,17 @@ class SalesProjectController extends Controller
 
         // Worker mode: only load this worker's assigned, non-completed projects
         if ($workerMatchField && $workerMatchValue) {
-            $projectsQuery->where($workerMatchField, $workerMatchValue);
+            $mv = $workerMatchValue;
+            $projectsQuery->where(function ($q) use ($workerMatchField, $mv) {
+                $q->where($workerMatchField, $mv)
+                  ->orWhere($workerMatchField, 'like', $mv . ',%')
+                  ->orWhere($workerMatchField, 'like', '%, ' . $mv)
+                  ->orWhere($workerMatchField, 'like', '%, ' . $mv . ',%');
+            });
         }
         if ($workerMode) {
             $projectsQuery->where('status', '!=', 'completed');
+            $projectsQuery->where('source_layer', 'projects');
         }
 
         $projects = $projectsQuery->orderByDesc('sales_projects.id')->get();
@@ -481,7 +488,7 @@ class SalesProjectController extends Controller
             'installation_completed_at'=> Schema::hasColumn('sales_projects', 'installation_completed_at'),
         ];
 
-        $projects = $projects->map(function ($project) use ($userNames, $amoComplectationByProjectId, $transfersByProjectId, $amoStatusByProjectId, $qcByProject, $attachmentsByProject, $scheduleEntriesByProject, $col, $walletOwnerById) {
+        $projects = $projects->map(function ($project) use ($userNames, $amoComplectationByProjectId, $transfersByProjectId, $amoStatusByProjectId, $qcByProject, $attachmentsByProject, $scheduleEntriesByProject, $col, $walletOwnerById, $workerMatchValue) {
 
             $transfers = $transfersByProjectId->get($project->id, collect());
 
@@ -544,9 +551,13 @@ class SalesProjectController extends Controller
 
             $installerScheduleEntries = $scheduleEntries
                 ->where('assignment_field', 'installation_team')
+                ->when($workerMatchValue, fn($c) => 
+                    $c->where('assignment_value', $workerMatchValue)
+                )
                 ->map(fn ($e) => [
                     'date'        => $e->work_date,
                     'description' => $e->work_description ?? null,
+                    'source'      => $e->source ?? null,
                 ])
                 ->values()
                 ->all();

@@ -64,6 +64,22 @@ class AmoCrmSyncDeals extends Command
 
             $this->error('amoCRM sync failed: '.$e->getMessage());
 
+            try {
+                $hlushchenko = \Illuminate\Support\Facades\DB::table('users')
+                    ->where('actor', 'hlushchenko')
+                    ->first(['id']);
+                if ($hlushchenko) {
+                    app(\App\Services\NotificationService::class)->send(
+                        (int) $hlushchenko->id,
+                        '❌ Синк AMO не виконано',
+                        'Синхронізація проектів з amoCRM завершилась помилкою. Projects не оновлено. Причина: ' . $e->getMessage(),
+                        'system'
+                    );
+                }
+            } catch (\Throwable) {
+                // не ламаємо команду якщо notification fail
+            }
+
             return self::FAILURE;
         }
     }

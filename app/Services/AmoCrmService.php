@@ -283,7 +283,7 @@ class AmoCrmService
 
     /**
      * Re-sync tracked deals (amocrm_deal_map) that moved out of project_status_ids.
-     * Fetches all deals modified in the last 2 hours from amoCRM (any stage) and
+     * Fetches all deals modified in the last 7 days from amoCRM (any stage) and
      * updates those already tracked in our amocrm_deal_map table.
      */
     public function syncOutOfStageProjectDeals(array $alreadySyncedIds): array
@@ -294,7 +294,7 @@ class AmoCrmService
             ->flip();
 
         $updated = 0;
-        $since = Carbon::now()->subHours(2)->timestamp;
+        $since = Carbon::now()->subDays(7)->timestamp;
         $page = 1;
 
         do {
@@ -759,11 +759,20 @@ class AmoCrmService
                 return $project;
             }
 
+            $wonStatusId  = (int) config('services.amocrm.won_status_id', 142);
+            $lostStatusId = (int) config('services.amocrm.lost_status_id', 143);
+            $isWon  = $leadStatusId > 0 && $leadStatusId === $wonStatusId;
+            $isLost = $leadStatusId > 0 && $leadStatusId === $lostStatusId;
+
             $project->update(array_merge([
                 'client_name' => mb_substr($clientName, 0, 255),
                 'total_amount' => round($totalAmount, 2),
                 'source_layer' => $isProjectCreateStage ? 'projects' : 'finance',
             ], $this->applyAppWinsFilter($techFields, $project)));
+
+            if (($isWon || $isLost) && $project->status !== 'completed') {
+                $this->markProjectCompleted($project);
+            }
 
             if ($map && $leadStatusId > 0) {
                 $map->update(['amo_status_id' => $leadStatusId]);

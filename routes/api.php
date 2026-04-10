@@ -881,10 +881,20 @@ $runAutomationProjectSync = function (
                 'date'        => $date,
             ]);
 
+            // Не перезаписувати дату якщо google_sheet вже є джерелом для цього проекту
+            $hasGoogleSheetEntry = Schema::hasTable('project_schedule_entries')
+                && DB::table('project_schedule_entries')
+                    ->where('project_id', $project->id)
+                    ->where('source', 'google_sheet')
+                    ->exists();
+
             $update = [
-                $dateField => $date,
                 'updated_at' => now(),
             ];
+
+            if (!$hasGoogleSheetEntry) {
+                $update[$dateField] = $date;
+            }
 
             // Якщо поле порожнє — встановити значення (Малінін/Шевченко/тощо)
             if ($assignmentValue !== null && ($project->{$assignmentField} ?? '') === '') {
@@ -903,7 +913,7 @@ $runAutomationProjectSync = function (
                 ->where('id', $project->id)
                 ->update($update);
 
-            if (Schema::hasTable('project_schedule_entries')) {
+            if (Schema::hasTable('project_schedule_entries') && !$hasGoogleSheetEntry) {
                 $scheduleAssignmentValue = $assignmentValue ?? trim((string) ($project->{$assignmentField} ?? ''));
                 if ($scheduleAssignmentValue !== '') {
                     $scheduleKey = implode('|', [

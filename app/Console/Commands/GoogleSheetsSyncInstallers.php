@@ -190,6 +190,7 @@ class GoogleSheetsSyncInstallers extends Command
                 'installation_team_note', 'installation_team_task_note',
             ])
             ->where('status', 'active')
+            ->where('source_layer', 'projects')
             ->where(function ($q) {
                 $q->whereNull('construction_status')
                   ->orWhereNotIn('construction_status', ['salary_paid', 'salary_pending']);
@@ -490,8 +491,6 @@ class GoogleSheetsSyncInstallers extends Command
             $matches = $projectMatches[$project->id] ?? [];
 
             if (empty($matches)) {
-                Log::info('sheets:sync-installers: client not found in any tab',
-                    ['client' => $project->client_name]);
                 continue;
             }
 
