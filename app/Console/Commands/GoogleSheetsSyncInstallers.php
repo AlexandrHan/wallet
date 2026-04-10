@@ -188,6 +188,8 @@ class GoogleSheetsSyncInstallers extends Command
                 'id', 'client_name', 'installation_team',
                 'panel_work_start_date', 'panel_work_days',
                 'installation_team_note', 'installation_team_task_note',
+                'construction_status', 'installation_completed_at',
+                'installation_completed_by', 'panel_check_status',
             ])
             ->where('status', 'active')
             ->where('source_layer', 'projects')
@@ -201,6 +203,21 @@ class GoogleSheetsSyncInstallers extends Command
         if ($projects->isEmpty()) {
             $this->info('No active projects — nothing to sync.');
             return self::SUCCESS;
+        }
+
+        $activePanelQcProjectIds = [];
+        if (Schema::hasTable('quality_checks')) {
+            $activePanelQcProjectIds = DB::table('quality_checks')
+                ->whereNotNull('project_id')
+                ->whereIn('status', ['pending', 'has_deficiencies', 'deficiencies_fixed'])
+                ->where(function ($q) {
+                    $q->where('check_type', 'panel')
+                      ->orWhereNull('check_type');
+                })
+                ->pluck('project_id')
+                ->map(fn ($id) => (int) $id)
+                ->unique()
+                ->all();
         }
 
         // ── Determine all tab names to scan ──────────────────────────────────
@@ -550,6 +567,27 @@ class GoogleSheetsSyncInstallers extends Command
             }
             if ($noteText !== '' && $noteText !== ($project->installation_team_note ?? '')) {
                 $update['installation_team_note'] = $noteText;
+            }
+
+            $hasActivePanelQc = in_array((int) $project->id, $activePanelQcProjectIds, true);
+            $hasStaleCompletionState =
+                !empty($project->installation_completed_at)
+                || !empty($project->installation_completed_by)
+                || !empty($project->panel_check_status)
+                || in_array((string) ($project->construction_status ?? ''), [
+                    'waiting_quality_check',
+                    'has_deficiencies',
+                    'deficiencies_fixed',
+                ], true);
+
+            // If Google Sheets moved the installer work into today/future and there is
+            // no active panel quality-check flow, stale completion markers must be reset
+            // so the project returns to the construction schedule instead of QA buckets.
+            if ($startDate >= $today && $hasStaleCompletionState && !$hasActivePanelQc) {
+                $update['installation_completed_at'] = null;
+                $update['installation_completed_by'] = null;
+                $update['panel_check_status'] = null;
+                $update['construction_status'] = null;
             }
 
             DB::table('sales_projects')->where('id', $project->id)->update($update);
