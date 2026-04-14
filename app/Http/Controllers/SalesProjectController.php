@@ -707,11 +707,11 @@ class SalesProjectController extends Controller
         if ($leadManagerUserId !== null) {
             $leadManager = DB::table('users')
                 ->where('id', (int) $leadManagerUserId)
-                ->where('role', 'ntv')
+                ->whereIn('role', ['ntv', 'manager'])
                 ->first();
 
             if (!$leadManager) {
-                return response()->json(['error' => 'Оберіть коректного менеджера НТВ'], 422);
+                return response()->json(['error' => 'Оберіть коректного менеджера'], 422);
             }
 
             $leadManagerUserId = (int) $leadManagerUserId;

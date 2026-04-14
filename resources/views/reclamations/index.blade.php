@@ -65,10 +65,7 @@
           </span>
         </div>
 
-        <div class="burger-wrap">
-          <button class="burger-btn"></button>
-
-        </div>
+        @include('partials.nav.top-avatar-placeholder')
       </div>
 
       <div class="header-right">
@@ -86,7 +83,7 @@
 <main class="wrap reclamations-main">
 
   <div class="row content topbar topbar-actions">
-    <a href="{{ route('reclamations.new') }}" class="btn create-reclam">Створити рекламацію</a>
+    <a href="{{ route('reclamations.create') }}" class="btn create-reclam">Створити рекламацію</a>
     <button type="button" class="btn" id="searchToggleBtn">🔎 Пошук</button>
   </div>
 

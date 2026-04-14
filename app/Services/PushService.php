@@ -119,16 +119,28 @@ class PushService
                 return ['success' => true];
             }
 
-            Log::warning('PushService: FCM returned error', [
-                'status' => $response->status(),
-                'body'   => $response->body(),
-                'token'  => substr($deviceToken, 0, 20) . '…',
-            ]);
+            $errorCode = $response->json('error.details.0.errorCode')
+                ?? $response->json('error.message')
+                ?? '';
+
+            // Token is invalid — clear it from DB so we stop sending to a dead device
+            if ($response->status() === 404 || str_contains($errorCode, 'UNREGISTERED')) {
+                \Illuminate\Support\Facades\DB::table('users')
+                    ->where('push_token', $deviceToken)
+                    ->update(['push_token' => null]);
+                Log::info('PushService: cleared stale push token', ['token' => substr($deviceToken, 0, 20) . '…']);
+            } else {
+                Log::warning('PushService: FCM returned error', [
+                    'status' => $response->status(),
+                    'body'   => $response->body(),
+                    'token'  => substr($deviceToken, 0, 20) . '…',
+                ]);
+            }
 
             return [
                 'success' => false,
                 'status'  => $response->status(),
-                'error'   => $response->json('error.message') ?? $response->body(),
+                'error'   => $errorCode ?: $response->body(),
             ];
         } catch (\Throwable $e) {
             Log::error('PushService: HTTP request failed', ['error' => $e->getMessage()]);

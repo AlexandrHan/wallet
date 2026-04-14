@@ -537,11 +537,101 @@ document.addEventListener('DOMContentLoaded', function () {
         </div>
       `;
 
-      const paidDetails = paidCard.querySelector('.paid-projects-list');
-      if (paidProjects.length > 0) {
-        paidProjects.forEach(p => paidDetails.appendChild(buildProjectCard(p, { isPaidSection: true })));
+      const MONTH_NAMES_UK = ['Січень','Лютий','Березень','Квітень','Травень','Червень','Липень','Серпень','Вересень','Жовтень','Листопад','Грудень'];
+
+      function parsePaidDate(p) {
+        const raw = p.closed_at || p.created_at || '';
+        const m = raw.match(/(\d{2})\.(\d{2})\.(\d{4})/);
+        if (!m) return null;
+        return { day: +m[1], month: +m[2], year: +m[3] };
+      }
+
+      // Group by year → month
+      const byYear = {};
+      paidProjects.forEach(p => {
+        const d = parsePaidDate(p);
+        const year  = d ? d.year  : 0;
+        const month = d ? d.month : 0;
+        if (!byYear[year]) byYear[year] = {};
+        if (!byYear[year][month]) byYear[year][month] = [];
+        byYear[year][month].push({ p, d });
+      });
+      const sortedYears = Object.keys(byYear).map(Number).sort((a, b) => b - a);
+
+      const paidList = paidCard.querySelector('.paid-projects-list');
+
+      if (paidProjects.length === 0) {
+        paidList.innerHTML = `<div style="opacity:.75; text-align:center;">Нічого не знайдено</div>`;
       } else {
-        paidDetails.innerHTML = `<div style="opacity:.75; text-align:center;">Нічого не знайдено</div>`;
+        const nowDate = new Date();
+        const nowYear = nowDate.getFullYear();
+        const nowMonth = nowDate.getMonth() + 1;
+
+        sortedYears.forEach(year => {
+          const yearKey   = `finance_paid_year_${year}`;
+          const isYearOpen = localStorage.getItem(yearKey) !== '0';
+          const months     = Object.keys(byYear[year]).map(Number).sort((a, b) => b - a);
+          const yearTotal  = months.reduce((s, mo) => s + byYear[year][mo].length, 0);
+
+          const yearDiv = document.createElement('div');
+          yearDiv.style.cssText = 'margin-bottom:10px;';
+          yearDiv.innerHTML = `
+            <div class="paid-year-toggle" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.18);">
+              <div style="font-weight:700;font-size:15px;">📅 ${year}</div>
+              <div style="opacity:.6;font-size:13px;">${yearTotal}</div>
+            </div>
+            <div class="paid-year-details" style="display:${isYearOpen ? 'block' : 'none'};padding-left:6px;margin-top:4px;"></div>
+          `;
+          yearDiv.querySelector('.paid-year-toggle').addEventListener('click', function () {
+            const det  = yearDiv.querySelector('.paid-year-details');
+            const next = det.style.display === 'none';
+            det.style.display = next ? 'block' : 'none';
+            localStorage.setItem(yearKey, next ? '1' : '0');
+          });
+
+          const yearDetails = yearDiv.querySelector('.paid-year-details');
+
+          months.forEach(month => {
+            const monthKey     = `finance_paid_month_${year}_${month}`;
+            const storedMonth  = localStorage.getItem(monthKey);
+            const isMonthOpen  = storedMonth !== null
+              ? storedMonth !== '0'
+              : (year === nowYear && month === nowMonth);
+
+            const monthName  = MONTH_NAMES_UK[month - 1] || `Місяць ${month}`;
+            const monthItems = byYear[year][month];
+            // Sort within month: newest day first
+            monthItems.sort((a, b) => {
+              if (!a.d && !b.d) return 0;
+              if (!a.d) return 1;
+              if (!b.d) return -1;
+              return b.d.day - a.d.day;
+            });
+
+            const monthDiv = document.createElement('div');
+            monthDiv.style.cssText = 'margin-bottom:6px;';
+            monthDiv.innerHTML = `
+              <div class="paid-month-toggle" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.08);">
+                <div style="font-weight:600;font-size:14px;">${monthName}</div>
+                <div style="opacity:.6;font-size:12px;">${monthItems.length}</div>
+              </div>
+              <div class="paid-month-details" style="display:${isMonthOpen ? 'block' : 'none'};"></div>
+            `;
+            monthDiv.querySelector('.paid-month-toggle').addEventListener('click', function () {
+              const det  = monthDiv.querySelector('.paid-month-details');
+              const next = det.style.display === 'none';
+              det.style.display = next ? 'block' : 'none';
+              localStorage.setItem(monthKey, next ? '1' : '0');
+            });
+
+            const monthDetails = monthDiv.querySelector('.paid-month-details');
+            monthItems.forEach(({ p }) => monthDetails.appendChild(buildProjectCard(p, { isPaidSection: true })));
+
+            yearDetails.appendChild(monthDiv);
+          });
+
+          paidList.appendChild(yearDiv);
+        });
       }
 
       paidCard.querySelector('.paid-projects-search')?.addEventListener('input', function () {

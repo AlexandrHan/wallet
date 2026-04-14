@@ -38,10 +38,7 @@
         <a href="/" class="logo"><img src="/img/logo.png" alt="SolarGlass"></a>
         <div class="userName"><span style="font-weight:800;">{{ collect(explode(' ', trim(auth()->user()->name)))->first() }}</span></div>
 
-        <div class="burger-wrap">
-          <button class="burger-btn"></button>
-
-        </div>
+        @include('partials.nav.top-avatar-placeholder')
       </div>
 
       <div class="header-right">
@@ -56,8 +53,8 @@
       <a href="{{ route('reclamations.index') }}" class="btn right">← Назад</a>
     </div>
 
-    <form id="reclCreateForm" class="card" style="margin-top:14px;" method="POST" action="#">
-      {{-- поки action="#" (пізніше підключимо збереження в БД) --}}
+    <form id="reclCreateForm" class="card" style="margin-top:14px;" method="POST" action="{{ route('reclamations.store') }}">
+      @csrf
 
       <div class="wizard-step" data-step="1">
         <div class="muted" style="margin-bottom:8px;">Дата звернення</div>
@@ -125,7 +122,7 @@
 
         <div class="reclam-actions">
           <button type="button" class="btn" data-prev>Назад</button>
-          <button type="button" class="btn primary right" onclick="alert('Далі підключимо збереження в БД'); return false;">
+          <button type="submit" class="btn primary right">
             Створити
           </button>
         </div>

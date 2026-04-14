@@ -7,6 +7,7 @@ use App\Models\AmoComplectationProject;
 use App\Models\AmoCrmToken;
 use App\Models\SalesProject;
 use App\Models\User;
+use App\Services\NotificationService;
 use Carbon\Carbon;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Arr;
@@ -475,6 +476,7 @@ class AmoCrmService
         $amoDealId = (int) ($lead['id'] ?? 0);
         $created = 0;
         $updated = 0;
+        $budgetNotification = null;
 
         $clientName = $this->extractProjectClientName($lead);
         if ($clientName === '') {
@@ -499,7 +501,7 @@ class AmoCrmService
 
         $dealStatusId = (int) ($lead['status_id'] ?? 0);
 
-        DB::transaction(function () use ($amoDealId, $clientName, $lead, $totalAmount, $projectPayload, $responsibleUserId, $responsibleName, $dealStatusId, $onlyUpdate, &$created, &$updated) {
+        DB::transaction(function () use ($amoDealId, $clientName, $lead, $totalAmount, $projectPayload, $responsibleUserId, $responsibleName, $dealStatusId, $onlyUpdate, &$created, &$updated, &$budgetNotification) {
             $row = AmoComplectationProject::query()
                 ->where('amo_deal_id', $amoDealId)
                 ->lockForUpdate()
@@ -532,11 +534,25 @@ class AmoCrmService
 
                 $created++;
             } else {
+                $oldAmount = round((float) $project->total_amount, 2);
+                $newAmount = round($totalAmount, 2);
+
                 $managerFields = $responsibleUserId > 0 ? ['lead_manager_user_id' => $responsibleUserId] : [];
                 $project->update(array_merge([
                     'client_name' => mb_substr($clientName, 0, 255),
-                    'total_amount' => round($totalAmount, 2),
+                    'total_amount' => $newAmount,
                 ], $managerFields, $this->applyAppWinsFilter($projectPayload, $project)));
+
+                if ($oldAmount > 0.01 && abs($newAmount - $oldAmount) >= 0.01) {
+                    $budgetNotification = [
+                        'client'     => mb_substr($clientName, 0, 80),
+                        'old'        => $oldAmount,
+                        'new'        => $newAmount,
+                        'currency'   => $project->currency ?? 'USD',
+                        'project_id' => $project->id,
+                    ];
+                }
+
                 $updated++;
             }
 
@@ -559,6 +575,21 @@ class AmoCrmService
                 ], $amoPayload));
             }
         }, 3);
+
+        if ($budgetNotification) {
+            $diff     = round($budgetNotification['new'] - $budgetNotification['old'], 2);
+            $sign     = $diff > 0 ? '+' : '';
+            $currency = $budgetNotification['currency'];
+            $message  = "{$budgetNotification['client']}: бюджет {$budgetNotification['old']} → {$budgetNotification['new']} {$currency} ({$sign}{$diff})";
+
+            try {
+                app(NotificationService::class)->sendToRole('owner', '💰 Бюджет змінено в АМО', $message, 'system', [
+                    'project_id' => (string) $budgetNotification['project_id'],
+                ]);
+            } catch (\Throwable $e) {
+                Log::warning('upsertDeal: budget notification failed', ['error' => $e->getMessage()]);
+            }
+        }
 
         return ['created' => $created, 'updated' => $updated];
     }

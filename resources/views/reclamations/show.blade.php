@@ -6,7 +6,6 @@
     'dismantled' => 'Демонтували',
     'where_left' => 'Де залишили',
     'shipped_to_service' => 'Відправили НП на ремонт',
-    'service_received' => 'Сервіс отримав',
     'repaired_shipped_back' => 'Відремонтували та відправили',
     'installed' => 'Встановили',
     'loaner_return' => 'Повернення підмінного',
@@ -128,7 +127,7 @@ if ($need) {
 
 } elseif (
     $isServiceStage &&
-    in_array($k, ['shipped_to_service','service_received'])
+    $k === 'shipped_to_service'
 ) {
 
     $cls = 'step-service';
