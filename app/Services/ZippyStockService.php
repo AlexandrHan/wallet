@@ -28,8 +28,27 @@ class ZippyStockService
     }
 
     /**
+     * Maps Zippy cat_id to internal solar-glass category slug.
+     * null = hidden (not shown on the stock page).
+     */
+    private const CAT_MAP = [
+        1  => 'panels',     // Фотомодулі
+        2  => 'inverters',  // Інвертори гібридні високовольтні
+        3  => 'inverters',  // Інвертори мережеві
+        6  => 'inverters',  // Інвертори автономні
+        15 => 'inverters',  // Інвертори гібридні низьковольтні
+        5  => 'batteries',  // АКБ високовольтні
+        10 => 'batteries',  // АКБ для X3-AELIO
+        16 => 'batteries',  // АКБ низьковольтні
+        4  => 'additional', // Система кріплень ФЕМ
+        7  => 'additional', // Система захисту та контролю
+        8  => 'additional', // Кабельна продукція
+        9  => 'additional', // Зарядні пристрої для авто
+    ];
+
+    /**
      * Fetch stock from Zippy CRM, normalize, upsert into solarglass_stock.
-     * Strategy: call itemlist (names) + getqty (quantities), merge by item_code.
+     * Strategy: call itemlist (names + categories) + getqty (quantities), merge by item_code.
      *
      * @return array{updated: int, created: int, skipped: int, duration: float}
      */
@@ -39,14 +58,18 @@ class ZippyStockService
 
         $token = $this->resolveToken();
 
-        // 1. Fetch item names
+        // 1. Fetch item names + category info
         $itemlistRaw = $this->callMethod($token, 'itemlist', []);
-        $nameMap = [];
+        $nameMap    = [];
+        $catNameMap = [];
+        $catIdMap   = [];
         foreach ((array) $itemlistRaw as $row) {
             if (!is_array($row) || empty($row['item_code'])) continue;
             $code = (string) $row['item_code'];
             $name = $this->decodeBase64IfNeeded(trim((string) ($row['itemname'] ?? $row['item_name'] ?? '')));
-            $nameMap[$code] = $name !== '' ? $name : null;
+            $nameMap[$code]    = $name !== '' ? $name : null;
+            $catNameMap[$code] = isset($row['cat_name']) ? trim((string) $row['cat_name']) : null;
+            $catIdMap[$code]   = isset($row['cat_id']) ? (int) $row['cat_id'] : null;
         }
 
         // 2. Fetch quantities
@@ -71,8 +94,11 @@ class ZippyStockService
                 continue;
             }
 
-            $name = $nameMap[$code] ?? null;
-            $qty  = $qtyMap[$code] ?? 0.0;
+            $name    = $nameMap[$code] ?? null;
+            $qty     = $qtyMap[$code] ?? 0.0;
+            $catId   = $catIdMap[$code] ?? null;
+            $catName = $catNameMap[$code] ?? null;
+            $category = $catId !== null ? (self::CAT_MAP[$catId] ?? null) : null;
 
             $exists = DB::table('solarglass_stock')
                 ->where('item_code', $code)
@@ -81,9 +107,12 @@ class ZippyStockService
             DB::table('solarglass_stock')->updateOrInsert(
                 ['item_code' => $code],
                 [
-                    'item_name'  => $name,
-                    'qty'        => $qty,
-                    'meta'       => json_encode([
+                    'item_name'       => $name,
+                    'qty'             => $qty,
+                    'zippy_category'  => $category,
+                    'zippy_cat_name'  => $catName,
+                    'zippy_cat_id'    => $catId,
+                    'meta'            => json_encode([
                         'source'    => 'zippy',
                         'synced_at' => now()->toIso8601String(),
                     ]),

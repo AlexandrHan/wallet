@@ -70,57 +70,28 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         $search   = trim((string) $request->query('q', ''));
         $category = trim((string) $request->query('category', ''));
 
-        // Additional equipment: cable and profile (normalized names)
-        $additionalDefs = [
-            'ID00238' => ['name' => 'Сонячний кабель',   'unit' => 'м'],
-            'ID00331' => ['name' => 'Профіль монтажний', 'unit' => 'шт'],
-        ];
-
-        if ($category === 'additional') {
-            $rows = DB::table('solarglass_stock')
-                ->whereIn('item_code', array_keys($additionalDefs))
-                ->where('qty', '>', 0)
-                ->get(['item_code', 'item_name', 'qty', 'updated_at']);
-            $items = $rows->map(fn($r) => [
-                'item_code' => $r->item_code,
-                'item_name' => $additionalDefs[$r->item_code]['name'],
-                'qty'       => $r->qty,
-                'unit'      => $additionalDefs[$r->item_code]['unit'],
-                'updated_at'=> $r->updated_at,
-            ])->filter(fn($r) => !$search || mb_stripos($r['item_name'], $search) !== false)->values();
-            return response()->json($items);
-        }
+        $validCategories = ['panels', 'inverters', 'batteries', 'additional'];
 
         $query = DB::table('solarglass_stock')
-            ->select('item_code', 'item_name', 'qty', 'updated_at')
+            ->select('item_code', 'item_name', 'qty', 'zippy_category', 'zippy_cat_name', 'updated_at')
             ->where('qty', '>', 0)
-            ->where(function ($q) {
-                $q->where('item_name', 'like', 'Фотомодул%')
-                  ->orWhere('item_name', 'like', 'Інвертор%')
-                  ->orWhere('item_name', 'like', 'інвертор%')
-                  ->orWhere('item_name', 'like', 'АКБ%');
-            });
+            ->whereIn('zippy_category', $validCategories);
+
+        if ($category !== '' && in_array($category, $validCategories, true)) {
+            $query->where('zippy_category', $category);
+        }
 
         if ($search) {
             $query->where('item_name', 'like', '%' . $search . '%');
         }
 
-        if ($category === 'panels') {
-            $query->where('item_name', 'like', 'Фотомодул%');
-        } elseif ($category === 'inverters') {
-            $query->where(function ($q) {
-                $q->where('item_name', 'like', 'Інвертор%')
-                  ->orWhere('item_name', 'like', 'інвертор%');
-            });
-        } elseif ($category === 'batteries') {
-            $query->where('item_name', 'like', 'АКБ%');
-        }
+        $rows = $query->orderBy('item_name')->get();
 
-        $mainItems = $query->orderBy('item_name')->get()->map(fn($r) => [
+        $items = $rows->map(fn($r) => [
             'item_code'  => $r->item_code,
             'item_name'  => $r->item_name,
             'qty'        => $r->qty,
-            'unit'       => 'шт',
+            'unit'       => $r->zippy_cat_name === 'Кабельна продукція' ? 'м' : 'шт',
             'updated_at' => $r->updated_at,
         ]);
 
@@ -150,7 +121,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
                 4 => 'Трифазні мережеві',
                 5 => 'Автономні / Інші',
             ];
-            $sortedArr = $mainItems->values()->all();
+            $sortedArr = $items->values()->all();
             usort($sortedArr, function($a, $b) use ($invSection, $invPower) {
                 $sa = $invSection($a['item_name']); $sb = $invSection($b['item_name']);
                 if ($sa !== $sb) return $sa <=> $sb;
@@ -158,11 +129,10 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
                 if ($pa !== $pb) return $pa <=> $pb;
                 return $a['item_name'] <=> $b['item_name'];
             });
-            $sorted = collect($sortedArr);
 
             $withSections = collect();
             $curSec = null;
-            foreach ($sorted as $item) {
+            foreach ($sortedArr as $item) {
                 $sec = $invSection($item['item_name']);
                 if ($sec !== $curSec) {
                     $withSections->push(['is_section' => true, 'item_name' => $invSectionLabels[$sec], 'item_code' => '', 'qty' => 0, 'unit' => '']);
@@ -173,23 +143,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
             return response()->json($withSections->values());
         }
 
-        // Append additional items when showing "all" (no category filter)
-        if ($category === '') {
-            $addRows = DB::table('solarglass_stock')
-                ->whereIn('item_code', array_keys($additionalDefs))
-                ->where('qty', '>', 0)
-                ->get(['item_code', 'item_name', 'qty', 'updated_at']);
-            $addItems = $addRows->map(fn($r) => [
-                'item_code'  => $r->item_code,
-                'item_name'  => $additionalDefs[$r->item_code]['name'],
-                'qty'        => $r->qty,
-                'unit'       => $additionalDefs[$r->item_code]['unit'],
-                'updated_at' => $r->updated_at,
-            ])->filter(fn($r) => !$search || mb_stripos($r['item_name'], $search) !== false)->values();
-            $mainItems = $mainItems->concat($addItems);
-        }
-
-        return response()->json($mainItems->values());
+        return response()->json($items->values());
     });
 
 

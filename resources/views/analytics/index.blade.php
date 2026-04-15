@@ -85,6 +85,9 @@
     .amo-advance-stage-grid {
       grid-template-columns: 1fr;
     }
+    .analytics-profit-grid {
+      grid-template-columns: 1fr !important;
+    }
   }
 </style>
 @endpush
@@ -98,6 +101,84 @@
   <div style="font-weight:700; font-size:18px; margin-bottom:18px; text-align:center;">
     📊 Аналітика
   </div>
+
+  {{-- ── ФІНАНСОВА АНАЛІТИКА ЗА МІСЯЦЬ ─────────────────────────────── --}}
+  <div class="card" id="monthAnalyticsCard" style="margin-bottom:14px; padding:16px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; gap:10px; flex-wrap:wrap;">
+      <div style="font-weight:600; opacity:.7; font-size:13px; text-transform:uppercase; letter-spacing:.05em;">💰 Доходи / Витрати / Прибуток</div>
+      <input
+        type="month"
+        id="analyticsMonthPicker"
+        class="btn"
+        style="padding:6px 12px; font-size:13px; width:auto;"
+        value="{{ now()->format('Y-m') }}"
+      >
+    </div>
+
+    <div id="analyticsBody" style="min-height:60px;">
+      <div style="opacity:.5; font-size:13px;">Завантаження…</div>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    const picker  = document.getElementById('analyticsMonthPicker');
+    const body    = document.getElementById('analyticsBody');
+    const fmtNum  = (n) => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 }).format(n);
+    const SIGNS   = { UAH: '₴', USD: '$', EUR: '€' };
+
+    function sign(cur) { return SIGNS[cur] ?? cur; }
+
+    function renderAnalytics(data) {
+      const curs = data.currencies || [];
+      if (!curs.length) {
+        body.innerHTML = '<div style="opacity:.5; font-size:13px; text-align:center;">Немає проводок за цей місяць</div>';
+        return;
+      }
+
+      const html = curs.map(c => {
+        const profitColor = c.profit >= 0 ? '#4ade80' : '#f87171';
+        const profitSign  = c.profit >= 0 ? '+' : '';
+        return `
+          <div style="margin-bottom:12px;">
+            <div style="font-size:12px; font-weight:700; opacity:.55; margin-bottom:8px; letter-spacing:.04em;">${c.currency}</div>
+            <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px;" class="analytics-profit-grid">
+              <div style="background:rgba(74,222,128,0.08); border-radius:14px; padding:12px;">
+                <div style="font-size:11px; opacity:.5; margin-bottom:4px;">Доходи</div>
+                <div style="font-size:16px; font-weight:700; color:#4ade80;">${fmtNum(c.income)} ${sign(c.currency)}</div>
+              </div>
+              <div style="background:rgba(248,113,113,0.08); border-radius:14px; padding:12px;">
+                <div style="font-size:11px; opacity:.5; margin-bottom:4px;">Витрати</div>
+                <div style="font-size:16px; font-weight:700; color:#f87171;">${fmtNum(c.expense)} ${sign(c.currency)}</div>
+              </div>
+              <div style="background:rgba(255,255,255,0.05); border-radius:14px; padding:12px;">
+                <div style="font-size:11px; opacity:.5; margin-bottom:4px;">Прибуток</div>
+                <div style="font-size:16px; font-weight:700; color:${profitColor};">${profitSign}${fmtNum(c.profit)} ${sign(c.currency)}</div>
+              </div>
+            </div>
+          </div>`;
+      }).join('');
+
+      body.innerHTML = html;
+    }
+
+    function loadAnalytics(month) {
+      body.innerHTML = '<div style="opacity:.5; font-size:13px;">Завантаження…</div>';
+      fetch('/api/finance/analytics?month=' + encodeURIComponent(month), { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(renderAnalytics)
+        .catch(() => {
+          body.innerHTML = '<div style="color:#f87171; font-size:13px;">Помилка завантаження</div>';
+        });
+    }
+
+    picker.addEventListener('change', function () {
+      loadAnalytics(this.value);
+    });
+
+    loadAnalytics(picker.value);
+  })();
+  </script>
 
   {{-- ФІНАНСОВИЙ ЗВІТ АВАНСІВ З AMO CRM --}}
   <div class="card amo-advance-report" style="margin-bottom:14px; padding:16px;">

@@ -2002,4 +2002,76 @@ Route::middleware(['web', 'auth'])->group(function () {
     Route::post('/messages',               [MessageController::class, 'send']);
 });
 
+// ─── Finance Analytics ─────────────────────────────────────────
+Route::middleware(['web', 'auth', 'only.owner'])->get('/finance/analytics', function (Request $request) {
+    $monthParam = trim((string) $request->query('month', ''));
+
+    // Parse month — accept "2026-04" or "2026-4"
+    if (preg_match('/^(\d{4})-(\d{1,2})$/', $monthParam, $m)) {
+        $year  = (int) $m[1];
+        $month = (int) $m[2];
+    } else {
+        $year  = (int) now()->year;
+        $month = (int) now()->month;
+    }
+
+    $from = sprintf('%04d-%02d-01', $year, $month);
+    $to   = sprintf('%04d-%02d-%02d', $year, $month, cal_days_in_month(CAL_GREGORIAN, $month, $year));
+
+    // IDs of cash_transfers that are wallet→wallet (internal): both wallets set
+    $transferCtIds = DB::table('cash_transfers')
+        ->whereNotNull('from_wallet_id')
+        ->whereNotNull('to_wallet_id')
+        ->pluck('id');
+
+    $rows = DB::table('entries as e')
+        ->join('wallets as w', 'w.id', '=', 'e.wallet_id')
+        ->whereIn('e.entry_type', ['income', 'expense'])
+        ->whereBetween('e.posting_date', [$from, $to])
+        ->where(function ($q) use ($transferCtIds) {
+            $q->whereNull('e.cash_transfer_id')
+              ->orWhereNotIn('e.cash_transfer_id', $transferCtIds);
+        })
+        ->select('w.currency', 'e.entry_type', DB::raw('COALESCE(SUM(e.amount), 0) as total'))
+        ->groupBy('w.currency', 'e.entry_type')
+        ->get();
+
+    $currencies = [];
+    foreach ($rows as $row) {
+        $cur = strtoupper($row->currency);
+        if (!isset($currencies[$cur])) {
+            $currencies[$cur] = ['income' => 0.0, 'expense' => 0.0];
+        }
+        $currencies[$cur][$row->entry_type] = round((float) $row->total, 2);
+    }
+
+    $result = [];
+    foreach (['UAH', 'USD', 'EUR'] as $cur) {
+        if (!isset($currencies[$cur])) continue;
+        $income  = $currencies[$cur]['income'];
+        $expense = $currencies[$cur]['expense'];
+        $result[] = [
+            'currency' => $cur,
+            'income'   => $income,
+            'expense'  => $expense,
+            'profit'   => round($income - $expense, 2),
+        ];
+    }
+    // Any other currencies beyond the standard three
+    foreach ($currencies as $cur => $vals) {
+        if (in_array($cur, ['UAH', 'USD', 'EUR'])) continue;
+        $result[] = [
+            'currency' => $cur,
+            'income'   => $vals['income'],
+            'expense'  => $vals['expense'],
+            'profit'   => round($vals['income'] - $vals['expense'], 2),
+        ];
+    }
+
+    return response()->json([
+        'month'      => sprintf('%04d-%02d', $year, $month),
+        'currencies' => $result,
+    ]);
+});
+
 // ─── AI Financial Assistant ────────────────────────────────────

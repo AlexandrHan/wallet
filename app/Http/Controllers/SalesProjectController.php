@@ -366,10 +366,7 @@ class SalesProjectController extends Controller
                     ->leftJoin('amo_complectation_projects', 'amo_complectation_projects.wallet_project_id', '=', 'sales_projects.id')
                     ->where(function ($q) use ($financeStageIds) {
                         $q->whereIn('amo_complectation_projects.status_id', $financeStageIds)
-                          ->orWhere(function ($q2) {
-                              $q2->whereNull('amo_complectation_projects.wallet_project_id')
-                                 ->where('sales_projects.source_layer', 'finance');
-                          });
+                          ->orWhere('sales_projects.source_layer', 'finance');
                     })
                     ->select('sales_projects.*');
             } else {
@@ -519,14 +516,17 @@ class SalesProjectController extends Controller
             $advanceTotal = round($advanceTotal, 2);
             $pending = round($pending, 2);
 
-            $paid = $advanceTotal;
+            $advanceTotal_raw = $advanceTotal;
             $totalAmt = (float) $project->total_amount;
             $advanceAmt = $col['advance_amount']
                 ? (float) ($project->advance_amount ?? 0)
                 : 0.0;
+            $paid = max($advanceTotal_raw, $advanceAmt);
             $remaining = max(0, $totalAmt - $paid);
+            $amoComplectationStatusId = (int) ($amoComplectationByProjectId->get($project->id)?->status_id ?? 0);
             $isPaid = ($totalAmt > 0 && $paid >= $totalAmt)
-                   || ($totalAmt > 0 && $advanceAmt >= $totalAmt);
+                   || ($totalAmt > 0 && $advanceAmt >= $totalAmt)
+                   || $amoComplectationStatusId === 142;
 
             $pendingTargetOwner = $transfers
                 ->where('status', 'pending')

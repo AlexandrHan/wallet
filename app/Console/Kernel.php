@@ -46,6 +46,11 @@ class Kernel extends ConsoleKernel
             ->everyThirtyMinutes()
             ->withoutOverlapping();
 
+        // Скасування проектів з видаленими угодами в amoCRM (щотижня, неділя 02:00)
+        $schedule->command('amocrm:cancel-deleted-deals')
+            ->weeklyOn(0, '02:00')
+            ->withoutOverlapping();
+
         // 🟡 GOOGLE SHEETS — електрики (кожну годину)
         // (вже зареєстровано в routes/console.php — тут закоментовано щоб не дублювати)
         // $schedule->command('sheets:sync-electricians')

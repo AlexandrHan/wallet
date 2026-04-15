@@ -649,13 +649,41 @@ document.addEventListener('DOMContentLoaded', function () {
       container.appendChild(paidCard);
     }
 
+    // ── Підрахунок сум по валютах для заголовка акордеону ─────────────
+    const activeTotals = {};
+    allActiveProjects.forEach(p => {
+      const cur = p.currency || 'USD';
+      if (!activeTotals[cur]) activeTotals[cur] = { total: 0, paid: 0 };
+      activeTotals[cur].total += toNum(p.total_amount);
+      activeTotals[cur].paid  += toNum(p.paid_amount);
+    });
+
+    const fmtActiveMoney = (n) => new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 0 }).format(Math.round(n));
+    const currencySign = { UAH: '₴', USD: '$', EUR: '€' };
+
+    const activeSummaryHtml = Object.entries(activeTotals)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([cur, v]) => {
+        const remaining = Math.max(0, v.total - v.paid);
+        const sign = currencySign[cur] ?? cur;
+        return `<div style="font-size:11px; opacity:.72; line-height:1.9;">
+          <span style="opacity:.6;">${cur}</span><br>
+          &nbsp;Бюджет <b>${fmtActiveMoney(v.total)} ${sign}</b><br>
+          &nbsp;Аванс <b style="color:#4ade80;">${fmtActiveMoney(v.paid)} ${sign}</b><br>
+          &nbsp;Залишок <b style="color:#fb923c;">${fmtActiveMoney(remaining)} ${sign}</b>
+        </div>`;
+      }).join('');
+
     const activeCard = document.createElement('div');
     activeCard.className = 'card';
     activeCard.style.marginTop = '15px';
     activeCard.innerHTML = `
-      <div class="active-projects-toggle" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
-        <div style="font-weight:700;">🟡 Проавансовані</div>
-        <div style="opacity:.75;">${activeProjects.length}${activeQuery ? ` / ${allActiveProjects.length}` : ''}</div>
+      <div class="active-projects-toggle" style="cursor:pointer;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div style="font-weight:700;">🟡 Проавансовані</div>
+          <div style="opacity:.75;">${activeProjects.length}${activeQuery ? ` / ${allActiveProjects.length}` : ''}</div>
+        </div>
+        ${activeSummaryHtml ? `<div style="margin-top:6px;">${activeSummaryHtml}</div>` : ''}
       </div>
       <div class="active-projects-details" style="display:${isActiveOpen || !!activeQuery ? 'block' : 'none'}; margin-top:12px; border-top:1px solid #ffffff; padding-top:10px;">
         <input

@@ -73,6 +73,11 @@
   margin-top: 4px;
 }
 .sg-section-first { padding-top: 2px; border-top: none; margin-top: 0; }
+.sg-section-inverter {
+  opacity: 1;
+  color: #f76;
+  border-top-color: rgba(255,100,80,0.25);
+}
 </style>
 
 <script>
@@ -99,8 +104,9 @@ async function loadStock() {
     let firstSection = true;
     items.forEach(item => {
       if (item.is_section) {
+        const invCls = sgCat === 'inverters' ? ' sg-section-inverter' : '';
         card.insertAdjacentHTML('beforeend',
-          `<div class="sg-section${firstSection ? ' sg-section-first' : ''}">${esc(item.item_name)}</div>`);
+          `<div class="sg-section${firstSection ? ' sg-section-first' : ''}${invCls}">${esc(item.item_name)}</div>`);
         firstSection = false;
         return;
       }

@@ -21,9 +21,7 @@
   <script src="/js/reclamations.js?v={{ filemtime(public_path('js/reclamations.js')) }}" defer></script>
   <script src="/js/header.js?v={{ filemtime(public_path('js/header.js')) }}" defer></script>
 
-
-
-  <title>SolarGlass • Рекламації</title>
+  <title>SolarGlass &bull; Рекламації</title>
 
   <script>
     (function () {
@@ -40,6 +38,48 @@
     html{ background:#0b0d10 }
     body{ margin:0 }
     #appSplash{ position:fixed; inset:0; background:#0b0d10; z-index:99999 }
+
+    .reclam-accordion__toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 12px;
+      padding: 12px 16px;
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      text-align: left;
+      margin-bottom: 0;
+    }
+    .reclam-accordion__toggle:active {
+      background: rgba(255,255,255,0.10);
+    }
+    .reclam-accordion__count {
+      background: rgba(255,255,255,0.15);
+      border-radius: 999px;
+      padding: 1px 9px;
+      font-size: .8rem;
+      font-weight: 600;
+    }
+    .reclam-accordion__chevron {
+      margin-left: auto;
+      font-size: 1.1rem;
+      transition: transform .2s;
+      display: inline-block;
+    }
+    .reclam-accordion__chevron.is-open {
+      transform: rotate(180deg);
+    }
+    .reclam-accordion__body {
+      padding-top: 8px;
+    }
+    .reclam-accordion {
+      margin-bottom: 4px;
+    }
   </style>
 </head>
 <body class="{{ auth()->check() ? 'has-tg-nav' : '' }}">
@@ -161,168 +201,228 @@
 
   </div>
 
-
   @if($items->isEmpty())
     <div class="reclamations-empty">
       <div style="font-weight:900;">Поки немає рекламацій</div>
-      <div class="muted" style="margin-top:6px;">Натисни “Створити нову рекламацію”.</div>
+      <div class="muted" style="margin-top:6px;">Натисни "Створити нову рекламацію".</div>
     </div>
   @else
 
-@foreach($items as $item)
+  @php
+    $labels = [
+        'reported'              => 'Дані клієнта',
+        'dismantled'            => 'Демонтували',
+        'where_left'            => 'Де залишили',
+        'shipped_to_service'    => 'Відправили НП на ремонт',
+        'service_received'      => 'Сервіс отримав',
+        'repaired_shipped_back' => 'Відремонтували та відправили',
+        'installed'             => 'Встановили',
+        'loaner_return'         => 'Повернення підмінного',
+        'closed'                => 'Завершили',
+    ];
+    $order = array_keys($labels);
 
-@php
+    $activeItems = $items->filter(fn($i) => $i->status !== 'done')->values();
+    $doneItems   = $items->filter(fn($i) => $i->status === 'done')->values();
+  @endphp
 
-$labels = [
-    'reported' => 'Дані клієнта',
-    'dismantled' => 'Демонтували',
-    'where_left' => 'Де залишили',
-    'shipped_to_service' => 'Відправили НП на ремонт',
-    'service_received' => 'Сервіс отримав',
-    'repaired_shipped_back' => 'Відремонтували та відправили',
-    'installed' => 'Встановили',
-    'loaner_return' => 'Повернення підмінного',
-    'closed' => 'Завершили',
-];
+  {{-- АКТИВНІ --}}
+  <div class="reclam-accordion">
+    <button type="button" class="reclam-accordion__toggle" data-accordion="active">
+      <span>Активні</span>
+      <span class="reclam-accordion__count">{{ $activeItems->count() }}</span>
+      <span class="reclam-accordion__chevron is-open" id="chev-active">&#9662;</span>
+    </button>
+    <div class="reclam-accordion__body" id="body-active">
 
-$order = array_keys($labels);
-$stepsByKey = $item->steps->keyBy('step_key');
+    @foreach($activeItems as $item)
+    @php
+      $stepsByKey = $item->steps->keyBy('step_key');
+      $isDone = function($key) use ($stepsByKey) {
+          $s = $stepsByKey->get($key);
+          if (!$s) return false;
+          return !empty($s->done_date)
+              || (is_string($s->note) && trim($s->note) !== '')
+              || (is_string($s->ttn)  && trim($s->ttn)  !== '');
+      };
+      $activeKey = null;
+      foreach ($order as $k) { if ($isDone($k)) $activeKey = $k; }
+      if (!$activeKey) $activeKey = 'reported';
+      $activeLabel = $labels[$activeKey] ?? $activeKey;
+      $activeStep  = $stepsByKey->get($activeKey);
+      if ($activeStep && $activeStep->done_date) {
+          $dateText = \Carbon\Carbon::parse($activeStep->done_date)->format('d.m.Y');
+      } elseif ($item->reported_at) {
+          $dateText = $item->reported_at->format('d.m.Y');
+      } else {
+          $dateText = '—';
+      }
+      $shipped  = $stepsByKey->get('shipped_to_service');
+      $repaired = $stepsByKey->get('repaired_shipped_back');
+      $closed   = $stepsByKey->get('closed');
+      $isShipped  = $shipped  && ($shipped->done_date  || $shipped->ttn);
+      $isRepaired = $repaired && ($repaired->done_date || $repaired->ttn);
+      $isClosed   = ($closed  && $closed->done_date)   || $item->status === 'done';
+      $borderClass = 'card-pre';
+      if ($isClosed)       $borderClass = 'card-done';
+      elseif ($isRepaired) $borderClass = 'card-repaired';
+      elseif ($isShipped)  $borderClass = 'card-service';
+      $logo = ($borderClass === 'card-service') ? '/img/sunfix.png' : '/img/solarglass.png';
+      $filesCount = $item->steps->sum(fn($s) => is_array($s->files) ? count($s->files) : 0);
+      $notesCount = $item->steps->filter(fn($s) => is_string($s->note) && trim($s->note) !== '')->count();
+    @endphp
 
-$isDone = function($key) use ($stepsByKey) {
-    $s = $stepsByKey->get($key);
-    if (!$s) return false;
-
-    return !empty($s->done_date)
-        || (is_string($s->note) && trim($s->note) !== '')
-        || (is_string($s->ttn) && trim($s->ttn) !== '');
-};
-
-//
-// ===== АКТИВНИЙ ЕТАП =====
-//
-$activeKey = null;
-foreach ($order as $k) {
-    if ($isDone($k)) $activeKey = $k;
-}
-if (!$activeKey) $activeKey = 'reported';
-
-$activeLabel = $labels[$activeKey] ?? $activeKey;
-
-//
-// ===== ДАТА =====
-//
-$activeStep = $stepsByKey->get($activeKey);
-
-if ($activeStep && $activeStep->done_date) {
-    $dateText = \Carbon\Carbon::parse($activeStep->done_date)->format('d.m.Y');
-} elseif ($item->reported_at) {
-    $dateText = $item->reported_at->format('d.m.Y');
-} else {
-    $dateText = '—';
-}
-
-//
-// ===== СТАТУС РАМКИ =====
-//
-$shipped  = $stepsByKey->get('shipped_to_service');
-$repaired = $stepsByKey->get('repaired_shipped_back');
-$closed   = $stepsByKey->get('closed');
-
-$isShipped  = $shipped && ($shipped->done_date || $shipped->ttn);
-$isRepaired = $repaired && ($repaired->done_date || $repaired->ttn);
-$isClosed   = ($closed && $closed->done_date) || $item->status === 'done';
-
-$borderClass = 'card-pre';
-
-if ($isClosed) {
-    $borderClass = 'card-done';
-}
-elseif ($isRepaired) {
-    $borderClass = 'card-repaired';
-}
-elseif ($isShipped) {
-    $borderClass = 'card-service';
-}
-
-//
-// ===== ЛОГОТИП (ПІСЛЯ borderClass) =====
-//
-$logo = '/img/solarglass.png';
-
-if ($borderClass === 'card-service') {
-    $logo = '/img/sunfix.png';
-}
-
-//
-// ===== ЛІЧИЛЬНИКИ =====
-//
-$filesCount = $item->steps->sum(
-    fn($s) => is_array($s->files) ? count($s->files) : 0
-);
-
-$notesCount = $item->steps
-    ->filter(fn($s) => is_string($s->note) && trim($s->note) !== '')
-    ->count();
-
-@endphp
-
-
-<a href="{{ route('reclamations.show', $item->id) }}"
-   class="card reclam-card reclam-link {{ $borderClass }}">
-
-    <div class="reclam-top">
-        <div class="reclam-title">
-            <div class="reclam-sub">
-                <b>{{ $item->last_name ?: '—' }}</b>
+    <a href="{{ route('reclamations.show', $item->id) }}" class="card reclam-card reclam-link {{ $borderClass }}">
+        <div class="reclam-top">
+            <div class="reclam-title">
+                <div class="reclam-sub"><b>{{ $item->last_name ?: '—' }}</b></div>
+            </div>
+            <div class="reclam-status status-open">{{ $activeLabel }}</div>
+        </div>
+        <div class="reclam-body">
+            <div class="reclam-row">
+                <div class="muted">Нас. пункт</div>
+                <div class="right"><b>{{ $item->city ?: '—' }}</b></div>
+            </div>
+            <div class="reclam-row">
+                <div class="muted">Дата</div>
+                <div class="right">{{ $dateText }}</div>
+            </div>
+            @if($item->problem)
+            <div class="reclam-row">
+                <div class="muted">Проблема</div>
+                <div class="right">{{ $item->problem }}</div>
+            </div>
+            @endif
+        </div>
+        <div class="reclam-footer">
+            <div class="reclam-pill">📎 {{ $filesCount }} файли</div>
+            <div class="reclam-pill">💬 {{ $notesCount }} нотатки</div>
+            <div class="reclam-arrow">
+                <img src="{{ $logo }}" class="reclam-footer-logo">
             </div>
         </div>
+    </a>
+    @endforeach
 
-        <div class="reclam-status status-open">
-            {{ $activeLabel }}
-        </div>
     </div>
+  </div>
 
-    <div class="reclam-body">
+  {{-- ЗАВЕРШЕНІ --}}
+  <div class="reclam-accordion" style="margin-top:12px;">
+    <button type="button" class="reclam-accordion__toggle" data-accordion="done">
+      <span>Завершені</span>
+      <span class="reclam-accordion__count">{{ $doneItems->count() }}</span>
+      <span class="reclam-accordion__chevron" id="chev-done">&#9662;</span>
+    </button>
+    <div class="reclam-accordion__body" id="body-done" style="display:none">
 
-        <div class="reclam-row">
-            <div class="muted">Нас. пункт</div>
-            <div class="right">
-                <b>{{ $item->city ?: '—' }}</b>
+    @foreach($doneItems as $item)
+    @php
+      $stepsByKey = $item->steps->keyBy('step_key');
+      $isDone = function($key) use ($stepsByKey) {
+          $s = $stepsByKey->get($key);
+          if (!$s) return false;
+          return !empty($s->done_date)
+              || (is_string($s->note) && trim($s->note) !== '')
+              || (is_string($s->ttn)  && trim($s->ttn)  !== '');
+      };
+      $activeKey = null;
+      foreach ($order as $k) { if ($isDone($k)) $activeKey = $k; }
+      if (!$activeKey) $activeKey = 'reported';
+      $activeLabel = $labels[$activeKey] ?? $activeKey;
+      $activeStep  = $stepsByKey->get($activeKey);
+      if ($activeStep && $activeStep->done_date) {
+          $dateText = \Carbon\Carbon::parse($activeStep->done_date)->format('d.m.Y');
+      } elseif ($item->reported_at) {
+          $dateText = $item->reported_at->format('d.m.Y');
+      } else {
+          $dateText = '—';
+      }
+      $shipped  = $stepsByKey->get('shipped_to_service');
+      $repaired = $stepsByKey->get('repaired_shipped_back');
+      $closed   = $stepsByKey->get('closed');
+      $isShipped  = $shipped  && ($shipped->done_date  || $shipped->ttn);
+      $isRepaired = $repaired && ($repaired->done_date || $repaired->ttn);
+      $isClosed   = ($closed  && $closed->done_date)   || $item->status === 'done';
+      $borderClass = 'card-pre';
+      if ($isClosed)       $borderClass = 'card-done';
+      elseif ($isRepaired) $borderClass = 'card-repaired';
+      elseif ($isShipped)  $borderClass = 'card-service';
+      $logo = ($borderClass === 'card-service') ? '/img/sunfix.png' : '/img/solarglass.png';
+      $filesCount = $item->steps->sum(fn($s) => is_array($s->files) ? count($s->files) : 0);
+      $notesCount = $item->steps->filter(fn($s) => is_string($s->note) && trim($s->note) !== '')->count();
+    @endphp
+
+    <a href="{{ route('reclamations.show', $item->id) }}" class="card reclam-card reclam-link {{ $borderClass }}">
+        <div class="reclam-top">
+            <div class="reclam-title">
+                <div class="reclam-sub"><b>{{ $item->last_name ?: '—' }}</b></div>
+            </div>
+            <div class="reclam-status status-open">{{ $activeLabel }}</div>
+        </div>
+        <div class="reclam-body">
+            <div class="reclam-row">
+                <div class="muted">Нас. пункт</div>
+                <div class="right"><b>{{ $item->city ?: '—' }}</b></div>
+            </div>
+            <div class="reclam-row">
+                <div class="muted">Дата</div>
+                <div class="right">{{ $dateText }}</div>
+            </div>
+            @if($item->problem)
+            <div class="reclam-row">
+                <div class="muted">Проблема</div>
+                <div class="right">{{ $item->problem }}</div>
+            </div>
+            @endif
+        </div>
+        <div class="reclam-footer">
+            <div class="reclam-pill">📎 {{ $filesCount }} файли</div>
+            <div class="reclam-pill">💬 {{ $notesCount }} нотатки</div>
+            <div class="reclam-arrow">
+                <img src="{{ $logo }}" class="reclam-footer-logo">
             </div>
         </div>
-
-        <div class="reclam-row">
-            <div class="muted">Дата</div>
-            <div class="right">{{ $dateText }}</div>
-        </div>
-
-        @if($item->problem)
-        <div class="reclam-row">
-            <div class="muted">Проблема</div>
-            <div class="right">{{ $item->problem }}</div>
-        </div>
-        @endif
+    </a>
+    @endforeach
 
     </div>
-
-    <div class="reclam-footer">
-        <div class="reclam-pill">📎 {{ $filesCount }} файли</div>
-        <div class="reclam-pill">💬 {{ $notesCount }} нотатки</div>
-        <div class="reclam-arrow">
-            <img src="{{ $logo }}" class="reclam-footer-logo">
-        </div>
-
-    </div>
-
-</a>
-
-@endforeach
+  </div>
 
   @endif
 
 </main>
 
 @include('partials.nav.bottom')
+
+<script>
+  (function () {
+    var DONE_KEY = 'reclam_done_open';
+
+    document.querySelectorAll('.reclam-accordion__toggle').forEach(function (btn) {
+      var key    = btn.getAttribute('data-accordion');
+      var body   = document.getElementById('body-' + key);
+      var chev   = document.getElementById('chev-' + key);
+      if (!body) return;
+
+      if (key === 'done') {
+        var open = localStorage.getItem(DONE_KEY) === '1';
+        if (open) {
+          body.style.display = '';
+          if (chev) chev.classList.add('is-open');
+        }
+      }
+
+      btn.addEventListener('click', function () {
+        var visible = body.style.display !== 'none';
+        body.style.display = visible ? 'none' : '';
+        if (chev) chev.classList.toggle('is-open', !visible);
+        if (key === 'done') localStorage.setItem(DONE_KEY, visible ? '0' : '1');
+      });
+    });
+  })();
+</script>
 
 <script>
   (function () {
@@ -342,26 +442,22 @@ $notesCount = $item->steps
       viewer.classList.remove('hidden');
       viewer.setAttribute('aria-hidden', 'false');
 
-      // фокус на хрестик (щоб Esc/Tab були логічні)
       closeBtn?.focus({ preventScroll: true });
     }
 
     function closeViewer(){
-      // важливо: зняти фокус з кнопки, перш ніж ховати батька
       document.activeElement?.blur();
 
       viewer.classList.add('hidden');
       viewer.setAttribute('aria-hidden', 'true');
       img.src = '';
 
-      // повернути фокус туди, де був
       if (lastFocusEl && typeof lastFocusEl.focus === 'function') {
         lastFocusEl.focus({ preventScroll: true });
       }
       lastFocusEl = null;
     }
 
-    // 1) делегований клік по фотках (використай data-img-viewer)
     document.addEventListener('click', (e) => {
       const a = e.target.closest('a[data-img-viewer]');
       if (!a) return;
@@ -371,16 +467,13 @@ $notesCount = $item->steps
       if (src) openViewer(src);
     });
 
-    // 2) закриття по хрестику
     closeBtn?.addEventListener('click', (e) => {
       e.preventDefault();
       closeViewer();
     });
 
-    // 3) закриття по фону
     backdrop?.addEventListener('click', closeViewer);
 
-    // 4) Esc
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !viewer.classList.contains('hidden')) {
         closeViewer();
@@ -388,7 +481,6 @@ $notesCount = $item->steps
     });
   })();
 </script>
-
 
 </body>
 </html>

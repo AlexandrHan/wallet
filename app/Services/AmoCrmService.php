@@ -718,6 +718,85 @@ class AmoCrmService
         return $events;
     }
 
+    /**
+     * Check all tracked amoCRM deals and cancel projects whose deals no longer
+     * exist in amoCRM (deleted or permanently lost).
+     *
+     * Strategy: batch-fetch deals by ID from amoCRM API (50 per request).
+     * Any deal ID that amoCRM doesn't return is considered deleted → cancel project.
+     *
+     * @return array{cancelled: int, checked: int}
+     */
+    public function cancelDeletedAmoDeals(): array
+    {
+        $activeProjectIds = DB::table('sales_projects')
+            ->whereNotIn('status', ['cancelled', 'completed'])
+            ->pluck('id')
+            ->all();
+
+        $rows = AmoCrmDealMap::query()
+            ->whereNotNull('wallet_project_id')
+            ->whereIn('wallet_project_id', $activeProjectIds)
+            ->get(['amo_deal_id', 'wallet_project_id']);
+
+        if ($rows->isEmpty()) {
+            return ['checked' => 0, 'cancelled' => 0];
+        }
+
+        $cancelled = 0;
+        $checked   = 0;
+        $systemId  = $this->systemUserId();
+        $now       = Carbon::now();
+
+        foreach ($rows->chunk(50) as $batch) {
+            $batchIds = $batch->pluck('amo_deal_id')->map(fn ($id) => (int) $id)->all();
+
+            $query = ['limit' => 250, 'with' => 'contacts'];
+            foreach (array_values($batchIds) as $i => $id) {
+                $query['filter[id][' . $i . ']'] = $id;
+            }
+
+            $response  = $this->apiRequest('GET', '/leads', ['query' => $query]);
+            $returned  = collect(Arr::get($response->json(), '_embedded.leads', []))
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->flip();
+
+            foreach ($batch as $row) {
+                $amoDealId = (int) $row->amo_deal_id;
+                $checked++;
+
+                if ($returned->has($amoDealId)) {
+                    continue;
+                }
+
+                // Deal not returned by amoCRM → treat as deleted.
+                $affected = DB::table('sales_projects')
+                    ->where('id', $row->wallet_project_id)
+                    ->whereNotIn('status', ['cancelled', 'completed'])
+                    ->update([
+                        'status'             => 'cancelled',
+                        'cancelled_at'       => $now,
+                        'cancelled_by'       => $systemId,
+                        'cancelled_by_actor' => 'system',
+                    ]);
+
+                if ($affected > 0) {
+                    $cancelled++;
+                    Log::info('amocrm: deal deleted in AMO, project cancelled', [
+                        'amo_deal_id'        => $amoDealId,
+                        'wallet_project_id'  => $row->wallet_project_id,
+                    ]);
+                }
+            }
+
+            // Respect amoCRM rate limits (7 req/s), sleep between batches.
+            usleep(200_000);
+        }
+
+        return ['checked' => $checked, 'cancelled' => $cancelled];
+    }
+
     private function syncLead(array $lead): ?SalesProject
     {
         $amoDealId = (int) ($lead['id'] ?? 0);
