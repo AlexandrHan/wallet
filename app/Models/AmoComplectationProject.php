@@ -18,6 +18,7 @@ class AmoComplectationProject extends Model
         'responsible_name',
         'status_id',
         'raw_payload',
+        'won_at',
     ];
 
     protected $casts = [

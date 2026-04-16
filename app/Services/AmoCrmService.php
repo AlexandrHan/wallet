@@ -556,6 +556,7 @@ class AmoCrmService
                 $updated++;
             }
 
+            $wonStatusId = (int) config('services.amocrm.won_status_id', 142);
             $amoPayload = [
                 'wallet_project_id' => $project->id,
                 'client_name' => mb_substr($clientName, 0, 255),
@@ -566,6 +567,14 @@ class AmoCrmService
                 'status_id' => $dealStatusId,
                 'raw_payload' => $lead,
             ];
+
+            // Record timestamp when deal first moves to Won (grace period for finance view)
+            if ($dealStatusId === $wonStatusId) {
+                $prevStatusId = (int) ($row?->status_id ?? 0);
+                if ($prevStatusId !== $wonStatusId || empty($row?->won_at)) {
+                    $amoPayload['won_at'] = now()->toDateTimeString();
+                }
+            }
 
             if ($row) {
                 $row->update($amoPayload);

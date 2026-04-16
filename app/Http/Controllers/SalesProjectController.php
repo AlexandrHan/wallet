@@ -361,12 +361,18 @@ class SalesProjectController extends Controller
             // Show projects that are either:
             // 1. Synced from AmoCRM and currently in a finance stage
             // 2. Manually created in the finance layer (source_layer='finance')
+            // 3. Just moved to Won in AMO within the last 24 hours (grace period)
             if (!empty($financeStageIds)) {
+                $graceCutoff = now()->subHours(24)->toDateTimeString();
                 $projectsQuery
                     ->leftJoin('amo_complectation_projects', 'amo_complectation_projects.wallet_project_id', '=', 'sales_projects.id')
-                    ->where(function ($q) use ($financeStageIds) {
+                    ->where(function ($q) use ($financeStageIds, $graceCutoff) {
                         $q->whereIn('amo_complectation_projects.status_id', $financeStageIds)
-                          ->orWhere('sales_projects.source_layer', 'finance');
+                          ->orWhere('sales_projects.source_layer', 'finance')
+                          ->orWhere(function ($q2) use ($graceCutoff) {
+                              $q2->whereNotNull('amo_complectation_projects.won_at')
+                                 ->where('amo_complectation_projects.won_at', '>=', $graceCutoff);
+                          });
                     })
                     ->select('sales_projects.*');
             } else {
