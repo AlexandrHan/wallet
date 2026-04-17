@@ -67,9 +67,25 @@
       const body  = payload.notification?.body  || data.body  || '';
 
       // Skip visual + sound if WebSocket already handled this notification
-      const onTargetPage    = window.location.pathname.startsWith(targetPath) && targetPath !== '/';
-      const wsAlreadyPlayed = notifId && notifId === window._sgLastNotifId;
-      if (onTargetPage || wsAlreadyPlayed) return;
+      // Use localStorage for cross-tab / cross-reload dedup (TTL 15s)
+      const onTargetPage = window.location.pathname.startsWith(targetPath) && targetPath !== '/';
+      let alreadyHandled = false;
+      if (notifId) {
+        const lsKey = 'sg_handled_notif_' + notifId;
+        const ts    = Number(localStorage.getItem(lsKey) || 0);
+        if (Date.now() - ts < 15000) {
+          alreadyHandled = true;
+        } else {
+          localStorage.setItem(lsKey, String(Date.now()));
+          // Clean up old keys to avoid localStorage bloat
+          try {
+            Object.keys(localStorage)
+              .filter(k => k.startsWith('sg_handled_notif_'))
+              .forEach(k => { if (Date.now() - Number(localStorage.getItem(k) || 0) > 60000) localStorage.removeItem(k); });
+          } catch {}
+        }
+      }
+      if (onTargetPage || alreadyHandled) return;
 
       if (Notification.permission === 'granted') {
         swReg.showNotification(title, {

@@ -22,8 +22,9 @@ Schedule::command('amocrm:sync-deals')
     ->everyThirtyMinutes()
     ->withoutOverlapping();
 
+// Зміщено на хв:02 і хв:32 щоб не конкурувати з sync-deals за SQLite lock
 Schedule::command('amocrm:sync-complectation-projects')
-    ->everyThirtyMinutes()
+    ->cron('2,32 * * * *')
     ->withoutOverlapping();
 
 Schedule::command('zippy:sync-stock')

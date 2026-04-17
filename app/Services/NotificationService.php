@@ -63,15 +63,30 @@ class NotificationService
             Log::debug('NotificationService: broadcast failed', ['err' => $e->getMessage()]);
         }
 
-        // Fire push if user has a token
-        $pushToken = DB::table('users')->where('id', $userId)->value('push_token');
-        if ($pushToken) {
+        // Fire push to all registered tokens for this user
+        $tokens = DB::table('user_push_tokens')
+            ->where('user_id', $userId)
+            ->pluck('token')
+            ->all();
+
+        // Fallback: single token from users table (backward compat for old records)
+        if (empty($tokens)) {
+            $legacy = DB::table('users')->where('id', $userId)->value('push_token');
+            if ($legacy) {
+                $tokens = [$legacy];
+            }
+        }
+
+        if (!empty($tokens)) {
             $url   = ($type === 'message') ? '/messages' : '/';
             $badge = DB::table('notifications')
                 ->where('user_id', $userId)
                 ->where('is_read', false)
                 ->count();
-            (new PushService())->send($pushToken, $title, $message, $url, $type, array_merge($data, ['badge' => $badge, 'notification_id' => $id]));
+            $pushSvc = new PushService();
+            foreach ($tokens as $pushToken) {
+                $pushSvc->send($pushToken, $title, $message, $url, $type, array_merge($data, ['badge' => $badge, 'notification_id' => $id]));
+            }
         }
 
         return $id;

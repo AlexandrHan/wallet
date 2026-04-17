@@ -123,12 +123,16 @@ class PushService
                 ?? $response->json('error.message')
                 ?? '';
 
-            // Token is invalid — clear it from DB so we stop sending to a dead device
-            if ($response->status() === 404 || str_contains($errorCode, 'UNREGISTERED')) {
+            // Token is invalid — remove ONLY this specific token (not all user tokens)
+            if ($response->status() === 404 || str_contains($errorCode, 'UNREGISTERED') || str_contains($errorCode, 'NOT_FOUND')) {
+                \Illuminate\Support\Facades\DB::table('user_push_tokens')
+                    ->where('token', $deviceToken)
+                    ->delete();
+                // Also clear from users.push_token if it matches
                 \Illuminate\Support\Facades\DB::table('users')
                     ->where('push_token', $deviceToken)
                     ->update(['push_token' => null]);
-                Log::info('PushService: cleared stale push token', ['token' => substr($deviceToken, 0, 20) . '…']);
+                Log::info('PushService: removed stale push token', ['token' => substr($deviceToken, 0, 20) . '…']);
             } else {
                 Log::warning('PushService: FCM returned error', [
                     'status' => $response->status(),

@@ -137,7 +137,7 @@ function makeCollapsible(card, titleHtml, bodyHtml, openByDefault) {
   });
 }
 
-/* Build Назва | На складі | В проектах | Не вистачає | Залишок */
+/* Build Назва | На складі | В проектах | Доставлено | Активна потреба | Не вистачає | Залишок */
 function buildTable(rows) {
   const dataRows = rows.filter(r => !r.is_section);
   if (!dataRows.length) return '<div style="opacity:.4;font-size:13px;padding:8px 0;">Немає даних</div>';
@@ -148,6 +148,8 @@ function buildTable(rows) {
         <th>Назва</th>
         <th>На складі</th>
         <th>В проектах</th>
+        <th style="color:#6bf;">Доставлено</th>
+        <th>Активна потреба</th>
         <th>Не вистачає</th>
         <th>Залишок</th>
       </tr></thead>
@@ -157,16 +159,20 @@ function buildTable(rows) {
     if (r.is_section) {
       const isFirst = rows.slice(0, idx).every(x => x.is_section);
       html += `<tr class="eq-section-row${isFirst ? ' eq-section-first' : ''}">
-        <td colspan="5">${esc(r.name)}</td></tr>`;
+        <td colspan="7">${esc(r.name)}</td></tr>`;
       return;
     }
-    const stockCell     = r.stock     === 0 ? `<td class="eq-zero">—</td>` : `<td>${r.stock}</td>`;
-    const projectsCell  = r.projects  === 0 ? `<td class="eq-zero">—</td>` : `<td>${r.projects}</td>`;
-    const shortageCell  = r.shortage  > 0   ? `<td class="eq-shortage">${r.shortage}</td>` : `<td class="eq-zero">—</td>`;
-    const remainingCell = r.remaining > 0   ? `<td class="eq-remaining">${r.remaining}</td>` : `<td class="eq-zero">—</td>`;
+    const delivered   = r.delivered ?? 0;
+    const active      = r.active    ?? r.projects;
+    const stockCell     = r.stock   === 0 ? `<td class="eq-zero">—</td>` : `<td>${r.stock}</td>`;
+    const projectsCell  = r.projects === 0 ? `<td class="eq-zero">—</td>` : `<td>${r.projects}</td>`;
+    const deliveredCell = delivered  >  0  ? `<td style="color:#6bf;font-weight:600;">${delivered}</td>` : `<td class="eq-zero">—</td>`;
+    const activeCell    = active     === 0 ? `<td class="eq-zero">—</td>` : `<td>${active}</td>`;
+    const shortageCell  = r.shortage >  0  ? `<td class="eq-shortage">${r.shortage}</td>` : `<td class="eq-zero">—</td>`;
+    const remainingCell = r.remaining > 0  ? `<td class="eq-remaining">${r.remaining}</td>` : `<td class="eq-zero">—</td>`;
     html += `<tr>
       <td>${esc(r.name)}</td>
-      ${stockCell}${projectsCell}${shortageCell}${remainingCell}
+      ${stockCell}${projectsCell}${deliveredCell}${activeCell}${shortageCell}${remainingCell}
     </tr>`;
   });
 

@@ -36,14 +36,14 @@ class Kernel extends ConsoleKernel
         
         $schedule->command('reclamations:prune-files')->dailyAt('03:30');
 
-        // amoCRM deals -> Wallet projects (кожні 30хв)
+        // amoCRM deals -> Wallet projects (0:00, 0:30, 1:00 ...)
         $schedule->command('amocrm:sync-deals')
             ->everyThirtyMinutes()
             ->withoutOverlapping();
 
-        // amoCRM deals -> Finance (кожні 30хв)
+        // amoCRM deals -> Finance (хв:02 і хв:32) — зміщено на 2хв щоб не конкурувати з sync-deals за SQLite lock
         $schedule->command('amocrm:sync-complectation-projects')
-            ->everyThirtyMinutes()
+            ->cron('2,32 * * * *')
             ->withoutOverlapping();
 
         // Скасування проектів з видаленими угодами в amoCRM (щотижня, неділя 02:00)

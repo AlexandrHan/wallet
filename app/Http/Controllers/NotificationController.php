@@ -57,13 +57,32 @@ class NotificationController extends Controller
         return response()->json(['unread_count' => $this->svc->unreadCount($user->id)]);
     }
 
-    /** POST /api/push-token  { token } — save FCM token */
+    /** POST /api/push-token  { token, device_type? } — save FCM token */
     public function savePushToken(Request $request): JsonResponse
     {
-        $request->validate(['token' => ['required', 'string', 'max:4096']]);
-        DB::table('users')
-            ->where('id', auth()->id())
-            ->update(['push_token' => $request->input('token')]);
+        $request->validate([
+            'token'       => ['required', 'string', 'max:4096'],
+            'device_type' => ['nullable', 'string', 'max:64'],
+        ]);
+
+        $userId     = auth()->id();
+        $token      = $request->input('token');
+        $deviceType = $request->input('device_type');
+
+        // Upsert into user_push_tokens (no duplicates by token unique index)
+        $exists = DB::table('user_push_tokens')->where('token', $token)->exists();
+        if (!$exists) {
+            DB::table('user_push_tokens')->insert([
+                'user_id'     => $userId,
+                'token'       => $token,
+                'device_type' => $deviceType,
+                'created_at'  => now()->toDateTimeString(),
+            ]);
+        }
+
+        // Keep users.push_token in sync for backward compatibility
+        DB::table('users')->where('id', $userId)->update(['push_token' => $token]);
+
         return response()->json(['ok' => true]);
     }
 }

@@ -1943,7 +1943,8 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         };
 
         // Зведення по обладнанню (кількість однакових позицій)
-        $inverterSummary = [];
+        $inverterSummary  = [];  // активна потреба (delivered_inverter = 0)
+        $inverterTotalMap = [];  // всього в проектах (включно з доставленими)
         $bmsSummary = [];
         $batterySummary = [];
         $panelSummary = [];
@@ -1954,9 +1955,12 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
             $inverterDelivered = (int)($p->delivered_inverter ?? 0) === 1;
             $panelsDelivered   = (int)($p->delivered_panels   ?? 0) === 1;
 
-            if (!$inverterDelivered && !$isEmpty($p->inverter)) {
+            if (!$isEmpty($p->inverter)) {
                 $key = $normalizeInverterName(trim($p->inverter));
-                $inverterSummary[$key] = ($inverterSummary[$key] ?? 0) + 1;
+                $inverterTotalMap[$key] = ($inverterTotalMap[$key] ?? 0) + 1;
+                if (!$inverterDelivered) {
+                    $inverterSummary[$key] = ($inverterSummary[$key] ?? 0) + 1;
+                }
             }
             if (!$isEmpty($p->bms)) {
                 $key = trim($p->bms);
@@ -2007,14 +2011,19 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
             ->whereIn('m.amo_status_id', $activeStageIds)
             ->whereNotNull('p.panel_name')
             ->where('p.panel_name', '!=', '')
-            ->select('p.panel_name', 'p.panel_qty')
+            ->select('p.panel_name', 'p.panel_qty', 'p.delivered_panels')
             ->get();
 
-        $panelsByModelMap = [];
+        $panelsByModelMap  = [];  // total in all active projects
+        $panelsDeliveredMap = [];  // already delivered to site (delivered_panels = 1)
         foreach ($panelRowsRaw as $row) {
             if ($isEmpty($row->panel_name)) continue;
             $key = $normalizeEquipName(trim($row->panel_name));
-            $panelsByModelMap[$key] = ($panelsByModelMap[$key] ?? 0) + (int)($row->panel_qty ?? 0);
+            $qty = (int)($row->panel_qty ?? 0);
+            $panelsByModelMap[$key] = ($panelsByModelMap[$key] ?? 0) + $qty;
+            if ((int)($row->delivered_panels ?? 0) === 1) {
+                $panelsDeliveredMap[$key] = ($panelsDeliveredMap[$key] ?? 0) + $qty;
+            }
         }
         arsort($panelsByModelMap);
         $panelsByModel = collect($panelsByModelMap)
@@ -2026,14 +2035,19 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
             ->whereIn('m.amo_status_id', $activeStageIds)
             ->whereNotNull('p.battery_name')
             ->where('p.battery_name', '!=', '')
-            ->select('p.battery_name', 'p.battery_qty')
+            ->select('p.battery_name', 'p.battery_qty', 'p.delivered_inverter')
             ->get();
 
-        $batteriesByModelMap = [];
+        $batteriesByModelMap  = [];  // total in all active projects
+        $batteriesDeliveredMap = [];  // delivered (tied to delivered_inverter flag)
         foreach ($batteryRowsRaw as $row) {
             if ($isEmpty($row->battery_name)) continue;
             $key = $normalizeBatteryName(trim($row->battery_name));
-            $batteriesByModelMap[$key] = ($batteriesByModelMap[$key] ?? 0) + (int)($row->battery_qty ?? 0);
+            $qty = (int)($row->battery_qty ?? 0);
+            $batteriesByModelMap[$key] = ($batteriesByModelMap[$key] ?? 0) + $qty;
+            if ((int)($row->delivered_inverter ?? 0) === 1) {
+                $batteriesDeliveredMap[$key] = ($batteriesDeliveredMap[$key] ?? 0) + $qty;
+            }
         }
 
         // Нормалізований склад по моделях панелей
@@ -2054,37 +2068,45 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
             $stockBatteryMap[$key] = ($stockBatteryMap[$key] ?? 0) + (int)$row->qty;
         }
 
-        // Таблиця панелей: склад + проекти → нестача / залишок
+        // Таблиця панелей: склад + проекти → доставлено / активна потреба / нестача / залишок
         $panelsTableMap = [];
         foreach (array_unique(array_merge(array_keys($panelsByModelMap), array_keys($stockPanelMap))) as $key) {
-            $inProjects = $panelsByModelMap[$key] ?? 0;
-            $inStock    = $stockPanelMap[$key]    ?? 0;
+            $inProjects  = $panelsByModelMap[$key]   ?? 0;
+            $inDelivered = $panelsDeliveredMap[$key]  ?? 0;
+            $inActive    = max(0, $inProjects - $inDelivered);
+            $inStock     = $stockPanelMap[$key]       ?? 0;
             $panelsTableMap[] = [
                 'name'      => $key,
                 'stock'     => $inStock,
                 'projects'  => $inProjects,
-                'shortage'  => max(0, $inProjects - $inStock),
-                'remaining' => max(0, $inStock - $inProjects),
+                'delivered' => $inDelivered,
+                'active'    => $inActive,
+                'shortage'  => max(0, $inActive - $inStock),
+                'remaining' => max(0, $inStock - $inActive),
             ];
         }
         $panelsTableMap = array_values(array_filter($panelsTableMap, fn($r) => $r['projects'] > 0 || $r['stock'] > 0));
-        usort($panelsTableMap, fn($a, $b) => $b['shortage'] <=> $a['shortage'] ?: $b['projects'] <=> $a['projects']);
+        usort($panelsTableMap, fn($a, $b) => $b['shortage'] <=> $a['shortage'] ?: $b['active'] <=> $a['active']);
 
-        // Таблиця АКБ: склад + проекти → нестача / залишок
+        // Таблиця АКБ: склад + проекти → доставлено / активна потреба / нестача / залишок
         $batteriesTableMap = [];
         foreach (array_unique(array_merge(array_keys($batteriesByModelMap), array_keys($stockBatteryMap))) as $key) {
-            $inProjects = $batteriesByModelMap[$key] ?? 0;
-            $inStock    = $stockBatteryMap[$key]     ?? 0;
+            $inProjects  = $batteriesByModelMap[$key]   ?? 0;
+            $inDelivered = $batteriesDeliveredMap[$key]  ?? 0;
+            $inActive    = max(0, $inProjects - $inDelivered);
+            $inStock     = $stockBatteryMap[$key]        ?? 0;
             $batteriesTableMap[] = [
                 'name'      => $key,
                 'stock'     => $inStock,
                 'projects'  => $inProjects,
-                'shortage'  => max(0, $inProjects - $inStock),
-                'remaining' => max(0, $inStock - $inProjects),
+                'delivered' => $inDelivered,
+                'active'    => $inActive,
+                'shortage'  => max(0, $inActive - $inStock),
+                'remaining' => max(0, $inStock - $inActive),
             ];
         }
         $batteriesTableMap = array_values(array_filter($batteriesTableMap, fn($r) => $r['projects'] > 0 || $r['stock'] > 0));
-        usort($batteriesTableMap, fn($a, $b) => $b['shortage'] <=> $a['shortage'] ?: $b['projects'] <=> $a['projects']);
+        usort($batteriesTableMap, fn($a, $b) => $b['shortage'] <=> $a['shortage'] ?: $b['active'] <=> $a['active']);
 
         // Таблиця інверторів: склад (нормалізований) + проекти
         $stockInverterRows = \Illuminate\Support\Facades\DB::table('solarglass_stock')
@@ -2096,16 +2118,20 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
             $stockInverterMap[$key] = ($stockInverterMap[$key] ?? 0) + (int)$row->qty;
         }
         $invertersTable = [];
-        foreach (array_unique(array_merge(array_keys($inverterSummary), array_keys($stockInverterMap))) as $key) {
-            $inProjects = $inverterSummary[$key]   ?? 0;
-            $inStock    = $stockInverterMap[$key]  ?? 0;
+        foreach (array_unique(array_merge(array_keys($inverterTotalMap), array_keys($inverterSummary), array_keys($stockInverterMap))) as $key) {
+            $inProjects  = $inverterTotalMap[$key]  ?? 0;
+            $inActive    = $inverterSummary[$key]   ?? 0;
+            $inDelivered = max(0, $inProjects - $inActive);
+            $inStock     = $stockInverterMap[$key]  ?? 0;
             if ($inProjects === 0 && $inStock === 0) continue;
             $invertersTable[] = [
                 'name'      => $key,
                 'stock'     => $inStock,
                 'projects'  => $inProjects,
-                'shortage'  => max(0, $inProjects - $inStock),
-                'remaining' => max(0, $inStock - $inProjects),
+                'delivered' => $inDelivered,
+                'active'    => $inActive,
+                'shortage'  => max(0, $inActive - $inStock),
+                'remaining' => max(0, $inStock - $inActive),
             ];
         }
         // Секція: 1=X1 Hybrid, 2=X3 Hybrid, 3=X1 Grid, 4=X3 Grid, 5=Інші

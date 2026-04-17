@@ -184,8 +184,13 @@
         updateBadge();
         // message-type: play chat sound only when NOT already on the chat page
         // (on /messages the chat WS listener already plays chat.mp3)
-        // Store notification ID so FCM foreground handler can skip duplicate sound
+        // Store notification ID in localStorage so FCM foreground handler can skip duplicate
         window._sgLastNotifId = n.id;
+        if (n.id) {
+          try {
+            localStorage.setItem('sg_handled_notif_' + n.id, String(Date.now()));
+          } catch {}
+        }
         if (n.type === 'message') {
           // On /messages page the subscribeToChat WS listener already handles chat.mp3
           if (!window.location.pathname.startsWith('/messages')) {
