@@ -111,6 +111,64 @@ tbody {background-color: transparent;}
   background: transparent;
 }
 .eq-section-first td { padding-top: 2px; border-top: none !important; }
+
+/* ── MOBILE ONLY ─────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  /* hide column headers — labels shown via ::before on each cell */
+  .eq-table thead { display: none !important; }
+
+  /* each data row becomes a block */
+  .eq-table tbody tr {
+    display: block;
+    padding: 10px 0 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.10) !important;
+  }
+  .eq-table tbody tr:last-child { border-bottom: none !important; }
+
+  /* name cell: full-width block, wraps naturally */
+  .eq-table td:first-child {
+    display: block;
+    text-align: left;
+    font-weight: 600;
+    font-size: 13px;
+    padding: 0 0 6px 0;
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  /* numeric cells: inline-flex column — label on top, value below */
+  .eq-table td:not(:first-child) {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    font-size: 12px;
+    padding: 2px 10px 2px 0;
+    min-width: 44px;
+    text-align: center;
+    vertical-align: top;
+  }
+
+  /* mini label above value from data-label attribute */
+  .eq-table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 9px;
+    font-weight: 600;
+    opacity: .38;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    margin-bottom: 2px;
+    white-space: nowrap;
+  }
+
+  /* section header rows */
+  .eq-section-row { display: block !important; }
+  .eq-section-row td {
+    display: block !important;
+    padding: 12px 0 3px !important;
+    text-align: left;
+  }
+}
 </style>
 
 <script>
@@ -164,12 +222,12 @@ function buildTable(rows) {
     }
     const delivered   = r.delivered ?? 0;
     const active      = r.active    ?? r.projects;
-    const stockCell     = r.stock   === 0 ? `<td class="eq-zero">—</td>` : `<td>${r.stock}</td>`;
-    const projectsCell  = r.projects === 0 ? `<td class="eq-zero">—</td>` : `<td>${r.projects}</td>`;
-    const deliveredCell = delivered  >  0  ? `<td style="color:#6bf;font-weight:600;">${delivered}</td>` : `<td class="eq-zero">—</td>`;
-    const activeCell    = active     === 0 ? `<td class="eq-zero">—</td>` : `<td>${active}</td>`;
-    const shortageCell  = r.shortage >  0  ? `<td class="eq-shortage">${r.shortage}</td>` : `<td class="eq-zero">—</td>`;
-    const remainingCell = r.remaining > 0  ? `<td class="eq-remaining">${r.remaining}</td>` : `<td class="eq-zero">—</td>`;
+    const stockCell     = r.stock    === 0 ? `<td class="eq-zero" data-label="Склад">—</td>`         : `<td data-label="Склад">${r.stock}</td>`;
+    const projectsCell  = r.projects === 0 ? `<td class="eq-zero" data-label="Проекти">—</td>`       : `<td data-label="Проекти">${r.projects}</td>`;
+    const deliveredCell = delivered   >  0  ? `<td style="color:#6bf;font-weight:600;" data-label="Доставл.">${delivered}</td>` : `<td class="eq-zero" data-label="Доставл.">—</td>`;
+    const activeCell    = active      === 0 ? `<td class="eq-zero" data-label="Потреба">—</td>`      : `<td data-label="Потреба">${active}</td>`;
+    const shortageCell  = r.shortage  >  0  ? `<td class="eq-shortage" data-label="Нестача">${r.shortage}</td>` : `<td class="eq-zero" data-label="Нестача">—</td>`;
+    const remainingCell = r.remaining >  0  ? `<td class="eq-remaining" data-label="Залишок">${r.remaining}</td>` : `<td class="eq-zero" data-label="Залишок">—</td>`;
     html += `<tr>
       <td>${esc(r.name)}</td>
       ${stockCell}${projectsCell}${deliveredCell}${activeCell}${shortageCell}${remainingCell}

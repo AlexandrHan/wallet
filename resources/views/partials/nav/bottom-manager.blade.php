@@ -37,10 +37,16 @@
   <div class="tg-menu__content">
     <a class="tg-menu__item" style="margin-bottom:15px;" href="/">💼 Гаманець</a>
     <a class="tg-menu__item" style="margin-bottom:15px;" href="/finance">📈 Продажі</a>
-    <a class="tg-menu__item" style="margin-bottom:15px;" href="/solar-glass">🔆 Склад Солар Гласс</a>
-    <a class="tg-menu__item" style="margin-bottom:15px;" href="/salary/my">💰 Зарплатня</a>
+    <details class="tg-acc">
+      <summary class="tg-acc__title">📦 Склад</summary>
+      <div class="tg-acc__body">
+        <a class="tg-menu__item" href="/solar-glass">☀️ Solar Glass</a>
+        <a class="tg-menu__item" href="/equipment-orders">🛒 Замовлення обладнання</a>
+        <a class="tg-menu__item" href="/projects/delivered">🚚 Доставлено на об'єкт</a>
+      </div>
+    </details>
+    <a class="tg-menu__item" style="margin-top:6px;margin-bottom:15px;" href="/salary/my">💰 Зарплатня</a>
     <button type="button" class="tg-menu__item" style="margin-bottom:15px;" onclick="window.openRatesModalFlow?.(); location.hash='';">💱 Обмінник</button>
-    <a class="tg-menu__item" style="margin-bottom:15px;" href="/equipment-orders">📋 Залишки</a>
     <a class="tg-menu__item" href="/profile">👤 Профіль</a>
   </div>
 

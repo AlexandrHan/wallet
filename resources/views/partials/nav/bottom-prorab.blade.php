@@ -87,7 +87,16 @@
 
         <a class="tg-menu__item" style="margin-bottom:15px;" href="/stock">📦 Склад SunFix</a>
 
-        <a class="tg-menu__item" style="margin-bottom:15px;" href="/reclamations">🛠️ Сервіс</a>
+        <details class="tg-acc">
+          <summary class="tg-acc__title">📦 Склад SolarGlass</summary>
+          <div class="tg-acc__body">
+            <a class="tg-menu__item" href="/solar-glass">☀️ Solar Glass</a>
+            <a class="tg-menu__item" href="/equipment-orders">🛒 Замовлення обладнання</a>
+            <a class="tg-menu__item" href="/projects/delivered">🚚 Доставлено на об'єкт</a>
+          </div>
+        </details>
+
+        <a class="tg-menu__item" style="margin-top:6px;margin-bottom:15px;" href="/reclamations">🛠️ Сервіс</a>
         
         <details class="tg-acc">
           <summary class="tg-acc__title">🏗 Технічний відділ</summary>

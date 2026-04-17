@@ -1751,6 +1751,100 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         return view('projects.equipment-orders');
     });
 
+    // Доставлено на об'єкт — активні проекти з вже доставленим обладнанням
+    Route::middleware(['auth'])->get('/projects/delivered', function () {
+        $user = auth()->user();
+        $allowed = ['owner', 'ntv', 'manager', 'accountant'];
+        if ($user && $user->role === 'worker' && $user->position === 'foreman') {
+            // foreman also allowed
+        } elseif (!$user || !in_array($user->role, $allowed, true)) {
+            abort(403);
+        }
+        return view('projects.delivered-to-site');
+    });
+
+    Route::middleware(['auth'])->get('/api/projects/delivered', function () {
+        $user = auth()->user();
+        $allowed = ['owner', 'ntv', 'manager', 'accountant'];
+        $isForeman = $user && $user->role === 'worker' && $user->position === 'foreman';
+        if (!$isForeman && (!$user || !in_array($user->role, $allowed, true))) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
+        $activeStageIds = [38556547, 69586234, 38556550, 69593822, 69593826, 69593830, 69593834];
+        $stageNames = [
+            38556547 => 'Частково оплатив',
+            69586234 => 'Комплектація',
+            38556550 => 'Очікування доставки',
+            69593822 => 'Заплановане будівництво',
+            69593826 => 'Монтаж панелей',
+            69593830 => 'Електрична частина',
+            69593834 => 'Здача проекту',
+        ];
+
+        $rows = \Illuminate\Support\Facades\DB::table('sales_projects as p')
+            ->join('amocrm_deal_map as m', 'm.wallet_project_id', '=', 'p.id')
+            ->leftJoin('users as u', 'u.id', '=', 'p.lead_manager_user_id')
+            ->whereIn('m.amo_status_id', $activeStageIds)
+            ->where(function ($q) {
+                $q->where('p.delivered_panels', 1)
+                  ->orWhere('p.delivered_inverter', 1);
+            })
+            ->select([
+                'p.id',
+                'p.client_name',
+                'p.panel_name',
+                'p.panel_qty',
+                'p.inverter',
+                'p.battery_name',
+                'p.battery_qty',
+                'p.bms',
+                'p.delivered_panels',
+                'p.delivered_inverter',
+                'p.geo_location_link',
+                'm.amo_status_id',
+                'u.name as manager_name',
+            ])
+            ->orderBy('m.amo_status_id')
+            ->orderBy('p.client_name')
+            ->get();
+
+        $result = $rows->map(function ($r) use ($stageNames) {
+            $panels   = (int)($r->delivered_panels   ?? 0) === 1;
+            $inv      = (int)($r->delivered_inverter ?? 0) === 1;
+            $what = [];
+            if ($panels) {
+                $label = 'Панелі';
+                if ($r->panel_name && trim($r->panel_name, '-') !== '') {
+                    $label .= ' (' . trim($r->panel_name);
+                    if ($r->panel_qty) $label .= ' × ' . $r->panel_qty;
+                    $label .= ')';
+                }
+                $what[] = $label;
+            }
+            if ($inv) {
+                $parts = array_filter([
+                    ($r->inverter && trim($r->inverter, '-') !== '') ? 'Інвертор: ' . trim($r->inverter) : null,
+                    ($r->battery_name && trim($r->battery_name, '-') !== '')
+                        ? 'АКБ: ' . trim($r->battery_name) . ($r->battery_qty ? ' × ' . $r->battery_qty : '')
+                        : null,
+                    ($r->bms && trim($r->bms, '-') !== '') ? 'BMS: ' . trim($r->bms) : null,
+                ]);
+                $what[] = 'Інвертор+АКБ' . (count($parts) ? ' (' . implode(', ', $parts) . ')' : '');
+            }
+            return [
+                'id'             => $r->id,
+                'client_name'    => $r->client_name,
+                'stage'          => $stageNames[$r->amo_status_id] ?? '—',
+                'delivered_what' => $what,
+                'geo_link'       => $r->geo_location_link ?: null,
+                'manager'        => $r->manager_name ?: '—',
+            ];
+        });
+
+        return response()->json($result->values());
+    });
+
     // Suspicious actions — Hlushchenko only
     Route::middleware(['auth', 'only.owner'])->get('/suspicious-actions', function () {
         $user = auth()->user();
