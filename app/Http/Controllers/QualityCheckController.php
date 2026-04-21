@@ -785,6 +785,37 @@ class QualityCheckController extends Controller
             $this->checkAndFinalize($check->project_id);
         });
 
+        // Notify owner when a foreman (not owner) approves quality check
+        if ($user->role !== 'owner') {
+            $project = DB::table('sales_projects')->where('id', $check->project_id)->first();
+            $isElectricianCheck = !empty($check->service_request_id) ? false : ($check->check_type === 'electric');
+            if (!empty($check->service_request_id)) {
+                $notifTitle = '✅ Сервісний виклик підтверджено';
+                $notifBody  = "✅ Сервісний виклик підтверджено прорабом\n\n"
+                    . "👷 Прораб: {$user->name}\n"
+                    . "📍 Клієнт: " . ($project->client_name ?? '—') . "\n"
+                    . "📅 Дата: " . now()->format('d.m.Y');
+            } elseif ($isElectricianCheck) {
+                $notifTitle = '✅ Електромонтаж підтверджено';
+                $notifBody  = "✅ Контроль якості електромонтажу підтверджено прорабом\n\n"
+                    . "👷 Прораб: {$user->name}\n"
+                    . "📍 Проект: " . ($project->client_name ?? '—') . "\n"
+                    . "📅 Дата: " . now()->format('d.m.Y');
+            } else {
+                $notifTitle = '✅ Монтаж підтверджено';
+                $notifBody  = "✅ Контроль якості монтажу підтверджено прорабом\n\n"
+                    . "👷 Прораб: {$user->name}\n"
+                    . "📍 Проект: " . ($project->client_name ?? '—') . "\n"
+                    . "📅 Дата: " . now()->format('d.m.Y');
+            }
+
+            $notifService = app(\App\Services\NotificationService::class);
+            $owners = DB::table('users')->where('role', 'owner')->get();
+            foreach ($owners as $owner) {
+                $notifService->send((int) $owner->id, $notifTitle, $notifBody, 'system');
+            }
+        }
+
         return response()->json(['ok' => true]);
     }
 

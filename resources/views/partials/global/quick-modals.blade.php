@@ -207,36 +207,104 @@
         }
 
         const ownerActors = ['hlushchenko', 'kolisnyk'];
-        const roleLabels = {
-          accountant: 'Соловей',
-          foreman: 'Оніпко',
-          ntv: 'НТВ',
-          serviceman_1: 'Савенков',
-          serviceman_2: 'Малінін',
-        };
 
-        const staffWallets = wallets.filter(w => {
-          const owner = w?.owner;
-          if (!owner) return false;
-          if (ownerActors.includes(owner)) return false;
-          return true;
-        });
+        const groups = [
+          {
+            label: '🏗 Прораб',
+            actors: ['foreman'],
+            names: { foreman: 'Оніпко' },
+          },
+          {
+            label: '🔧 Монтажники',
+            actors: ['kryzhanovskyi', 'kukuiaka', 'shevchenko', 'samoilenko'],
+            names: { kryzhanovskyi: 'Крижановський', kukuiaka: 'Кукуяка', shevchenko: 'Шевченко', samoilenko: 'Самойленко' },
+          },
+          {
+            label: '⚡ Електрики',
+            actors: ['serviceman_1', 'serviceman_2'],
+            names: { serviceman_1: 'Савенков', serviceman_2: 'Малінін' },
+          },
+          {
+            label: '🏢 НТВ',
+            actors: ['ntv'],
+            names: { ntv: 'НТВ' },
+          },
+          {
+            label: '📈 Менеджери',
+            actors: ['shkarban', 'zelenko', 'vdovenko'],
+            names: { shkarban: 'Шкарбан', zelenko: 'Зеленько', vdovenko: 'Вдовенко' },
+          },
+          {
+            label: '🧾 Бухгалтер',
+            actors: ['accountant'],
+            names: { accountant: 'Бухгалтер' },
+          },
+        ];
+
+        const currencySymbol = { UAH: '₴', USD: '$', EUR: '€' };
+
+        const staffWallets = wallets.filter(w => w?.owner && !ownerActors.includes(w.owner));
 
         if (staffWallets.length === 0) {
           list.innerHTML = '<div class="project-history-empty">Кеш рахунків співробітників не знайдено</div>';
-        } else {
-          list.innerHTML = staffWallets.map(w => `
-            <button type="button" class="rate-card" style="width:100%; text-align:left;" onclick="window.openStaffWallet?.(${Number(w.id)})">
-              <div style="display:flex;justify-content:space-between;align-items:center;">
-                <div class="rate-title">${String(w.name || '')}</div>
-                <div class="staff-badge">${String(roleLabels[w.owner] || w.owner || '')}</div>
-              </div>
-              <div style="margin-top:6px;font-size:16px;font-weight:700;">
-                ${Number(w.balance || 0).toFixed(2)} ${String(w.currency || '')}
-              </div>
-            </button>
-          `).join('');
+          setStaffModalVisible(true);
+          return;
         }
+
+        // Index wallets by owner
+        const byOwner = {};
+        staffWallets.forEach(w => {
+          if (!byOwner[w.owner]) byOwner[w.owner] = [];
+          byOwner[w.owner].push(w);
+        });
+
+        let html = '<div style="display:flex;flex-direction:column;gap:20px;padding-bottom:12px;">';
+
+        groups.forEach(group => {
+          const groupWallets = group.actors.flatMap(a => byOwner[a] || []);
+          if (groupWallets.length === 0) return;
+
+          html += `<div>
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;opacity:.45;margin-bottom:8px;padding:0 2px;">${group.label}</div>
+            <div style="display:flex;flex-direction:column;gap:6px;">`;
+
+          // Group by actor (person)
+          group.actors.forEach(actor => {
+            const personWallets = byOwner[actor] || [];
+            if (personWallets.length === 0) return;
+
+            const personName = group.names[actor] || actor;
+
+            // Sort: UAH first, then USD, EUR
+            const order = ['UAH', 'USD', 'EUR'];
+            personWallets.sort((a, b) => (order.indexOf(a.currency) - order.indexOf(b.currency)));
+
+            const currencyBadges = personWallets.map(w => {
+              const bal = Number(w.balance || 0);
+              const sym = currencySymbol[w.currency] || w.currency;
+              const color = bal < 0 ? '#ff6b6b' : bal === 0 ? 'rgba(255,255,255,.35)' : '#4ade80';
+              return `<button type="button"
+                onclick="window.openStaffWallet?.(${Number(w.id)})"
+                style="background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:8px;
+                       padding:5px 10px;cursor:pointer;text-align:center;min-width:72px;flex-shrink:0;">
+                <div style="font-size:10px;opacity:.5;font-weight:600;letter-spacing:.04em;">${String(w.currency)}</div>
+                <div style="font-size:14px;font-weight:700;color:${color};">${sym}${Math.abs(bal).toLocaleString('uk-UA', {minimumFractionDigits:2, maximumFractionDigits:2})}</div>
+              </button>`;
+            }).join('');
+
+            html += `<div style="display:flex;align-items:center;justify-content:space-between;
+                                  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
+                                  border-radius:12px;padding:10px 14px;gap:10px;">
+              <div style="font-weight:600;font-size:14px;white-space:nowrap;">${personName}</div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">${currencyBadges}</div>
+            </div>`;
+          });
+
+          html += `</div></div>`;
+        });
+
+        html += '</div>';
+        list.innerHTML = html;
 
         setStaffModalVisible(true);
       } catch (err) {

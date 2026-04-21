@@ -488,6 +488,10 @@ document.addEventListener('DOMContentLoaded', async function () {
             ${esc(project.installation_team || 'Бригада не вказана')}
           </div>
         </div>
+        ${project.mounting_system ? `
+        <div class="project-header-row project-header-sub" style="margin-top:2px;">
+          <div style="font-size:11px; opacity:.7;">🔩 ${esc(project.mounting_system)}</div>
+        </div>` : ''}
       </div>
 
       <div class="project-body">
@@ -576,6 +580,9 @@ document.addEventListener('DOMContentLoaded', async function () {
                 <div class="btn project-two-col-row-side">${esc(project.panel_qty ?? '—')}</div>
               </div>
             </div>
+
+            <div class="project-field-label">Система кріплень</div>
+            <div class="btn project-input-full">${esc(project.mounting_system || '—')}</div>
           </div>
         </div>
 

@@ -271,9 +271,29 @@ async function loadEquipmentOrders() {
 
   // ── ☀️ ФОТОМОДУЛІ ────────────────────────────────────────
   if (tables.panels.length) {
+    // Group by brand (first word of normalized name)
+    const brandOrder = ['Trina', 'Longi', 'Jinko', 'Canadian'];
+    const brandGroups = {};
+    tables.panels.forEach(r => {
+      const brand = r.name ? r.name.split(' ')[0] : 'Інше';
+      if (!brandGroups[brand]) brandGroups[brand] = [];
+      brandGroups[brand].push(r);
+    });
+    const sortedBrands = Object.keys(brandGroups).sort((a, b) => {
+      const ai = brandOrder.indexOf(a), bi = brandOrder.indexOf(b);
+      if (ai !== -1 && bi !== -1) return ai - bi;
+      if (ai !== -1) return -1;
+      if (bi !== -1) return 1;
+      return a.localeCompare(b);
+    });
+    const panelsWithSections = [];
+    sortedBrands.forEach(brand => {
+      panelsWithSections.push({ is_section: true, name: brand });
+      brandGroups[brand].forEach(r => panelsWithSections.push(r));
+    });
     makeCard(
       '<span style="font-weight:800;font-size:15px;">☀️ Фотомодулі</span>',
-      buildTable(tables.panels)
+      buildTable(panelsWithSections)
     );
   }
 

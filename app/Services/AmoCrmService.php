@@ -353,9 +353,11 @@ class AmoCrmService
 
             // Use full lead payload to ensure custom_fields_values are available.
             $fullLead = $this->getLeadById($amoDealId);
-            if (is_array($fullLead) && !empty($fullLead)) {
-                $lead = $fullLead;
+            if (!is_array($fullLead) || empty($fullLead) || !empty($fullLead['is_deleted'])) {
+                AmoComplectationProject::where('amo_deal_id', $amoDealId)->delete();
+                continue;
             }
+            $lead = $fullLead;
 
             $dealStatusId = (int) ($lead['status_id'] ?? 0);
             if (!in_array($dealStatusId, $financeStageIds, true)) {
@@ -422,7 +424,9 @@ class AmoCrmService
                 }
 
                 $fullLead = $this->getLeadById($amoDealId);
-                if (!is_array($fullLead) || empty($fullLead)) {
+                if (!is_array($fullLead) || empty($fullLead) || !empty($fullLead['is_deleted'])) {
+                    AmoComplectationProject::where('amo_deal_id', $amoDealId)->delete();
+                    $recentlySyncedIds[] = $amoDealId;
                     continue;
                 }
 
@@ -448,16 +452,16 @@ class AmoCrmService
         $processedIds = [];
 
         foreach ($staleRows as $row) {
-            $lead = $this->getLeadById((int) $row->amo_deal_id);
-            if (!is_array($lead) || empty($lead)) {
-                // Still mark as processed so it's not retried immediately.
-                $processedIds[] = (int) $row->amo_deal_id;
+            $dealId = (int) $row->amo_deal_id;
+            $lead = $this->getLeadById($dealId);
+            if (!is_array($lead) || empty($lead) || !empty($lead['is_deleted'])) {
+                AmoComplectationProject::where('amo_deal_id', $dealId)->delete();
                 continue;
             }
 
             $result = $this->upsertDeal($lead, onlyUpdate: true);
             $updated += $result['updated'];
-            $processedIds[] = (int) $row->amo_deal_id;
+            $processedIds[] = $dealId;
         }
 
         // Always bump updated_at on processed rows so they cycle to the back of the queue,
@@ -611,6 +615,7 @@ class AmoCrmService
         $bms = $this->extractLeadFieldValue($lead, ['BMS', 'БМС']);
         $battery = $this->extractLeadFieldValue($lead, ['АКБ', 'Акумулятор', 'Батарея', 'Battery'], [1200259]);
         $panels = $this->extractLeadFieldValue($lead, ['Панелі', 'Панели', 'ФЕМ', 'Сонячні панелі'], [1200253]);
+        $mountingSystem = $this->extractLeadFieldAllValues($lead, [], [1204253]);
         // "Мета встановлення" (field_id=1208547): значення "ЗТ", "ЗТ + резерв", "Зелений тариф" тощо
         $metaRaw = $this->extractLeadFieldValue($lead, ['Мета встановлення', 'Зелений тариф', 'Зеленый тариф', 'Green tariff'], [1208547]);
         $phone = $this->extractLeadPhone($lead);
@@ -636,6 +641,9 @@ class AmoCrmService
         }
         if ($this->hasSalesProjectColumn('panel_name') && $panels !== null) {
             $payload['panel_name'] = mb_substr($panels, 0, 255);
+        }
+        if ($this->hasSalesProjectColumn('mounting_system') && $mountingSystem !== null) {
+            $payload['mounting_system'] = mb_substr($mountingSystem, 0, 500);
         }
         if ($this->hasSalesProjectColumn('panel_qty') && $panels !== null) {
             $panelQty = $this->extractQuantity($panels);
@@ -1041,6 +1049,24 @@ class AmoCrmService
                     return $value;
                 }
             }
+        }
+
+        return null;
+    }
+
+    private function extractLeadFieldAllValues(array $lead, array $fieldNames, array $fieldIds = []): ?string
+    {
+        $normalized = collect($fieldNames)->map(fn ($n) => mb_strtolower(trim((string) $n)))->filter()->values()->all();
+        $normalizedIds = collect($fieldIds)->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0)->values()->all();
+
+        foreach ((array) ($lead['custom_fields_values'] ?? []) as $field) {
+            $currentId = (int) ($field['field_id'] ?? 0);
+            $currentName = mb_strtolower(trim((string) ($field['field_name'] ?? '')));
+            if (!in_array($currentId, $normalizedIds, true) && !in_array($currentName, $normalized, true)) {
+                continue;
+            }
+            $values = array_filter(array_map(fn ($v) => trim((string) ($v['value'] ?? '')), (array) ($field['values'] ?? [])));
+            return $values ? implode(', ', $values) : null;
         }
 
         return null;

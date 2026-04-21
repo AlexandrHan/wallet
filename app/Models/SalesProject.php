@@ -34,6 +34,7 @@ class SalesProject extends Model
         'delivered_battery',
         'panel_name',
         'panel_qty',
+        'mounting_system',
         'delivered_panels',
         'electrician',
         'electrician_note',

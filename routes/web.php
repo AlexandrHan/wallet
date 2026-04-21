@@ -1993,9 +1993,8 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
                     if ((int)$num >= 400 && (int)$num <= 700) { $watts = (int)$num; break; }
                 }
             }
-            if (preg_match('/(?<![a-zA-Z])bifacial(?![a-zA-Z])/i', $raw))           $suffix = ' Bifacial';
-            elseif (preg_match('/(?<![a-zA-Z])(bdv|bdf|bd|bif)(?![a-zA-Z])/i', $raw)) $suffix = ' BD';
-            else                                                                         $suffix = '';
+            if (preg_match('/(?<![a-zA-Z])(bifacial|bdv|bdf|bif|bd|bf|bi)(?![a-zA-Z])/i', $raw)) $suffix = ' Bifacial';
+            else                                                                                   $suffix = '';
             if ($brand && $watts) return "$brand $watts$suffix";
             if ($watts)           return "{$watts}W$suffix";
             return preg_replace('/[\s,\-\/]+\d+\s*шт.*$/ui', '', trim($raw)) ?: trim($raw);
@@ -2082,6 +2081,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         $allEquip = \Illuminate\Support\Facades\DB::table('amocrm_deal_map as m')
             ->join('sales_projects as p', 'p.id', '=', 'm.wallet_project_id')
             ->whereIn('m.amo_status_id', $activeStageIds)
+            ->whereNotIn('p.status', ['cancelled', 'completed'])
             ->select(
                 \Illuminate\Support\Facades\DB::raw('SUM(COALESCE(p.panel_qty, 0)) as panels_needed'),
                 \Illuminate\Support\Facades\DB::raw('SUM(COALESCE(p.battery_qty, 0)) as batteries_needed'),
@@ -2103,6 +2103,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         $panelRowsRaw = \Illuminate\Support\Facades\DB::table('amocrm_deal_map as m')
             ->join('sales_projects as p', 'p.id', '=', 'm.wallet_project_id')
             ->whereIn('m.amo_status_id', $activeStageIds)
+            ->whereNotIn('p.status', ['cancelled', 'completed'])
             ->whereNotNull('p.panel_name')
             ->where('p.panel_name', '!=', '')
             ->select('p.panel_name', 'p.panel_qty', 'p.delivered_panels')
@@ -2127,6 +2128,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         $batteryRowsRaw = \Illuminate\Support\Facades\DB::table('amocrm_deal_map as m')
             ->join('sales_projects as p', 'p.id', '=', 'm.wallet_project_id')
             ->whereIn('m.amo_status_id', $activeStageIds)
+            ->whereNotIn('p.status', ['cancelled', 'completed'])
             ->whereNotNull('p.battery_name')
             ->where('p.battery_name', '!=', '')
             ->select('p.battery_name', 'p.battery_qty', 'p.delivered_inverter')

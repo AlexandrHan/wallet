@@ -678,6 +678,10 @@ async function loadConstructionProjects() {
             ${esc(p.installation_team || 'Бригада не вказана')}
           </div>
         </div>
+        ${p.mounting_system ? `
+        <div class="project-header-row project-header-sub" style="margin-top:2px;">
+          <div style="font-size:11px; opacity:.7;">🔩 ${esc(p.mounting_system)}</div>
+        </div>` : ''}
       </div>
 
       <div class="project-body">
@@ -769,6 +773,9 @@ async function loadConstructionProjects() {
                 <input type="number" class="btn project-two-col-row-side" data-field="panel_qty" value="${p.panel_qty ?? ''}" placeholder="0">
               </div>
             </div>
+
+            <div class="project-field-label">Система кріплень</div>
+            <input class="btn project-input-full" data-field="mounting_system" value="${esc(p.mounting_system)}" placeholder="Система кріплень">
 
             <hr class="project-divider" style="margin:14px 0 10px;">
 
@@ -951,6 +958,7 @@ async function loadConstructionProjects() {
 
   // Групи по AmoCRM-етапах (пізніші етапи вгорі)
   const AMO_STAGES = [
+    { id: 49782427, name: 'Остаточна оплата' },
     { id: 69593834, name: 'Здача проекту замовнику' },
     { id: 69593830, name: 'Електрична частина' },
     { id: 69593826, name: 'Монтаж сонячних панелей' },
