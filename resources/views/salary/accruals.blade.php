@@ -119,21 +119,37 @@ function renderWorkerBlock(pendingGroup, paidForUser) {
   // Pending rows (with penalty highlighting)
   const pendingRows = pendingAccruals.map(a => {
     const isPenalty = a.is_penalty || Number(a.amount) < 0;
-    return `
-    <div style="display:flex; justify-content:space-between; align-items:flex-start;
-      padding:8px 0; border-bottom:1px solid rgba(255,255,255,.07);
-      ${isPenalty ? 'background:rgba(229,62,62,.06); margin:0 -12px; padding-left:12px; padding-right:12px;' : ''}">
-      <div style="flex:1; min-width:0;">
-        <div style="font-size:14px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-          ${isPenalty ? '<span style="font-size:11px; font-weight:700; background:rgba(229,62,62,.25); color:#f88; padding:1px 6px; border-radius:6px; white-space:nowrap;">⚠ Штраф</span>' : ''}
-          <span>${esc(a.client_name)}</span>
+    const extraWorks = String(a.extra_works || '').trim();
+    const extraWorksHtml = extraWorks ? `
+      <details style="margin-top:6px; margin-bottom:2px;">
+        <summary style="cursor:pointer; font-size:12px; font-weight:700; color:#93c5fd;
+          opacity:.9; padding:3px 0; list-style:none; user-select:none;">
+          ✏️ Додаткові роботи
+        </summary>
+        <div style="margin-top:5px; padding:8px 10px; border-radius:7px;
+          background:rgba(59,130,246,.1); border:1px solid rgba(59,130,246,.25);
+          font-size:13px; white-space:pre-wrap; line-height:1.5;">
+          ${esc(extraWorks)}
         </div>
-        <div style="font-size:11px; opacity:.55; margin-top:2px;">${esc(a.details || '')} • ${fdate(a.created_at)}</div>
+      </details>
+    ` : '';
+    return `
+    <div style="padding:8px 0; border-bottom:1px solid rgba(255,255,255,.07);
+      ${isPenalty ? 'background:rgba(229,62,62,.06); margin:0 -12px; padding-left:12px; padding-right:12px;' : ''}">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <div style="flex:1; min-width:0;">
+          <div style="font-size:14px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+            ${isPenalty ? '<span style="font-size:11px; font-weight:700; background:rgba(229,62,62,.25); color:#f88; padding:1px 6px; border-radius:6px; white-space:nowrap;">⚠ Штраф</span>' : ''}
+            <span>${esc(a.client_name)}</span>
+          </div>
+          <div style="font-size:11px; opacity:.55; margin-top:2px;">${esc(a.details || '')} • ${fdate(a.created_at)}</div>
+        </div>
+        <div style="font-size:14px; font-weight:700; white-space:nowrap; padding-left:12px;
+          ${isPenalty ? 'color:#f88;' : ''}">
+          ${isPenalty ? '−' : ''}${fmoney(Math.abs(Number(a.amount)), a.currency)}
+        </div>
       </div>
-      <div style="font-size:14px; font-weight:700; white-space:nowrap; padding-left:12px;
-        ${isPenalty ? 'color:#f88;' : ''}">
-        ${isPenalty ? '−' : ''}${fmoney(Math.abs(Number(a.amount)), a.currency)}
-      </div>
+      ${extraWorksHtml}
     </div>
   `}).join('');
 

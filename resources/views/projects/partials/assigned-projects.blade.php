@@ -65,6 +65,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
   let savedOpen = {};          // cardKey → { bodyVisible, openSectionIndexes[] }
   let savedAccordionState = {}; // accKey → open (bool), persists across refreshes
+  let savedExtraWorks = {};    // projectId → string, preserves unsaved textarea content
 
   function captureOpenState() {
     savedOpen = {};
@@ -84,6 +85,9 @@ document.addEventListener('DOMContentLoaded', async function () {
         if (s.classList.contains('is-open')) openSections.push(i);
       });
       savedOpen[key] = { bodyVisible: true, openSections };
+
+      const ta = body.querySelector('.extra-works-textarea');
+      if (ta) savedExtraWorks[ta.dataset.projectId] = ta.value;
     });
   }
 
@@ -110,6 +114,11 @@ document.addEventListener('DOMContentLoaded', async function () {
       if (expandBtn && sections.length > 0) {
         const allOpen = Array.from(sections).every(s => s.classList.contains('is-open'));
         expandBtn.textContent = allOpen ? 'Згорнути проект' : 'Розкрити проект';
+      }
+
+      const ta = body.querySelector('.extra-works-textarea');
+      if (ta && savedExtraWorks.hasOwnProperty(ta.dataset.projectId)) {
+        ta.value = savedExtraWorks[ta.dataset.projectId];
       }
     });
   }
@@ -616,8 +625,28 @@ document.addEventListener('DOMContentLoaded', async function () {
               <div class="btn project-textarea" style="text-align:left; cursor:default; white-space:pre-wrap;">${esc(project._todayDescription || project.installation_team_task_note)}</div>
             ` : ''}
 
-            <div class="project-field-label">Доп. роботи</div>
-            <div class="btn project-input-full">${esc(project.extra_works || '—')}</div>
+          </div>
+        </div>
+
+        <div class="project-section" data-section>
+          <button type="button" class="project-section-toggle">
+            <span>✏️ Додаткові роботи${project.extra_works ? ' ●' : ''}</span>
+            <span class="project-section-caret">▸</span>
+          </button>
+          <div class="project-section-body">
+            ${AUTH_USER?.role === 'worker' ? `
+              <textarea
+                class="btn project-textarea extra-works-textarea"
+                placeholder="Опишіть виконані додаткові роботи..."
+                style="width:100%; resize:vertical; min-height:100px; text-align:left; cursor:text;"
+                data-project-id="${project.id}"
+              >${esc(project.extra_works || '')}</textarea>
+              <button type="button" class="btn save-extra-works-btn"
+                data-project-id="${project.id}"
+                style="width:100%; margin-top:6px; background:rgba(59,130,246,.25); color:#93c5fd; border:1px solid rgba(59,130,246,.4); font-weight:600;">
+                💾 Зберегти
+              </button>
+            ` : `<div class="btn project-textarea" style="white-space:pre-wrap; text-align:left; cursor:default;">${esc(project.extra_works || '—')}</div>`}
           </div>
         </div>
 
@@ -781,6 +810,52 @@ document.addEventListener('DOMContentLoaded', async function () {
           alert('Помилка з\'єднання');
           this.disabled = false;
           this.textContent = '🔧 Виправили недоліки';
+        }
+      });
+    }
+
+    // ── Save extra works ──
+    const saveExtraWorksBtn = card.querySelector('.save-extra-works-btn');
+    if (saveExtraWorksBtn) {
+      saveExtraWorksBtn.addEventListener('click', async function (e) {
+        e.stopPropagation();
+        const textarea = card.querySelector('.extra-works-textarea');
+        const text = textarea ? textarea.value : '';
+        const origLabel = this.textContent;
+        this.disabled = true;
+        this.textContent = 'Збереження...';
+        try {
+          const r = await fetch(`/api/projects/${project.id}/extra-works`, {
+            method: 'POST',
+            headers: {
+              'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ extra_works: text }),
+          });
+          const data = await r.json();
+          if (r.ok && data.ok) {
+            this.textContent = '✅ Збережено';
+            this.style.background = 'rgba(34,197,94,.2)';
+            this.style.color = '#86efac';
+            this.style.borderColor = 'rgba(34,197,94,.4)';
+            setTimeout(() => {
+              this.disabled = false;
+              this.textContent = origLabel;
+              this.style.background = '';
+              this.style.color = '';
+              this.style.borderColor = '';
+            }, 2000);
+          } else {
+            alert(data.error || 'Помилка збереження');
+            this.disabled = false;
+            this.textContent = origLabel;
+          }
+        } catch {
+          alert('Помилка з\'єднання');
+          this.disabled = false;
+          this.textContent = origLabel;
         }
       });
     }

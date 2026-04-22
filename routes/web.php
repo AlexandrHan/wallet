@@ -1714,6 +1714,28 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         Route::post('/api/service-requests/{id}/complete',
             [\App\Http\Controllers\QualityCheckController::class, 'completeService']);
 
+        // Worker: save additional works note
+        Route::post('/api/projects/{id}/extra-works', function (\Illuminate\Http\Request $request, $id) {
+            $user = auth()->user();
+            if (!$user || $user->role !== 'worker') {
+                return response()->json(['error' => 'Немає доступу'], 403);
+            }
+
+            $data = $request->validate(['extra_works' => 'nullable|string|max:2000']);
+
+            $project = DB::table('sales_projects')->where('id', $id)->first();
+            if (!$project) {
+                return response()->json(['error' => 'Проект не знайдено'], 404);
+            }
+
+            DB::table('sales_projects')->where('id', $id)->update([
+                'extra_works' => $data['extra_works'] ?? null,
+                'updated_at' => now(),
+            ]);
+
+            return response()->json(['ok' => true]);
+        });
+
         // Owner: salary accruals
         Route::get('/salary/accruals',
             [\App\Http\Controllers\QualityCheckController::class, 'accruals'])

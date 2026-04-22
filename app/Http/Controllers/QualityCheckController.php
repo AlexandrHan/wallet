@@ -1174,6 +1174,7 @@ class QualityCheckController extends Controller
                 'u.name as user_name',
                 'sp.client_name',
                 'sp.construction_status',
+                'sp.extra_works',
             ])
             ->orderBy('u.name')
             ->orderBy('sa.created_at')

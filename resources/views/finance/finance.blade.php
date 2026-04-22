@@ -42,9 +42,9 @@
 
 
   <div class="card">
-    <div>
-
-      <button id="createProjectBtn" class="btn" style="align-items:center;width: 100%;background:rgba(84, 192, 134, 0.71); margin-bottom:0;">➕ Новий проект</button>
+    <div style="display:flex; gap:8px;">
+      <button id="createProjectBtn" class="btn" style="align-items:center;flex:1;background:rgba(84, 192, 134, 0.71); margin-bottom:0;">➕ Новий проект</button>
+      <button onclick="location.reload()" class="btn" style="margin-bottom:0; padding:0 16px;">🔄 Оновити</button>
     </div>
   </div>
 

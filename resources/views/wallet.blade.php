@@ -107,7 +107,7 @@
     <div class="row content">
 
       <button type="button" class="btn " id="addWallet">+</button>
-      <button type="button" class="btn" id="refresh">Оновити</button>
+      <button type="button" class="btn" id="refresh" onclick="location.reload()">Оновити</button>
       @if(auth()->user()->role === 'accountant')
       <button type="button" class="btn primary" id="cashSubmitBtn">Здати касу</button>
       @endif
