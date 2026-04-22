@@ -452,11 +452,13 @@ class SalesProjectController extends Controller
             : collect();
 
         // For projects layer: load amo_status_id from deal map
-        $amoStatusByProjectId = (!$workerMode && $layer === 'projects' && Schema::hasTable('amocrm_deal_map'))
+        $amoMapByProjectId = (!$workerMode && $layer === 'projects' && Schema::hasTable('amocrm_deal_map'))
             ? DB::table('amocrm_deal_map')
                 ->whereIn('wallet_project_id', $projectIds)
-                ->pluck('amo_status_id', 'wallet_project_id')
+                ->get(['wallet_project_id', 'amo_status_id', 'responsible_name'])
+                ->keyBy('wallet_project_id')
             : collect();
+        $amoStatusByProjectId = $amoMapByProjectId->mapWithKeys(fn ($r, $k) => [$k => $r->amo_status_id]);
 
         // Bulk-load attachments and schedule entries (fixes N+1 per-project queries)
         $attachmentsByProject = Schema::hasTable('project_attachments')
@@ -669,7 +671,7 @@ class SalesProjectController extends Controller
                     ];
                 })->values(),
             ];
-        })->map(function ($project) use ($userNames, $amoComplectationByProjectId) {
+        })->map(function ($project) use ($userNames, $amoComplectationByProjectId, $amoMapByProjectId) {
             $managerId = (int) ($project['lead_manager_user_id'] ?? 0);
             if ($managerId <= 0) {
                 $managerId = (int) ($project['created_by'] ?? 0);
@@ -678,10 +680,19 @@ class SalesProjectController extends Controller
             $managerName = $userNames->get($managerId);
 
             $projectId = (int) ($project['id'] ?? 0);
+
+            // Finance layer: override with amo_complectation_projects.responsible_name
             $amoComplectation = $amoComplectationByProjectId->get($projectId);
             $amoComplectationManager = trim((string) ($amoComplectation->responsible_name ?? ''));
             if ($amoComplectationManager !== '') {
                 $managerName = $amoComplectationManager;
+            }
+
+            // Projects layer: override with amocrm_deal_map.responsible_name
+            $dealMap = $amoMapByProjectId->get($projectId);
+            $dealMapManager = trim((string) ($dealMap->responsible_name ?? ''));
+            if ($dealMapManager !== '') {
+                $managerName = $dealMapManager;
             }
 
             $project['manager_name'] = $managerName ?: '—';

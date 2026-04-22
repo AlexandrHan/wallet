@@ -16,6 +16,7 @@ class AmoCrmDealMap extends Model
         'amo_deal_id',
         'wallet_project_id',
         'amo_status_id',
+        'responsible_name',
         'created_at',
     ];
 

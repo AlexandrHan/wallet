@@ -165,6 +165,28 @@ class AmoCrmService
         return $response->json();
     }
 
+    private ?array $amoUsersCache = null;
+
+    private function getAmoUsersMap(): array
+    {
+        if ($this->amoUsersCache !== null) {
+            return $this->amoUsersCache;
+        }
+
+        $response = $this->apiRequest('GET', '/users', ['query' => ['limit' => 250]]);
+        $users = Arr::get($response->json(), '_embedded.users', []);
+        $this->amoUsersCache = collect($users)->keyBy('id')->all();
+
+        return $this->amoUsersCache;
+    }
+
+    private function getAmoUserName(int $userId): string
+    {
+        if ($userId <= 0) return '';
+        $map = $this->getAmoUsersMap();
+        return trim((string) ($map[$userId]['name'] ?? ''));
+    }
+
     public function getUserById(int $userId): ?array
     {
         if ($userId <= 0) {
@@ -289,50 +311,39 @@ class AmoCrmService
      */
     public function syncOutOfStageProjectDeals(array $alreadySyncedIds): array
     {
-        $trackedDealIds = AmoCrmDealMap::query()
-            ->whereNotNull('wallet_project_id')
-            ->pluck('amo_deal_id')
-            ->flip();
+        // Find deals we track that were NOT returned by the main sync (they may have moved to non-tracked stages)
+        $missedDealIds = AmoCrmDealMap::query()
+            ->join('sales_projects', 'sales_projects.id', '=', 'amocrm_deal_map.wallet_project_id')
+            ->where('sales_projects.status', 'active')
+            ->whereNotNull('amocrm_deal_map.wallet_project_id')
+            ->whereNotIn('amocrm_deal_map.amo_deal_id', $alreadySyncedIds)
+            ->pluck('amocrm_deal_map.amo_deal_id')
+            ->all();
 
         $updated = 0;
-        $since = Carbon::now()->subDays(7)->timestamp;
-        $page = 1;
 
-        do {
-            $query = [
-                'page' => $page,
-                'limit' => 250,
-                'with' => 'contacts,users',
-                'filter[updated_at][from]' => $since,
-            ];
+        foreach ($missedDealIds as $amoDealId) {
+            $fullLead = $this->getLeadById((int) $amoDealId);
 
-            $response = $this->apiRequest('GET', '/leads', ['query' => $query]);
-            $leads = Arr::get($response->json(), '_embedded.leads', []);
-
-            if (empty($leads)) {
-                break;
+            if (!is_array($fullLead) || empty($fullLead)) {
+                // Deal is gone from AMO — cancel the project
+                $map = AmoCrmDealMap::query()->where('amo_deal_id', $amoDealId)->first();
+                if ($map && $map->wallet_project_id) {
+                    SalesProject::query()
+                        ->where('id', $map->wallet_project_id)
+                        ->whereNotIn('status', ['completed', 'cancelled'])
+                        ->update(['status' => 'cancelled']);
+                    $map->delete();
+                }
+                $updated++;
+                continue;
             }
 
-            foreach ($leads as $deal) {
-                $amoDealId = (int) ($deal['id'] ?? 0);
-
-                if (!$trackedDealIds->has($amoDealId) || in_array($amoDealId, $alreadySyncedIds, true)) {
-                    continue;
-                }
-
-                $fullLead = $this->getLeadById($amoDealId);
-                if (!is_array($fullLead) || empty($fullLead)) {
-                    continue;
-                }
-
-                $project = $this->syncLead($fullLead);
-                if ($project) {
-                    $updated++;
-                }
+            $project = $this->syncLead($fullLead);
+            if ($project) {
+                $updated++;
             }
-
-            $page++;
-        } while (count($leads) === 250);
+        }
 
         return ['updated' => $updated];
     }
@@ -494,14 +505,7 @@ class AmoCrmService
         $projectPayload = $this->extractComplectationProjectFields($lead);
 
         $responsibleUserId = (int) ($lead['responsible_user_id'] ?? 0);
-        $responsibleName = trim((string) (
-            Arr::get($lead, '_embedded.users.0.name')
-            ?? ''
-        ));
-        if ($responsibleName === '' && $responsibleUserId > 0) {
-            $amoUser = $this->getUserById($responsibleUserId);
-            $responsibleName = trim((string) ($amoUser['name'] ?? ''));
-        }
+        $responsibleName = $this->getAmoUserName($responsibleUserId);
 
         $dealStatusId = (int) ($lead['status_id'] ?? 0);
 
@@ -826,7 +830,10 @@ class AmoCrmService
             $clientName = 'amoCRM deal #'.$amoDealId;
         }
 
-        return DB::transaction(function () use ($amoDealId, $lead, $clientName) {
+        $responsibleUserId = (int) ($lead['responsible_user_id'] ?? 0);
+        $responsibleName = $this->getAmoUserName($responsibleUserId);
+
+        return DB::transaction(function () use ($amoDealId, $lead, $clientName, $responsibleName) {
             $map = AmoCrmDealMap::query()
                 ->where('amo_deal_id', $amoDealId)
                 ->lockForUpdate()
@@ -869,18 +876,19 @@ class AmoCrmService
                     ->where('project_id', $project->id)
                     ->delete();
 
+                $mapData = [
+                    'wallet_project_id' => $project->id,
+                    'amo_status_id' => $leadStatusId ?: null,
+                    'responsible_name' => $responsibleName !== '' ? mb_substr($responsibleName, 0, 255) : null,
+                ];
+
                 if ($map) {
-                    $map->update([
-                        'wallet_project_id' => $project->id,
-                        'amo_status_id' => $leadStatusId ?: null,
-                    ]);
+                    $map->update($mapData);
                 } else {
-                    AmoCrmDealMap::query()->create([
+                    AmoCrmDealMap::query()->create(array_merge([
                         'amo_deal_id' => $amoDealId,
-                        'wallet_project_id' => $project->id,
-                        'amo_status_id' => $leadStatusId ?: null,
                         'created_at' => now(),
-                    ]);
+                    ], $mapData));
                 }
 
                 return $project;
@@ -891,18 +899,29 @@ class AmoCrmService
             $isWon  = $leadStatusId > 0 && $leadStatusId === $wonStatusId;
             $isLost = $leadStatusId > 0 && $leadStatusId === $lostStatusId;
 
-            $project->update(array_merge([
+            $updatePayload = array_merge([
                 'client_name' => mb_substr($clientName, 0, 255),
                 'total_amount' => round($totalAmount, 2),
                 'source_layer' => $isProjectCreateStage ? 'projects' : 'finance',
-            ], $this->applyAppWinsFilter($techFields, $project)));
+            ], $this->applyAppWinsFilter($techFields, $project));
+
+            // Re-activate project if it was cancelled/completed but deal moved back to an active stage
+            if (!$isWon && !$isLost && in_array($project->status, ['completed', 'cancelled']) && $isProjectCreateStage) {
+                $updatePayload['status'] = 'active';
+            }
+
+            $project->update($updatePayload);
 
             if (($isWon || $isLost) && $project->status !== 'completed') {
                 $this->markProjectCompleted($project);
             }
 
             if ($map && $leadStatusId > 0) {
-                $map->update(['amo_status_id' => $leadStatusId]);
+                $mapUpdate = ['amo_status_id' => $leadStatusId];
+                if ($responsibleName !== '') {
+                    $mapUpdate['responsible_name'] = mb_substr($responsibleName, 0, 255);
+                }
+                $map->update($mapUpdate);
             }
 
             return $project->fresh();
