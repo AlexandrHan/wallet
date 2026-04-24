@@ -195,11 +195,15 @@ document.addEventListener('DOMContentLoaded', async function () {
     card.dataset.cardKey = `service-${service.id}`;
     card.style.border = service.is_urgent ? '2px solid #ff001aad' : '2px solid rgba(59, 130, 246, 0.45)';
 
+    const svcDisplayDate = service.schedule_date
+      ? service.schedule_date.slice(8, 10) + '.' + service.schedule_date.slice(5, 7) + '.' + service.schedule_date.slice(0, 4)
+      : (service.created_at || '');
+
     card.innerHTML = `
       <div class="project-header">
         <div class="project-header-row">
           <div class="project-header-name">${esc(service.client_name)}</div>
-          <div class="project-header-meta">${esc(service.created_at || '')} • 🛠 Сервіс</div>
+          <div class="project-header-meta">${esc(svcDisplayDate)} • 🛠 Сервіс</div>
         </div>
         <div class="project-header-row project-header-sub">
           <div>${esc(service.settlement || 'Населений пункт не вказаний')}</div>
@@ -363,6 +367,15 @@ document.addEventListener('DOMContentLoaded', async function () {
   function renderConstructionStatus(project) {
     const cs = project.construction_status || null;
     const isWorker = AUTH_USER && AUTH_USER.role === 'worker';
+
+    // Rescheduled electric visit: project already paid but has a new active electric date
+    if (project._isElecReschedule) {
+      return `<div style="margin:8px 0 12px; padding:8px 12px; border-radius:8px;
+        background:rgba(99,179,237,.12); border:1px solid rgba(99,179,237,.35);
+        font-size:13px; font-weight:600; color:#90cdf4;">
+        🔄 Повторний виїзд
+      </div>`;
+    }
 
     if (cs === 'has_deficiencies') {
       const media = renderQcMedia(project);
@@ -1395,17 +1408,43 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     // ── Electrician view: prepend archive accordions then render schedule ──
     if (MATCH_FIELD === 'electrician') {
+      const _elecTodayStr = new Date().toISOString().slice(0, 10);
+
+      // A project has an active electric schedule if it has a future/today date
+      // in electric_schedule_dates OR electric_work_start_date.
+      // Used to surface rescheduled projects even when construction_status is already salary_paid/pending.
+      function hasActiveElecSchedule(p) {
+        const dates = Array.isArray(p?.electric_schedule_dates) ? p.electric_schedule_dates : [];
+        if (dates.some(d => String(d) >= _elecTodayStr)) return true;
+        const direct = String(p?.electric_work_start_date || '');
+        return direct !== '' && direct >= _elecTodayStr;
+      }
+
       const doneProjects  = base.filter(p => {
         const cs = String(p?.construction_status || '');
-        return String(p?.entry_type || '') !== 'service' && (cs === 'salary_pending' || cs === 'salary_paid');
+        if (String(p?.entry_type || '') === 'service') return false;
+        if (cs !== 'salary_pending' && cs !== 'salary_paid') return false;
+        // Keep in archive only if there is NO active electric schedule
+        return !hasActiveElecSchedule(p);
       });
       const doneServices  = base.filter(p =>
         String(p?.entry_type || '') === 'service' && String(p?.status || '') === 'closed'
       );
       const active = base
         .filter(p => !doneProjects.includes(p) && !doneServices.includes(p))
-        .filter(p => !p?.installation_completed_at || p?.construction_status === 'has_deficiencies')
-        .filter(p => !DONE_STATUSES.has(p?.construction_status));
+        .filter(p => {
+          // Projects with an active electric schedule are always active, regardless of shared status
+          if (hasActiveElecSchedule(p)) {
+            if (!p._isElecReschedule) {
+              const cs = String(p?.construction_status || '');
+              if (cs === 'salary_pending' || cs === 'salary_paid') p._isElecReschedule = true;
+            }
+            return true;
+          }
+          if (p?.installation_completed_at && p?.construction_status !== 'has_deficiencies') return false;
+          if (DONE_STATUSES.has(p?.construction_status)) return false;
+          return true;
+        });
 
       captureOpenState();
       container.innerHTML = '';

@@ -54,12 +54,15 @@ document.addEventListener('DOMContentLoaded', async function () {
     const mode = rule?.mode || 'fixed';
     const currency = rule?.currency || 'UAH';
     const fixedAmount = rule?.fixed_amount ?? '';
+    const commissionPercent = rule?.commission_percent ?? '';
     const pieceworkUnitRate = rule?.piecework_unit_rate ?? '';
     const foremanBonus = rule?.foreman_bonus ?? '';
     const gridLe50 = rule?.piecework_grid_le_50 ?? '';
     const gridGt50 = rule?.piecework_grid_gt_50 ?? '';
     const hybridLe50 = rule?.piecework_hybrid_le_50 ?? '';
     const hybridGt50 = rule?.piecework_hybrid_gt_50 ?? '';
+
+    const isManager = group === 'manager';
 
     return `
       <div class="card" style="margin-bottom:12px;" data-salary-rule-card="${esc(group)}" data-staff-group="${esc(group)}" data-staff-name="${esc(name)}">
@@ -71,45 +74,53 @@ document.addEventListener('DOMContentLoaded', async function () {
           <button type="button" class="btn" data-save-salary-rule>Зберегти</button>
         </div>
 
-        <div class="project-field-label">Режим нарахування</div>
-        <select class="btn" style="width:100%; margin-bottom:10px;" data-field="mode">
-          <option value="fixed" ${mode === 'fixed' ? 'selected' : ''}>Ставка</option>
-          <option value="piecework" ${mode === 'piecework' ? 'selected' : ''}>Виробіток</option>
-        </select>
+        ${isManager ? `
+          <div class="project-field-label">Відсоток комісії (%)</div>
+          <input class="btn" type="number" step="0.01" min="0" max="100"
+            data-field="commission_percent" value="${esc(commissionPercent)}"
+            style="width:100%; margin-bottom:10px;"
+            placeholder="наприклад 1.5">
+        ` : `
+          <div class="project-field-label">Режим нарахування</div>
+          <select class="btn" style="width:100%; margin-bottom:10px;" data-field="mode">
+            <option value="fixed" ${mode === 'fixed' ? 'selected' : ''}>Ставка</option>
+            <option value="piecework" ${mode === 'piecework' ? 'selected' : ''}>Виробіток</option>
+          </select>
 
-        <div class="project-field-label">Валюта</div>
-        <select class="btn" style="width:100%; margin-bottom:10px;" data-field="currency">
-          <option value="UAH" ${currency === 'UAH' ? 'selected' : ''}>UAH</option>
-          <option value="USD" ${currency === 'USD' ? 'selected' : ''}>USD</option>
-          <option value="EUR" ${currency === 'EUR' ? 'selected' : ''}>EUR</option>
-        </select>
+          <div class="project-field-label">Валюта</div>
+          <select class="btn" style="width:100%; margin-bottom:10px;" data-field="currency">
+            <option value="UAH" ${currency === 'UAH' ? 'selected' : ''}>UAH</option>
+            <option value="USD" ${currency === 'USD' ? 'selected' : ''}>USD</option>
+            <option value="EUR" ${currency === 'EUR' ? 'selected' : ''}>EUR</option>
+          </select>
 
-        <div data-fixed-block style="display:${mode === 'fixed' ? 'block' : 'none'};">
-          <div class="project-field-label">Помісячна зарплата</div>
-          <input class="btn" type="number" step="0.01" data-field="fixed_amount" value="${esc(fixedAmount)}" style="width:100%; margin-bottom:10px;">
-        </div>
+          <div data-fixed-block style="display:${mode === 'fixed' ? 'block' : 'none'};">
+            <div class="project-field-label">Помісячна зарплата</div>
+            <input class="btn" type="number" step="0.01" data-field="fixed_amount" value="${esc(fixedAmount)}" style="width:100%; margin-bottom:10px;">
+          </div>
 
-        <div data-piecework-electrician style="display:${mode === 'piecework' && group === 'electrician' ? 'block' : 'none'};">
-          <div class="project-field-label">Мережева до 50 кВт</div>
-          <input class="btn" type="number" step="0.01" data-field="piecework_grid_le_50" value="${esc(gridLe50)}" style="width:100%; margin-bottom:8px;">
+          <div data-piecework-electrician style="display:${mode === 'piecework' && group === 'electrician' ? 'block' : 'none'};">
+            <div class="project-field-label">Мережева до 50 кВт</div>
+            <input class="btn" type="number" step="0.01" data-field="piecework_grid_le_50" value="${esc(gridLe50)}" style="width:100%; margin-bottom:8px;">
 
-          <div class="project-field-label">Мережева понад 50 кВт</div>
-          <input class="btn" type="number" step="0.01" data-field="piecework_grid_gt_50" value="${esc(gridGt50)}" style="width:100%; margin-bottom:8px;">
+            <div class="project-field-label">Мережева понад 50 кВт</div>
+            <input class="btn" type="number" step="0.01" data-field="piecework_grid_gt_50" value="${esc(gridGt50)}" style="width:100%; margin-bottom:8px;">
 
-          <div class="project-field-label">Гібрид до 50 кВт</div>
-          <input class="btn" type="number" step="0.01" data-field="piecework_hybrid_le_50" value="${esc(hybridLe50)}" style="width:100%; margin-bottom:8px;">
+            <div class="project-field-label">Гібрид до 50 кВт</div>
+            <input class="btn" type="number" step="0.01" data-field="piecework_hybrid_le_50" value="${esc(hybridLe50)}" style="width:100%; margin-bottom:8px;">
 
-          <div class="project-field-label">Гібрид понад 50 кВт</div>
-          <input class="btn" type="number" step="0.01" data-field="piecework_hybrid_gt_50" value="${esc(hybridGt50)}" style="width:100%; margin-bottom:0;">
-        </div>
+            <div class="project-field-label">Гібрид понад 50 кВт</div>
+            <input class="btn" type="number" step="0.01" data-field="piecework_hybrid_gt_50" value="${esc(hybridGt50)}" style="width:100%; margin-bottom:0;">
+          </div>
 
-        <div data-piecework-installation style="display:${mode === 'piecework' && group === 'installation_team' ? 'block' : 'none'};">
-          <div class="project-field-label">Ставка за 1 кВт панелей</div>
-          <input class="btn" type="number" step="0.01" data-field="piecework_unit_rate" value="${esc(pieceworkUnitRate)}" style="width:100%; margin-bottom:8px;">
+          <div data-piecework-installation style="display:${mode === 'piecework' && group === 'installation_team' ? 'block' : 'none'};">
+            <div class="project-field-label">Ставка за 1 кВт панелей</div>
+            <input class="btn" type="number" step="0.01" data-field="piecework_unit_rate" value="${esc(pieceworkUnitRate)}" style="width:100%; margin-bottom:8px;">
 
-          <div class="project-field-label">Бригадирські</div>
-          <input class="btn" type="number" step="0.01" data-field="foreman_bonus" value="${esc(foremanBonus)}" style="width:100%; margin-bottom:0;">
-        </div>
+            <div class="project-field-label">Бригадирські</div>
+            <input class="btn" type="number" step="0.01" data-field="foreman_bonus" value="${esc(foremanBonus)}" style="width:100%; margin-bottom:0;">
+          </div>
+        `}
       </div>
     `;
   }
@@ -205,6 +216,7 @@ document.addEventListener('DOMContentLoaded', async function () {
       staff_name: staffName,
       mode,
       currency,
+      commission_percent: normalizeNumber(card.querySelector('[data-field="commission_percent"]')?.value),
       fixed_amount: normalizeNumber(card.querySelector('[data-field="fixed_amount"]')?.value),
       piecework_unit_rate: normalizeNumber(card.querySelector('[data-field="piecework_unit_rate"]')?.value),
       foreman_bonus: normalizeNumber(card.querySelector('[data-field="foreman_bonus"]')?.value),

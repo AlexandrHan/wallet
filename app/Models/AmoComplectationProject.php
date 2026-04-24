@@ -19,6 +19,7 @@ class AmoComplectationProject extends Model
         'status_id',
         'raw_payload',
         'won_at',
+        'amo_closed_at',
     ];
 
     protected $casts = [
@@ -28,5 +29,6 @@ class AmoComplectationProject extends Model
         'responsible_user_id' => 'integer',
         'status_id' => 'integer',
         'raw_payload' => 'array',
+        'amo_closed_at' => 'datetime',
     ];
 }

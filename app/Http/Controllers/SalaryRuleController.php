@@ -128,15 +128,6 @@ class SalaryRuleController extends Controller
 
     private function subjectOptions(): array
     {
-        $managerNames = User::query()
-            ->where('role', 'ntv')
-            ->orderBy('name')
-            ->pluck('name')
-            ->map(fn ($name) => trim((string) $name))
-            ->filter()
-            ->values()
-            ->all();
-
         $accountantNames = User::query()
             ->where('role', 'accountant')
             ->orderBy('name')
@@ -159,7 +150,7 @@ class SalaryRuleController extends Controller
         return [
             'electrician' => $this->constructionStaffOptions('electrician'),
             'installation_team' => $this->constructionStaffOptions('installation_team'),
-            'manager' => $managerNames,
+            'manager' => ['Inha', 'Natalia', 'Volodymyr'],
             'accountant' => $accountantNames,
             'foreman' => $foremanNames,
         ];
@@ -418,6 +409,7 @@ class SalaryRuleController extends Controller
             'mode' => 'required|in:fixed,piecework',
             'currency' => 'required|in:UAH,USD,EUR',
             'fixed_amount' => 'nullable|numeric|min:0',
+            'commission_percent' => 'nullable|numeric|min:0|max:100',
             'piecework_unit_rate' => 'nullable|numeric|min:0',
             'foreman_bonus' => 'nullable|numeric|min:0',
             'piecework_grid_le_50' => 'nullable|numeric|min:0',
@@ -442,11 +434,14 @@ class SalaryRuleController extends Controller
         $payload = [
             'mode' => $data['mode'],
             'currency' => $data['currency'],
-            'fixed_amount' => $data['mode'] === 'fixed' ? $data['fixed_amount'] : null,
-            'piecework_grid_le_50' => $data['mode'] === 'piecework' && $data['staff_group'] === 'electrician' ? $data['piecework_grid_le_50'] : null,
-            'piecework_grid_gt_50' => $data['mode'] === 'piecework' && $data['staff_group'] === 'electrician' ? $data['piecework_grid_gt_50'] : null,
-            'piecework_hybrid_le_50' => $data['mode'] === 'piecework' && $data['staff_group'] === 'electrician' ? $data['piecework_hybrid_le_50'] : null,
-            'piecework_hybrid_gt_50' => $data['mode'] === 'piecework' && $data['staff_group'] === 'electrician' ? $data['piecework_hybrid_gt_50'] : null,
+            'fixed_amount' => $data['mode'] === 'fixed' ? ($data['fixed_amount'] ?? null) : null,
+            'commission_percent' => $data['staff_group'] === 'manager'
+                ? (isset($data['commission_percent']) && $data['commission_percent'] !== '' ? (float) $data['commission_percent'] : null)
+                : null,
+            'piecework_grid_le_50' => $data['mode'] === 'piecework' && $data['staff_group'] === 'electrician' ? ($data['piecework_grid_le_50'] ?? null) : null,
+            'piecework_grid_gt_50' => $data['mode'] === 'piecework' && $data['staff_group'] === 'electrician' ? ($data['piecework_grid_gt_50'] ?? null) : null,
+            'piecework_hybrid_le_50' => $data['mode'] === 'piecework' && $data['staff_group'] === 'electrician' ? ($data['piecework_hybrid_le_50'] ?? null) : null,
+            'piecework_hybrid_gt_50' => $data['mode'] === 'piecework' && $data['staff_group'] === 'electrician' ? ($data['piecework_hybrid_gt_50'] ?? null) : null,
             'created_by' => auth()->id(),
         ];
 
@@ -459,7 +454,8 @@ class SalaryRuleController extends Controller
                 : null;
         }
 
-        if ($data['mode'] === 'fixed' && $payload['fixed_amount'] === null) {
+        // Manager group uses commission_percent instead of fixed_amount — skip the fixed_amount check.
+        if ($data['staff_group'] !== 'manager' && $data['mode'] === 'fixed' && $payload['fixed_amount'] === null) {
             return response()->json(['error' => 'Для ставки вкажіть суму'], 422);
         }
 
@@ -754,10 +750,81 @@ class SalaryRuleController extends Controller
             ];
         })->values();
 
+        // ── Sales managers block (amo_complectation_projects + commission_percent) ──
+        $wonStatusId = (int) config('services.amocrm.won_status_id', 142);
+
+        $salesManagerWhitelist = [
+            ['name' => 'Inha',      'amo_user_id' => 9888062],
+            ['name' => 'Natalia',   'amo_user_id' => 12498694],
+            ['name' => 'Volodymyr', 'amo_user_id' => 9296522],
+        ];
+
+        $amoUserIds = array_column($salesManagerWhitelist, 'amo_user_id');
+
+        $startOfMonth = \Carbon\Carbon::create($year, $month, 1)->startOfMonth();
+        $startOfNextMonth = $startOfMonth->copy()->addMonth()->startOfMonth();
+
+        $amoProjects = Schema::hasTable('amo_complectation_projects')
+            && Schema::hasColumn('amo_complectation_projects', 'amo_closed_at')
+            ? DB::table('amo_complectation_projects')
+                ->where('status_id', $wonStatusId)
+                ->whereIn('responsible_user_id', $amoUserIds)
+                ->where('amo_closed_at', '>=', $startOfMonth->toDateTimeString())
+                ->where('amo_closed_at', '<', $startOfNextMonth->toDateTimeString())
+                ->orderBy('amo_closed_at')
+                ->get(['id', 'amo_deal_id', 'client_name', 'deal_name', 'total_amount',
+                       'responsible_user_id', 'amo_closed_at', 'wallet_project_id'])
+            : collect();
+
+        $commissionRules = Schema::hasTable('salary_rules')
+            ? SalaryRule::query()
+                ->where('staff_group', 'manager')
+                ->whereIn('staff_name', array_column($salesManagerWhitelist, 'name'))
+                ->get(['staff_name', 'commission_percent'])
+                ->keyBy('staff_name')
+            : collect();
+
+        $usdRate = Schema::hasTable('fx_rates')
+            ? (float) (DB::table('fx_rates')->where('currency', 'USD')->value('buy') ?? 40.0)
+            : 40.0;
+
+        $salesResult = array_map(function (array $mgr) use ($amoProjects, $commissionRules, $usdRate) {
+            $projects = $amoProjects
+                ->filter(fn ($p) => (int) $p->responsible_user_id === $mgr['amo_user_id'])
+                ->values();
+
+            $rule           = $commissionRules->get($mgr['name']);
+            $percent        = $rule ? (float) ($rule->commission_percent ?? 0) : 0.0;
+            $total_usd      = $projects->sum(fn ($p) => (float) $p->total_amount);
+            $commission_usd = round($total_usd * $percent / 100, 2);
+            $commission_uah = round($commission_usd * $usdRate, 2);
+
+            return [
+                'name'               => $mgr['name'],
+                'commission_percent' => $percent,
+                'total_amount'       => round($total_usd, 2),
+                'commission_usd'     => $commission_usd,
+                'commission_uah'     => $commission_uah,
+                'projects'           => $projects->map(fn ($p) => [
+                    'id'               => $p->id,
+                    'client_name'      => (string) ($p->client_name ?? ''),
+                    'deal_name'        => (string) ($p->deal_name ?? ''),
+                    'total_amount'     => (float) $p->total_amount,
+                    'amo_closed_at'    => $p->amo_closed_at
+                        ? \Carbon\Carbon::parse($p->amo_closed_at)->format('d.m.Y')
+                        : null,
+                    'wallet_project_id' => $p->wallet_project_id,
+                    'amo_deal_id'      => $p->amo_deal_id,
+                ])->values(),
+            ];
+        }, $salesManagerWhitelist);
+
         return response()->json([
-            'year' => $year,
-            'month' => $month,
-            'managers' => $result,
+            'year'           => $year,
+            'month'          => $month,
+            'usd_uah_rate'   => $usdRate,
+            'managers'       => $result,
+            'sales_managers' => array_values($salesResult),
         ]);
     }
 

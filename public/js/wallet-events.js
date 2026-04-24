@@ -46,7 +46,7 @@ window.showOps = function(){
 
 document.getElementById('refresh').onclick = e => {
   e.preventDefault();
-  loadWallets();
+  location.reload();
 };
 
 btnBack.onclick = e => {

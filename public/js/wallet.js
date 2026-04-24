@@ -1611,7 +1611,7 @@ async function submitEntry(entry_type, amount, comment){
   });
 
   // UI events
-  document.getElementById('refresh').onclick = (e) => { e.preventDefault(); loadWallets(); };
+  document.getElementById('refresh').onclick = (e) => { e.preventDefault(); location.reload(); };
   btnBack.onclick = (e) => { e.preventDefault(); showWallets(); };
   cashSubmitBtn?.addEventListener('click', (e) => {
     e.preventDefault();

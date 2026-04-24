@@ -12,6 +12,7 @@ class SalaryRule extends Model
         'mode',
         'currency',
         'fixed_amount',
+        'commission_percent',
         'piecework_unit_rate',
         'foreman_bonus',
         'piecework_grid_le_50',

@@ -136,6 +136,21 @@ document.addEventListener('DOMContentLoaded', function () {
   const IS_OWNER = AUTH_USER && AUTH_USER.role === 'owner';
   const IS_HLUSHCHENKO = AUTH_USER && AUTH_USER.actor === 'hlushchenko';
   const LEAD_MANAGER_OPTIONS = @json($leadManagers);
+  const MANAGER_NAME_ALIASES = {
+    'Інга': 'Inha',
+    'Наталія': 'Natalia',
+    'Наташа': 'Natalia',
+    'Володимир': 'Volodymyr',
+    'Володимир Вдовенко': 'Volodymyr',
+    'Артем': 'NTV',
+    'Колесник В.П.': 'NTV',
+    'Олександр Глущенко': 'Hlushchenko',
+  };
+
+  const normalizeManagerName = (value) => {
+    const name = String(value ?? '').trim();
+    return MANAGER_NAME_ALIASES[name] || name;
+  };
 
   const formatMoney = (value, currency) => {
     const symbols = { UAH: '₴', USD: '$', EUR: '€' };
@@ -188,9 +203,11 @@ document.addEventListener('DOMContentLoaded', function () {
     const sel = document.getElementById('managerFilterSelect');
     if (sel) {
       const names = [...new Set(
-        (projects || []).map(p => p.manager_name || '').filter(n => n && n !== '—')
+        (projects || [])
+          .map(p => normalizeManagerName(p.manager_name || ''))
+          .filter(n => n && n !== '—')
       )].sort((a, b) => a.localeCompare(b, 'uk'));
-      const current = sel.value || managerFilter;
+      const current = normalizeManagerName(sel.value || managerFilter);
       sel.innerHTML = '<option value="">👤 Всі менеджери</option>' +
         names.map(n => `<option value="${n.replace(/"/g,'&quot;')}">${n}</option>`).join('');
       sel.value = current;
@@ -200,8 +217,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const normalizeG = (v) => String(v ?? '').toLowerCase().trim();
     const filteredByManager = (projects || [])
-      .filter(p => !managerFilter || (p.manager_name || '') === managerFilter)
-      .filter(p => !globalSearch || [p.client_name, p.manager_name].some(v => normalizeG(v).includes(normalizeG(globalSearch))));
+      .filter(p => !managerFilter || normalizeManagerName(p.manager_name || '') === normalizeManagerName(managerFilter))
+      .filter(p => !globalSearch || [p.client_name, normalizeManagerName(p.manager_name)].some(v => normalizeG(v).includes(normalizeG(globalSearch))));
 
     const byName = (a, b) => String(a.client_name || '').localeCompare(String(b.client_name || ''), 'uk', { sensitivity: 'base' });
     const toNum = (v) => {
@@ -426,7 +443,7 @@ document.addEventListener('DOMContentLoaded', function () {
           </div>
 
           <div style="margin-top:4px; font-size:12px; opacity:.72;">
-            Менеджер: ${p.manager_name || '—'}
+            Менеджер: ${normalizeManagerName(p.manager_name || '—')}
           </div>
 
           <div style="margin-top:5px; font-weight:600; color:${debt > 0 ? '#f20000' : '#3bc97f'};">

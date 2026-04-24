@@ -565,6 +565,7 @@ class AmoCrmService
             }
 
             $wonStatusId = (int) config('services.amocrm.won_status_id', 142);
+            $amoClosedAt = $this->amoClosedAtFromLead($lead);
             $amoPayload = [
                 'wallet_project_id' => $project->id,
                 'client_name' => mb_substr($clientName, 0, 255),
@@ -575,6 +576,10 @@ class AmoCrmService
                 'status_id' => $dealStatusId,
                 'raw_payload' => $lead,
             ];
+
+            if ($amoClosedAt !== null) {
+                $amoPayload['amo_closed_at'] = $amoClosedAt;
+            }
 
             // Record timestamp when deal first moves to Won (grace period for finance view)
             if ($dealStatusId === $wonStatusId) {
@@ -609,6 +614,17 @@ class AmoCrmService
         }
 
         return ['created' => $created, 'updated' => $updated];
+    }
+
+    private function amoClosedAtFromLead(array $lead): ?string
+    {
+        $closedAt = $lead['closed_at'] ?? null;
+
+        if (!is_numeric($closedAt) || (int) $closedAt <= 0) {
+            return null;
+        }
+
+        return Carbon::createFromTimestamp((int) $closedAt)->toDateTimeString();
     }
 
     private function extractComplectationProjectFields(array $lead): array
