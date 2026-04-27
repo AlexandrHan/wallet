@@ -131,6 +131,7 @@ return [
         'redirect_uri' => env('AMO_REDIRECT_URI'),
         'refresh_token' => env('AMO_REFRESH_TOKEN'),
         'authorization_code' => env('AMO_AUTHORIZATION_CODE'),
+        'project_pipeline_id' => (int) env('AMO_PROJECT_PIPELINE_ID', 4071382),
         'project_status_id' => (int) env('AMO_PROJECT_STATUS_ID', 29352208),
         'won_status_id' => (int) env('AMO_WON_STATUS_ID', 142),
         'project_status_ids' => array_map('intval', array_filter(explode(',', env('AMO_PROJECT_STATUS_IDS', '69586234,38556550,69593822,69593826,69593830')))),
@@ -139,6 +140,18 @@ return [
         // Заплановане будівництво → Монтаж → Електрична частина →
         // Здача проекту → Остаточна оплата (49782427).
         'finance_stage_ids' => array_map('intval', array_filter(explode(',', env('AMO_FINANCE_STAGE_IDS', '38556547,69586234,38556550,69593822,69593826,69593830,69593834,49782427')))),
+        'salary_pipelines' => [
+            4071382 => [
+                'label' => 'Проекти',
+                'type' => 'main',
+                'currency' => 'USD',
+            ],
+            7013646 => [
+                'label' => 'Роздріб',
+                'type' => 'retail',
+                'currency' => 'UAH',
+            ],
+        ],
     ],
 
 ];

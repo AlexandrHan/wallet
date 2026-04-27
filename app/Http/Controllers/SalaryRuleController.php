@@ -763,17 +763,32 @@ class SalaryRuleController extends Controller
 
         $startOfMonth = \Carbon\Carbon::create($year, $month, 1)->startOfMonth();
         $startOfNextMonth = $startOfMonth->copy()->addMonth()->startOfMonth();
+        $salaryPipelines = collect((array) config('services.amocrm.salary_pipelines', []))
+            ->mapWithKeys(function ($meta, $pipelineId) {
+                $currency = strtoupper(trim((string) ($meta['currency'] ?? 'USD')));
+
+                return [(int) $pipelineId => [
+                    'label' => (string) ($meta['label'] ?? ('Pipeline '.$pipelineId)),
+                    'type' => (string) ($meta['type'] ?? 'pipeline'),
+                    'currency' => in_array($currency, ['UAH', 'USD', 'EUR'], true) ? $currency : 'USD',
+                ]];
+            })
+            ->filter(fn ($meta, $pipelineId) => (int) $pipelineId > 0);
+        $salaryPipelineIds = $salaryPipelines->keys()->all();
 
         $amoProjects = Schema::hasTable('amo_complectation_projects')
             && Schema::hasColumn('amo_complectation_projects', 'amo_closed_at')
+            && Schema::hasColumn('amo_complectation_projects', 'pipeline_id')
+            && Schema::hasColumn('amo_complectation_projects', 'currency')
             ? DB::table('amo_complectation_projects')
                 ->where('status_id', $wonStatusId)
+                ->whereIn('pipeline_id', $salaryPipelineIds)
                 ->whereIn('responsible_user_id', $amoUserIds)
                 ->where('amo_closed_at', '>=', $startOfMonth->toDateTimeString())
                 ->where('amo_closed_at', '<', $startOfNextMonth->toDateTimeString())
                 ->orderBy('amo_closed_at')
                 ->get(['id', 'amo_deal_id', 'client_name', 'deal_name', 'total_amount',
-                       'responsible_user_id', 'amo_closed_at', 'wallet_project_id'])
+                       'pipeline_id', 'currency', 'responsible_user_id', 'amo_closed_at', 'wallet_project_id'])
             : collect();
 
         $commissionRules = Schema::hasTable('salary_rules')
@@ -788,14 +803,35 @@ class SalaryRuleController extends Controller
             ? (float) (DB::table('fx_rates')->where('currency', 'USD')->value('buy') ?? 40.0)
             : 40.0;
 
-        $salesResult = array_map(function (array $mgr) use ($amoProjects, $commissionRules, $usdRate) {
+        $toUsd = function (float $amount, string $currency) use ($usdRate): float {
+            $currency = strtoupper(trim($currency));
+
+            return $currency === 'USD' ? $amount : ($usdRate > 0 ? $amount / $usdRate : 0.0);
+        };
+
+        $pipelineSections = $salaryPipelines
+            ->map(fn ($meta, $pipelineId) => [
+                'id' => (int) $pipelineId,
+                'label' => $meta['label'],
+                'type' => $meta['type'],
+                'currency' => $meta['currency'],
+            ])
+            ->values()
+            ->all();
+
+        $salesResult = array_map(function (array $mgr) use ($amoProjects, $commissionRules, $usdRate, $salaryPipelines, $toUsd) {
             $projects = $amoProjects
                 ->filter(fn ($p) => (int) $p->responsible_user_id === $mgr['amo_user_id'])
                 ->values();
 
             $rule           = $commissionRules->get($mgr['name']);
             $percent        = $rule ? (float) ($rule->commission_percent ?? 0) : 0.0;
-            $total_usd      = $projects->sum(fn ($p) => (float) $p->total_amount);
+            $total_usd      = $projects->sum(function ($p) use ($salaryPipelines, $toUsd) {
+                $pipeline = $salaryPipelines->get((int) ($p->pipeline_id ?? 0), []);
+                $currency = (string) ($p->currency ?: ($pipeline['currency'] ?? 'USD'));
+
+                return $toUsd((float) $p->total_amount, $currency);
+            });
             $commission_usd = round($total_usd * $percent / 100, 2);
             $commission_uah = round($commission_usd * $usdRate, 2);
 
@@ -810,6 +846,11 @@ class SalaryRuleController extends Controller
                     'client_name'      => (string) ($p->client_name ?? ''),
                     'deal_name'        => (string) ($p->deal_name ?? ''),
                     'total_amount'     => (float) $p->total_amount,
+                    'total_amount_usd' => round($toUsd((float) $p->total_amount, (string) ($p->currency ?: ($salaryPipelines->get((int) ($p->pipeline_id ?? 0))['currency'] ?? 'USD'))), 2),
+                    'currency'         => (string) ($p->currency ?: ($salaryPipelines->get((int) ($p->pipeline_id ?? 0))['currency'] ?? 'USD')),
+                    'pipeline_id'       => (int) ($p->pipeline_id ?? 0),
+                    'pipeline_type'     => (string) ($salaryPipelines->get((int) ($p->pipeline_id ?? 0))['type'] ?? 'pipeline'),
+                    'pipeline_label'    => (string) ($salaryPipelines->get((int) ($p->pipeline_id ?? 0))['label'] ?? 'Pipeline'),
                     'amo_closed_at'    => $p->amo_closed_at
                         ? \Carbon\Carbon::parse($p->amo_closed_at)->format('d.m.Y')
                         : null,
@@ -825,6 +866,7 @@ class SalaryRuleController extends Controller
             'usd_uah_rate'   => $usdRate,
             'managers'       => $result,
             'sales_managers' => array_values($salesResult),
+            'pipeline_sections' => $pipelineSections,
         ]);
     }
 

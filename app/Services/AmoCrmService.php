@@ -103,6 +103,7 @@ class AmoCrmService
     public function fetchDeals(int $page = 1, int $limit = 250): array
     {
         $statusIds = config('services.amocrm.project_status_ids', []);
+        $pipelineId = (int) config('services.amocrm.project_pipeline_id');
 
         $query = [
             'page' => $page,
@@ -111,7 +112,7 @@ class AmoCrmService
         ];
 
         foreach (array_values($statusIds) as $i => $statusId) {
-            $query['filter[statuses][' . $i . '][pipeline_id]'] = 4071382;
+            $query['filter[statuses][' . $i . '][pipeline_id]'] = $pipelineId;
             $query['filter[statuses][' . $i . '][status_id]'] = $statusId;
         }
 
@@ -123,6 +124,7 @@ class AmoCrmService
     public function fetchComplectationDeals(int $page = 1, int $limit = 250): array
     {
         $financeStageIds = $this->financeStageIds();
+        $pipelineId = (int) config('services.amocrm.project_pipeline_id');
 
         $query = [
             'page' => $page,
@@ -131,13 +133,61 @@ class AmoCrmService
         ];
 
         foreach (array_values($financeStageIds) as $i => $statusId) {
-            $query['filter[statuses][' . $i . '][pipeline_id]'] = 4071382;
+            $query['filter[statuses][' . $i . '][pipeline_id]'] = $pipelineId;
             $query['filter[statuses][' . $i . '][status_id]'] = $statusId;
         }
 
         $response = $this->apiRequest('GET', '/leads', ['query' => $query]);
 
         return Arr::get($response->json(), '_embedded.leads', []);
+    }
+
+    public function fetchSalaryWonDeals(int $pipelineId, int $page = 1, int $limit = 250): array
+    {
+        $wonStatusId = (int) config('services.amocrm.won_status_id', 142);
+
+        $response = $this->apiRequest('GET', '/leads', [
+            'query' => [
+                'page' => $page,
+                'limit' => $limit,
+                'with' => 'contacts,users',
+                'filter[statuses][0][pipeline_id]' => $pipelineId,
+                'filter[statuses][0][status_id]' => $wonStatusId,
+            ],
+        ]);
+
+        return Arr::get($response->json(), '_embedded.leads', []);
+    }
+
+    public function salaryPipelineIds(): array
+    {
+        return array_keys($this->salaryPipelines());
+    }
+
+    private function salaryPipelines(): array
+    {
+        $pipelines = (array) config('services.amocrm.salary_pipelines', []);
+        $normalized = [];
+
+        foreach ($pipelines as $id => $meta) {
+            if (!is_numeric($id) || (int) $id <= 0) {
+                continue;
+            }
+
+            $currency = strtoupper(trim((string) ($meta['currency'] ?? 'USD')));
+            $normalized[(int) $id] = [
+                'label' => (string) ($meta['label'] ?? ('Pipeline '.$id)),
+                'type' => (string) ($meta['type'] ?? 'pipeline'),
+                'currency' => in_array($currency, ['UAH', 'USD', 'EUR'], true) ? $currency : 'USD',
+            ];
+        }
+
+        return $normalized;
+    }
+
+    private function salaryPipelineCurrency(int $pipelineId): string
+    {
+        return $this->salaryPipelines()[$pipelineId]['currency'] ?? 'USD';
     }
 
     private function financeStageIds(): array
@@ -348,9 +398,10 @@ class AmoCrmService
         return ['updated' => $updated];
     }
 
-    public function syncComplectationDeals(array $deals): array
+    public function syncComplectationDeals(array $deals, bool $allowWonStatus = false): array
     {
         $financeStageIds = $this->financeStageIds();
+        $wonStatusId = (int) config('services.amocrm.won_status_id', 142);
         $created = 0;
         $updated = 0;
         $syncedIds = [];
@@ -371,7 +422,7 @@ class AmoCrmService
             $lead = $fullLead;
 
             $dealStatusId = (int) ($lead['status_id'] ?? 0);
-            if (!in_array($dealStatusId, $financeStageIds, true)) {
+            if (!in_array($dealStatusId, $financeStageIds, true) && !($allowWonStatus && $dealStatusId === $wonStatusId)) {
                 continue;
             }
 
@@ -385,6 +436,89 @@ class AmoCrmService
             'total' => count($deals),
             'created' => $created,
             'updated' => $updated,
+            'synced_ids' => $syncedIds,
+        ];
+    }
+
+    public function syncSalaryWonDeals(array $deals, int $pipelineId): array
+    {
+        $wonStatusId = (int) config('services.amocrm.won_status_id', 142);
+        $created = 0;
+        $updated = 0;
+        $skipped = 0;
+        $syncedIds = [];
+
+        foreach ($deals as $deal) {
+            $amoDealId = (int) ($deal['id'] ?? 0);
+            if ($amoDealId <= 0) {
+                $skipped++;
+                continue;
+            }
+
+            $lead = $this->getLeadById($amoDealId);
+            if (!is_array($lead) || empty($lead) || !empty($lead['is_deleted'])) {
+                AmoComplectationProject::where('amo_deal_id', $amoDealId)->delete();
+                $skipped++;
+                continue;
+            }
+
+            $dealStatusId = (int) ($lead['status_id'] ?? 0);
+            if ($dealStatusId !== $wonStatusId) {
+                $skipped++;
+                continue;
+            }
+
+            $row = AmoComplectationProject::query()->where('amo_deal_id', $amoDealId)->first();
+            $responsibleUserId = (int) ($lead['responsible_user_id'] ?? 0);
+            $responsibleName = $this->getAmoUserName($responsibleUserId);
+            $totalAmount = (float) ($lead['price'] ?? 0);
+            if ($totalAmount <= 0) {
+                $totalAmount = 0.01;
+            }
+            $leadPipelineId = (int) ($lead['pipeline_id'] ?? $pipelineId);
+
+            $payload = [
+                'client_name' => mb_substr($this->extractProjectClientName($lead) ?: 'amoCRM deal #'.$amoDealId, 0, 255),
+                'deal_name' => mb_substr(trim((string) ($lead['name'] ?? '')), 0, 255),
+                'total_amount' => round($totalAmount, 2),
+                'pipeline_id' => $leadPipelineId > 0 ? $leadPipelineId : null,
+                'currency' => $this->extractCurrency($lead, $this->salaryPipelineCurrency($leadPipelineId)),
+                'responsible_user_id' => $responsibleUserId ?: null,
+                'responsible_name' => $responsibleName !== '' ? mb_substr($responsibleName, 0, 255) : null,
+                'status_id' => $dealStatusId,
+                'raw_payload' => $lead,
+            ];
+
+            $amoClosedAt = $this->amoClosedAtFromLead($lead);
+            if ($amoClosedAt !== null) {
+                $payload['amo_closed_at'] = $amoClosedAt;
+            }
+
+            if (!$row || (int) ($row->status_id ?? 0) !== $wonStatusId || empty($row->won_at)) {
+                $payload['won_at'] = now()->toDateTimeString();
+            }
+
+            AmoComplectationProject::query()->updateOrCreate(
+                ['amo_deal_id' => $amoDealId],
+                $payload
+            );
+
+            $row ? $updated++ : $created++;
+            $syncedIds[] = $amoDealId;
+        }
+
+        Log::info('[Salary Sync]', [
+            'pipeline' => $pipelineId,
+            'created' => $created,
+            'updated' => $updated,
+            'skipped' => $skipped,
+        ]);
+
+        return [
+            'total' => count($deals),
+            'created' => $created,
+            'updated' => $updated,
+            'skipped' => $skipped,
             'synced_ids' => $syncedIds,
         ];
     }
@@ -566,11 +700,15 @@ class AmoCrmService
 
             $wonStatusId = (int) config('services.amocrm.won_status_id', 142);
             $amoClosedAt = $this->amoClosedAtFromLead($lead);
+            $pipelineId = (int) ($lead['pipeline_id'] ?? 0);
+            $currency = $this->extractCurrency($lead, $this->salaryPipelineCurrency($pipelineId));
             $amoPayload = [
                 'wallet_project_id' => $project->id,
                 'client_name' => mb_substr($clientName, 0, 255),
                 'deal_name' => mb_substr(trim((string) ($lead['name'] ?? '')), 0, 255),
                 'total_amount' => round($totalAmount, 2),
+                'pipeline_id' => $pipelineId > 0 ? $pipelineId : null,
+                'currency' => $currency,
                 'responsible_user_id' => $responsibleUserId ?: null,
                 'responsible_name' => $responsibleName !== '' ? mb_substr($responsibleName, 0, 255) : null,
                 'status_id' => $dealStatusId,

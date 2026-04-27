@@ -15,6 +15,10 @@
     ->whereIn('status', ['pending', 'has_deficiencies', 'deficiencies_fixed'])
     ->count();
 
+  $pendingSalaryCount = \Illuminate\Support\Facades\DB::table('salary_accruals')
+    ->where('status', 'pending')
+    ->count();
+
   // ✅ вкладки (ОДИН список на весь застосунок)
   $tabs = [
     ['href'=>'/',                    'icon'=>'💼', 'label'=>'Гаманець', 'active'=>$activeWallet],
@@ -116,7 +120,13 @@
     </details>
 
     <details class="tg-acc">
-      <summary class="tg-acc__title">💰 Зарплатня</summary>
+      <summary class="tg-acc__title">
+        <span>💰 Зарплатня</span>
+        @if($pendingSalaryCount > 0)
+          <span style="min-width:20px; height:20px; padding:0 6px; background:#e53e3e; color:#fff;
+            border-radius:99px; font-size:11px; font-weight:800; line-height:20px; text-align:center;">{{ $pendingSalaryCount > 99 ? '99+' : $pendingSalaryCount }}</span>
+        @endif
+      </summary>
       <div class="tg-acc__body">
         <a class="tg-menu__item" href="/salary">💰 Нарахування зарплатні</a>
         <a class="tg-menu__item" href="/salary/accruals">💸 Виплата зарплат</a>

@@ -204,8 +204,8 @@ document.addEventListener('DOMContentLoaded', function () {
           </div>
         </div>`;
 
-      const projHtml = projects.length
-        ? projects.map(p => `
+      const renderDealRows = (rows) => rows.length
+        ? rows.map(p => `
             <div style="padding:10px 12px; border-radius:10px; background:rgba(255,255,255,.04);
                         border:1px solid rgba(255,255,255,.06); margin-top:8px;">
               <div style="display:flex; justify-content:space-between; gap:8px; margin-bottom:4px;">
@@ -216,13 +216,35 @@ document.addEventListener('DOMContentLoaded', function () {
               </div>
               ${p.deal_name ? `<div style="font-size:12px; opacity:.6; margin-bottom:4px;">${esc(p.deal_name)}</div>` : ''}
               <div style="display:flex; justify-content:space-between; align-items:center; font-size:13px; margin-top:4px;">
-                <div style="opacity:.8;">Сума: <strong>${fmt(p.total_amount)} $</strong></div>
-                ${p.wallet_project_id
-                  ? `<div style="font-size:11px; opacity:.45;">ERP #${esc(p.wallet_project_id)}</div>`
-                  : (p.amo_deal_id ? `<div style="font-size:11px; opacity:.45;">AMO #${esc(p.amo_deal_id)}</div>` : '')}
+                <div style="opacity:.8;">
+                  Сума: <strong>${fmt(p.total_amount)} ${esc(p.currency || 'USD')}</strong>
+                  ${p.currency && p.currency !== 'USD' ? `<span style="opacity:.6;">≈ ${fmt(p.total_amount_usd)} $</span>` : ''}
+                </div>
+                <div style="font-size:11px; opacity:.45; text-align:right;">
+                  ${p.pipeline_label ? `<div>${esc(p.pipeline_label)}</div>` : ''}
+                  ${p.wallet_project_id
+                    ? `<div>ERP #${esc(p.wallet_project_id)}</div>`
+                    : (p.amo_deal_id ? `<div>AMO #${esc(p.amo_deal_id)}</div>` : '')}
+                </div>
               </div>
             </div>`)
           .join('')
+        : `<div style="font-size:13px; opacity:.6; margin-top:6px;">Немає угод</div>`;
+
+      const sections = Array.isArray(window.salaryPipelineSections) ? window.salaryPipelineSections : [];
+      const groupedHtml = sections.map(section => {
+        const rows = projects.filter(p => String(p.pipeline_type || '') === String(section.type || ''));
+        const color = section.type === 'retail' ? '#66f2a8' : '#90cdf4';
+
+        return `
+          <div style="margin-top:${section.type === 'retail' ? '16px' : '0'};">
+            <div style="font-weight:800; font-size:14px; margin-bottom:8px; color:${color};">${esc(section.label || 'Pipeline')}</div>
+            ${renderDealRows(rows)}
+          </div>`;
+      }).join('');
+
+      const projHtml = projects.length
+        ? groupedHtml
         : `<div style="font-size:13px; opacity:.6; margin-top:6px;">Виграних угод за ${monthName.toLowerCase()} немає.</div>`;
 
       const rateLabel = usdRate ? `<span style="opacity:.5; font-size:11px;">Курс: ${fmt(usdRate)} ₴/$</span>` : '';
@@ -255,6 +277,7 @@ document.addEventListener('DOMContentLoaded', function () {
   function render(payload) {
     const monthName = MONTH_NAMES[Number(payload?.month || monthEl.value)] || '';
     const usdRate   = Number(payload?.usd_uah_rate || 0);
+    window.salaryPipelineSections = Array.isArray(payload?.pipeline_sections) ? payload.pipeline_sections : [];
     const ntvHtml   = renderNtv(payload?.managers || [], monthName);
     const salesHtml = renderSalesManagers(payload?.sales_managers || [], monthName, usdRate);
 
