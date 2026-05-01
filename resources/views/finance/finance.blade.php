@@ -288,6 +288,13 @@ document.addEventListener('DOMContentLoaded', function () {
     const activeProjects = allActiveProjects.filter(p => matchesQuery(p, activeQuery));
     const paidProjects = allPaidProjects.filter(p => matchesQuery(p, paidQuery));
 
+    const escapeHtml = (value) => String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+
     function buildProjectCard(p, { isPaidSection = false } = {}) {
       const card = document.createElement('div');
       card.className = 'card';
@@ -312,7 +319,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 : '';
 
             const IS_ACCOUNTANT = AUTH_USER && AUTH_USER.role === 'accountant';
-            const canAccept = (IS_OWNER || IS_ACCOUNTANT) && t.target_owner && (t.target_owner === AUTH_USER.actor);
+            const IS_NTV = AUTH_USER && AUTH_USER.role === 'ntv';
+            const canAccept = (IS_OWNER || IS_ACCOUNTANT || IS_NTV) && t.target_owner && (t.target_owner === AUTH_USER.actor);
             const today = new Date();
             const todayFormatted = today.toLocaleDateString('uk-UA');
             const isToday = t.created_at.startsWith(todayFormatted);
@@ -323,7 +331,7 @@ document.addEventListener('DOMContentLoaded', function () {
             // "Скасувати" — лише pending
             const canCancel  = t.status === 'pending';
 
-            const ownerLabels = { accountant: 'Бухгалтер', hlushchenko: 'Глущенко', kolisnyk: 'Колісник' };
+            const ownerLabels = { accountant: 'Бухгалтер', ntv: 'НТВ', hlushchenko: 'Глущенко', kolisnyk: 'Колісник' };
             const acceptedByLabel = t.accepted_by ? (ownerLabels[t.accepted_by] ?? t.accepted_by) : '';
             const statusBlock = t.status === 'accepted'
               ? `— ✅ Прийнято${acceptedByLabel ? ' ' + acceptedByLabel : ''}`
@@ -380,11 +388,12 @@ document.addEventListener('DOMContentLoaded', function () {
             `;
         }).join('');
 
-      const IS_ACCOUNTANT_USER = AUTH_USER && AUTH_USER.role === 'accountant';
+      const IS_COLLECTOR_USER = AUTH_USER && (AUTH_USER.role === 'accountant' || AUTH_USER.role === 'ntv');
+      const COLLECTOR_ACTOR = AUTH_USER ? AUTH_USER.actor : '';
 
-      // Бухгалтер: є accepted transfer до нього, і ще немає pending до власника
-      const accountantAccepted = p.transfers.find(t =>
-        t.status === 'accepted' && t.target_owner === 'accountant'
+      // Collector: є accepted transfer до нього, і ще немає pending до власника
+      const collectorAccepted = p.transfers.find(t =>
+        t.status === 'accepted' && t.target_owner === COLLECTOR_ACTOR
       );
       const forwardPending = p.transfers.find(t =>
         t.status === 'pending' && (t.target_owner === 'hlushchenko' || t.target_owner === 'kolisnyk')
@@ -392,8 +401,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
       let transferButtonsHtml = '';
 
-      if (IS_ACCOUNTANT_USER) {
-        if (accountantAccepted && !forwardPending) {
+      if (IS_COLLECTOR_USER) {
+        if (collectorAccepted && !forwardPending) {
           transferButtonsHtml = `
             <button class="btn forward-owner-btn" data-project="${p.id}" data-owner="hlushchenko" style="margin-right:5px;">
               💸 Глущенко
@@ -423,6 +432,9 @@ document.addEventListener('DOMContentLoaded', function () {
             <button class="btn send-owner-btn" data-project="${p.id}" data-owner="accountant">
               💸 Бухгалтер
             </button>
+            <button class="btn send-owner-btn" data-project="${p.id}" data-owner="ntv" style="margin-left:5px;">
+              💸 НТВ
+            </button>
           `;
         }
       }
@@ -431,11 +443,15 @@ document.addEventListener('DOMContentLoaded', function () {
       if (hasNtoMoney) {
         card.style.border = '2px solid #f2c200';
       }
+      const amoIdentityHtml = (p.amo_deal_name || p.amo_deal_id)
+        ? `<div style="margin-top:3px; font-size:11px; opacity:.62;">${escapeHtml([p.amo_deal_name, p.amo_deal_id ? `AMO #${p.amo_deal_id}` : ''].filter(Boolean).join(' · '))}</div>`
+        : '';
 
       card.innerHTML = `
           <div class="project-toggle" style="display:flex; justify-content:space-between;">
             <div style="font-weight:600;">
               ${p.client_name}
+              ${amoIdentityHtml}
             </div>
             <div>
               ${formatMoney(p.total_amount, p.currency)}
@@ -534,13 +550,18 @@ document.addEventListener('DOMContentLoaded', function () {
     if (allPaidProjects.length > 0) {
       const shouldOpenPaid = isPaidOpen || !!paidQuery;
 
+      const paidPendingCount = allPaidProjects.filter(p => Number(p.pending_amount || 0) > 0).length;
+      const paidPendingBadge = paidPendingCount > 0
+        ? `<span style="min-width:20px;height:20px;padding:0 6px;background:#f2c200;color:#111;border-radius:99px;font-size:11px;font-weight:800;line-height:20px;text-align:center;margin-left:6px;">${paidPendingCount}</span>`
+        : '';
+
       const paidCard = document.createElement('div');
       paidCard.className = 'card';
       paidCard.style.marginTop = '15px';
       paidCard.innerHTML = `
         <div class="paid-projects-toggle" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
           <div style="font-weight:700;">✅ Оплачені</div>
-          <div style="opacity:.75;">${paidProjects.length}${paidQuery ? ` / ${allPaidProjects.length}` : ''}</div>
+          <div style="display:flex;align-items:center;"><span style="opacity:.75;">${paidProjects.length}${paidQuery ? ` / ${allPaidProjects.length}` : ''}</span>${paidPendingBadge}</div>
         </div>
         <div class="paid-projects-details" style="display:${shouldOpenPaid ? 'block' : 'none'}; margin-top:12px; border-top:1px solid #ffffff; padding-top:10px;">
           <input
@@ -617,12 +638,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
             const monthName  = MONTH_NAMES_UK[month - 1] || `Місяць ${month}`;
             const monthItems = byYear[year][month];
-            // Sort within month: newest day first
+            // Sort: yellow-bordered (pending_amount > 0) first, then alphabetical by client_name
             monthItems.sort((a, b) => {
-              if (!a.d && !b.d) return 0;
-              if (!a.d) return 1;
-              if (!b.d) return -1;
-              return b.d.day - a.d.day;
+              const aPending = Number(a.p.pending_amount || 0) > 0 ? 1 : 0;
+              const bPending = Number(b.p.pending_amount || 0) > 0 ? 1 : 0;
+              if (bPending !== aPending) return bPending - aPending;
+              return String(a.p.client_name || '').localeCompare(String(b.p.client_name || ''), 'uk', { sensitivity: 'base' });
             });
 
             const monthDiv = document.createElement('div');
@@ -691,6 +712,11 @@ document.addEventListener('DOMContentLoaded', function () {
         </div>`;
       }).join('');
 
+    const activePendingCount = allActiveProjects.filter(p => Number(p.pending_amount || 0) > 0).length;
+    const activePendingBadge = activePendingCount > 0
+      ? `<span style="min-width:20px;height:20px;padding:0 6px;background:#f2c200;color:#111;border-radius:99px;font-size:11px;font-weight:800;line-height:20px;text-align:center;margin-left:6px;">${activePendingCount}</span>`
+      : '';
+
     const activeCard = document.createElement('div');
     activeCard.className = 'card';
     activeCard.style.marginTop = '15px';
@@ -698,7 +724,7 @@ document.addEventListener('DOMContentLoaded', function () {
       <div class="active-projects-toggle" style="cursor:pointer;">
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <div style="font-weight:700;">🟡 Проавансовані</div>
-          <div style="opacity:.75;">${activeProjects.length}${activeQuery ? ` / ${allActiveProjects.length}` : ''}</div>
+          <div style="display:flex;align-items:center;"><span style="opacity:.75;">${activeProjects.length}${activeQuery ? ` / ${allActiveProjects.length}` : ''}</span>${activePendingBadge}</div>
         </div>
         ${activeSummaryHtml ? `<div style="margin-top:6px;">${activeSummaryHtml}</div>` : ''}
       </div>

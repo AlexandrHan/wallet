@@ -24,7 +24,8 @@ document.addEventListener('DOMContentLoaded', function () {
   const root = document.getElementById('mySalaryRoot');
   if (!root) return;
 
-  const year = 2026;
+  let selectedYear = new Date().getFullYear();
+  let selectedMonth = new Date().getMonth() + 1;
 
   const monthNames = {
     1: 'Січень',
@@ -56,9 +57,34 @@ document.addEventListener('DOMContentLoaded', function () {
     }).format(Number(value || 0))} ${symbols[currency] || currency}`;
   };
 
+  const periodControls = () => `
+    <div class="card" style="margin-bottom:15px;">
+      <div style="font-weight:800; font-size:16px; margin-bottom:10px;">Період нарахування</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <select id="salaryYearSelect" class="btn" style="width:100%;">
+          ${[2026, 2027, 2028, 2029, 2030].map(y => `<option value="${y}" ${Number(y) === Number(selectedYear) ? 'selected' : ''}>${y}</option>`).join('')}
+        </select>
+        <select id="salaryMonthSelect" class="btn" style="width:100%;">
+          ${Object.entries(monthNames).map(([value, label]) => `<option value="${value}" ${Number(value) === Number(selectedMonth) ? 'selected' : ''}>${label}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+  `;
+
+  const bindPeriodControls = () => {
+    document.getElementById('salaryYearSelect')?.addEventListener('change', (event) => {
+      selectedYear = Number(event.target.value || selectedYear);
+      load();
+    });
+    document.getElementById('salaryMonthSelect')?.addEventListener('change', (event) => {
+      selectedMonth = Number(event.target.value || selectedMonth);
+      load();
+    });
+  };
+
   const currentSalaryMonths = (months) => {
     const currentDate = new Date();
-    const currentMonth = currentDate.getFullYear() === year ? (currentDate.getMonth() + 1) : 12;
+    const currentMonth = currentDate.getFullYear() === selectedYear ? (currentDate.getMonth() + 1) : 12;
     const list = Array.isArray(months) ? months : [];
     const currentMonthData = list.find(item => Number(item?.month) === currentMonth);
     const pastMonths = list
@@ -211,6 +237,103 @@ document.addEventListener('DOMContentLoaded', function () {
     root.querySelectorAll('.my-salary-month').forEach(card => bindCollapse(card));
   }
 
+  function renderSalesManager(payload) {
+    const manager = payload?.manager || null;
+    const projects = Array.isArray(manager?.projects) ? manager.projects : [];
+    const usdRate = Number(payload?.usd_uah_rate || 0);
+
+    if (!manager) {
+      root.innerHTML = `
+        ${periodControls()}
+        <div class="card">
+          <div style="font-weight:800; margin-bottom:6px;">Моя зарплата менеджера</div>
+          <div style="opacity:.75; font-size:14px;">Для вашого користувача не знайдено AMO-менеджера для розрахунку зарплати.</div>
+        </div>
+      `;
+      bindPeriodControls();
+      return;
+    }
+
+    const projectsByPipeline = projects.reduce((acc, project) => {
+      const label = project.pipeline_label || 'Pipeline';
+      if (!acc[label]) acc[label] = [];
+      acc[label].push(project);
+      return acc;
+    }, {});
+
+    root.innerHTML = `
+      ${periodControls()}
+      <div class="card" style="margin-bottom:15px;">
+        <div style="font-weight:900; font-size:18px;">Моя зарплата менеджера</div>
+        <div style="opacity:.75; font-size:13px; margin-top:4px;">${esc(manager.name)} · ${monthNames[payload.month] || payload.month} ${payload.year}</div>
+      </div>
+
+      <div class="card" style="margin-bottom:15px;">
+        <div style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px;">
+          <div>
+            <div style="font-size:12px; opacity:.65;">Відсоток</div>
+            <div style="font-weight:900; font-size:20px;">${Number(manager.commission_percent || 0)}%</div>
+          </div>
+          <div>
+            <div style="font-size:12px; opacity:.65;">Угод</div>
+            <div style="font-weight:900; font-size:20px;">${projects.length}</div>
+          </div>
+          <div>
+            <div style="font-size:12px; opacity:.65;">Сума угод</div>
+            <div style="font-weight:900; font-size:20px;">${formatMoney(manager.total_amount || 0, 'USD')}</div>
+          </div>
+          <div>
+            <div style="font-size:12px; opacity:.65;">Курс USD/UAH</div>
+            <div style="font-weight:900; font-size:20px;">${usdRate ? usdRate.toLocaleString('uk-UA') : '—'}</div>
+          </div>
+        </div>
+        <hr style="margin:14px 0; border:none; border-top:1px solid rgba(255,255,255,.08);">
+        <div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-end;">
+          <div>
+            <div style="font-size:12px; opacity:.65;">Комісія</div>
+            <div style="font-weight:900; font-size:24px;">${formatMoney(manager.commission_usd || 0, 'USD')}</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:12px; opacity:.65;">Еквівалент</div>
+            <div style="font-weight:900; font-size:24px;">${formatMoney(manager.commission_uah || 0, 'UAH')}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="font-weight:900; font-size:16px; margin-bottom:10px;">Угоди за період</div>
+        ${projects.length ? Object.entries(projectsByPipeline).map(([label, items]) => `
+          <div style="margin-top:12px;">
+            <div style="font-weight:800; font-size:14px; color:${label === 'Роздріб' ? '#66f2a8' : '#5b8dee'};">${esc(label)}</div>
+            ${items.map(project => `
+              <div style="margin-top:8px; padding:10px 12px; border-radius:10px; background:rgba(255,255,255,.04);">
+                <div style="display:flex; justify-content:space-between; gap:10px;">
+                  <div>
+                    <div style="font-weight:800; font-size:13px;">${esc(project.client_name || 'Клієнт')}</div>
+                    <div style="font-size:12px; opacity:.72; margin-top:2px;">${esc(project.deal_name || '')}</div>
+                    <div style="font-size:11px; opacity:.58; margin-top:2px;">
+                      ${project.amo_deal_id ? `AMO #${esc(project.amo_deal_id)}` : ''}
+                      ${project.wallet_project_id ? ` · ERP #${esc(project.wallet_project_id)}` : ''}
+                    </div>
+                  </div>
+                  <div style="text-align:right; white-space:nowrap;">
+                    <div style="font-weight:900;">${formatMoney(project.total_amount || 0, project.currency || 'USD')}</div>
+                    <div style="font-size:11px; opacity:.72;">${formatMoney(project.total_amount_usd || 0, 'USD')}</div>
+                    <div style="font-size:11px; opacity:.58;">${esc(project.amo_closed_at || '')}</div>
+                  </div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `).join('') : `
+          <div style="opacity:.65; font-size:13px;">За цей місяць угод для нарахування немає.</div>
+        `}
+      </div>
+    `;
+
+    bindPeriodControls();
+  }
+
 
   async function load() {
     root.innerHTML = `
@@ -220,7 +343,7 @@ document.addEventListener('DOMContentLoaded', function () {
     `;
 
     try {
-      const response = await fetch(`/api/salary/my?year=${year}`, {
+      const response = await fetch(`/api/salary/my?year=${selectedYear}&month=${selectedMonth}`, {
         headers: { 'Accept': 'application/json' }
       });
       const payload = await response.json();
@@ -236,6 +359,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
       if (payload.view_type === 'manager') {
         renderManager(payload);
+        return;
+      }
+
+      if (payload.view_type === 'sales_manager') {
+        renderSalesManager(payload);
         return;
       }
 

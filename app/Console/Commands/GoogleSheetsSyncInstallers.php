@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\GoogleSheetsService;
+use App\Services\ScheduleChangeNotificationService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -142,6 +143,21 @@ class GoogleSheetsSyncInstallers extends Command
         return $sheetGivenNameNorm === $projectGivenNameNorm;
     }
 
+    /**
+     * A blank client row can continue the previous project only if it carries
+     * work context. Date/week-day alone is just an empty calendar day.
+     */
+    private function rowHasContinuationContext(array $cols): bool
+    {
+        foreach ([3, 4, 5, 6] as $index) {
+            if (trim((string) ($cols[$index] ?? '')) !== '') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // ── Date normalization ───────────────────────────────────────────────────
 
     private function normalizeDate(string $value): ?string
@@ -176,6 +192,65 @@ class GoogleSheetsSyncInstallers extends Command
         }
     }
 
+    // ── Alias / AMO-name matching ────────────────────────────────────────────
+
+    /** Extract first parenthetical content, e.g. "Полегенько(Дім)" → "Дім". Returns null if none. */
+    private function extractParentheticalAlias(string $text): ?string
+    {
+        if (preg_match('/\(([^)]+)\)/u', $text, $m)) {
+            $alias = trim($m[1]);
+            return $alias !== '' ? $alias : null;
+        }
+        return null;
+    }
+
+    /** Normalize alias or AMO name for substring comparison (lowercase, strip apostrophes, collapse spaces). */
+    private function normalizeAlias(string $text): string
+    {
+        $text = mb_strtolower(trim($text));
+        $text = str_replace(["'", "\u{2019}", "\u{02BC}"], '', $text);
+        return trim((string) preg_replace('/\s+/u', ' ', $text));
+    }
+
+    /** Simple Cyrillic → Latin transliteration for cross-script alias matching (e.g. "Доніні" → "donini"). */
+    private function cyrillicToLatin(string $text): string
+    {
+        static $map = [
+            'а'=>'a', 'б'=>'b', 'в'=>'v', 'г'=>'h', 'ґ'=>'g', 'д'=>'d',
+            'е'=>'e', 'є'=>'e', 'ж'=>'zh', 'з'=>'z', 'и'=>'y', 'і'=>'i',
+            'ї'=>'i', 'й'=>'y', 'к'=>'k', 'л'=>'l', 'м'=>'m', 'н'=>'n',
+            'о'=>'o', 'п'=>'p', 'р'=>'r', 'с'=>'s', 'т'=>'t', 'у'=>'u',
+            'ф'=>'f', 'х'=>'kh', 'ц'=>'ts', 'ч'=>'ch', 'ш'=>'sh',
+            'щ'=>'shch', 'ь'=>'', 'ю'=>'yu', 'я'=>'ya',
+        ];
+        $result = '';
+        foreach (preg_split('//u', $text, -1, PREG_SPLIT_NO_EMPTY) as $ch) {
+            $result .= $map[$ch] ?? $ch;
+        }
+        return $result;
+    }
+
+    /**
+     * Return true if $alias (or its Cyrillic→Latin transliteration) is a substring
+     * of $amoName (or its transliteration). Handles "Доніні" ≈ "Donini".
+     */
+    private function aliasMatchesAmoName(string $alias, string $amoName): bool
+    {
+        if ($amoName === '') return false;
+        $na = $this->normalizeAlias($alias);
+        $nm = $this->normalizeAlias($amoName);
+        if ($na === '' || $nm === '') return false;
+        if (str_contains($nm, $na)) return true;
+        $la = $this->cyrillicToLatin($na);
+        if ($la !== $na && str_contains($nm, $la)) return true;
+        $lm = $this->cyrillicToLatin($nm);
+        if ($lm !== $nm) {
+            if (str_contains($lm, $na)) return true;
+            if ($la !== $na && str_contains($lm, $la)) return true;
+        }
+        return false;
+    }
+
     // ── Main ─────────────────────────────────────────────────────────────────
 
     public function handle(): int
@@ -190,6 +265,7 @@ class GoogleSheetsSyncInstallers extends Command
                 'installation_team_note', 'installation_team_task_note',
                 'construction_status', 'installation_completed_at',
                 'installation_completed_by', 'panel_check_status',
+                'amo_deal_id', 'pipeline_id', 'amo_deal_name', 'amo_status_id',
             ])
             ->where('status', 'active')
             ->where('source_layer', 'projects')
@@ -200,10 +276,24 @@ class GoogleSheetsSyncInstallers extends Command
             ->orderBy('id')
             ->get();
 
+        $projectsById = $projects->keyBy('id');
+
         if ($projects->isEmpty()) {
             $this->info('No active projects — nothing to sync.');
             return self::SUCCESS;
         }
+
+        // Read-only alias ownership index: includes non-writable project rows so
+        // a sheet alias cannot be routed into the wrong eligible sibling.
+        $allProjectsForAlias = DB::table('sales_projects')
+            ->select([
+                'id', 'client_name', 'status', 'source_layer', 'construction_status',
+                'amo_deal_id', 'pipeline_id', 'amo_deal_name', 'amo_status_id',
+            ])
+            ->where('source_layer', 'projects')
+            ->orderBy('id')
+            ->get();
+        $allProjectsById = $allProjectsForAlias->keyBy('id');
 
         $activePanelQcProjectIds = [];
         if (Schema::hasTable('quality_checks')) {
@@ -309,6 +399,151 @@ class GoogleSheetsSyncInstallers extends Command
             $projectsBySurname[$surnameNorm][] = $p->id;
         }
 
+        $allProjectsBySurname = [];
+        foreach ($allProjectsForAlias as $p) {
+            $pName = trim((string) $p->client_name);
+            if (preg_match('/^(.+),\s+\S+(?:\s+\S+){0,2}\s*$/su', $pName, $sm)) {
+                $pName = trim($sm[1]);
+            }
+
+            $surnameNorm = $this->normalizeClientSurname($pName);
+            if ($surnameNorm === '') continue;
+
+            $allProjectsBySurname[$surnameNorm][] = $p->id;
+        }
+
+        $formatAliasCandidates = function (array $ids) use ($projectsById, $allProjectsById): array {
+            return array_values(array_map(function ($id) use ($projectsById, $allProjectsById) {
+                $p = $allProjectsById[$id] ?? $projectsById[$id] ?? null;
+
+                return [
+                    'project_id' => (int) $id,
+                    'amo_deal_id' => $p?->amo_deal_id,
+                    'amo_deal_name' => $p?->amo_deal_name,
+                    'amo_status_id' => $p?->amo_status_id,
+                    'status' => $p?->status,
+                    'construction_status' => $p?->construction_status,
+                ];
+            }, $ids));
+        };
+
+        $identityCandidateIds = function (string $colC, array $ids) use ($projectsById, $allProjectsById): array {
+            $sheetTokens = $this->normalizeClientTokens($colC);
+            $sheetSurname = $sheetTokens[0] ?? '';
+            if ($sheetSurname === '') return [];
+
+            $sheetGivenName = $sheetTokens[1] ?? '';
+            $sheetPatronymic = $sheetTokens[2] ?? '';
+
+            return array_values(array_filter($ids, function ($id) use ($projectsById, $allProjectsById, $sheetSurname, $sheetGivenName, $sheetPatronymic) {
+                $p = $allProjectsById[$id] ?? $projectsById[$id] ?? null;
+                if (!$p) return false;
+
+                $projectName = trim((string) ($p->client_name ?? ''));
+                if (preg_match('/^(.+),\s+\S+(?:\s+\S+){0,2}\s*$/su', $projectName, $sm)) {
+                    $projectName = trim($sm[1]);
+                }
+
+                $projectTokens = $this->normalizeClientTokens($projectName);
+                if (($projectTokens[0] ?? '') !== $sheetSurname) {
+                    return false;
+                }
+
+                if ($sheetGivenName !== '' && ($projectTokens[1] ?? '') !== $sheetGivenName) {
+                    return false;
+                }
+
+                if ($sheetPatronymic !== '' && ($projectTokens[2] ?? '') !== $sheetPatronymic) {
+                    return false;
+                }
+
+                return true;
+            }));
+        };
+
+        $aliasMatchingIds = function (string $alias, array $ids) use ($projectsById, $allProjectsById): array {
+            return array_values(array_filter($ids, function ($id) use ($alias, $projectsById, $allProjectsById) {
+                $p = $allProjectsById[$id] ?? $projectsById[$id] ?? null;
+
+                return $p && $this->aliasMatchesAmoName($alias, (string) ($p->amo_deal_name ?? ''));
+            }));
+        };
+
+        $logAliasDecision = function (
+            string $reason,
+            string $tabName,
+            array $cols,
+            ?object $project,
+            string $alias,
+            array $eligibleCandidateIds,
+            array $allSiblingIds,
+            array $matchedIds = []
+        ) use ($formatAliasCandidates): void {
+            Log::warning('sheets:sync-installers:ambiguous_match', [
+                'reason' => $reason,
+                'command' => 'sheets:sync-installers',
+                'sheet_tab' => $tabName,
+                'date' => $this->normalizeDate(trim((string) ($cols[1] ?? ''))),
+                'raw_col_c' => trim((string) ($cols[2] ?? '')),
+                'extracted_alias' => $alias,
+                'normalized_alias' => $this->normalizeAlias($alias),
+                'project_id' => $project?->id,
+                'amo_deal_id' => $project?->amo_deal_id,
+                'amo_deal_name' => $project?->amo_deal_name,
+                'eligible_candidates' => $formatAliasCandidates($eligibleCandidateIds),
+                'all_sibling_candidates' => $formatAliasCandidates($allSiblingIds),
+                'matched_candidates' => $formatAliasCandidates($matchedIds),
+            ]);
+        };
+
+        // Rows with alias but no writable candidate would otherwise be invisible to
+        // the per-project loop. Log them before matching starts.
+        foreach ($dataRowsPerTab as $tabName => $dataRows) {
+            foreach ($dataRows as $cols) {
+                $colC = trim((string) ($cols[2] ?? ''));
+                $alias = $this->extractParentheticalAlias($colC);
+                if ($alias === null) continue;
+
+                $sheetSurname = $this->normalizeClientTokens($colC)[0] ?? '';
+                if ($sheetSurname === '') continue;
+
+                $eligibleCandidateIds = array_values($projectsBySurname[$sheetSurname] ?? []);
+                if (!empty($eligibleCandidateIds)) continue;
+
+                $allSiblingIds = array_values($allProjectsBySurname[$sheetSurname] ?? []);
+                $matchedIds = $aliasMatchingIds($alias, $allSiblingIds);
+
+                if (count($matchedIds) === 1) {
+                    $logAliasDecision('alias_matches_noneligible_project', $tabName, $cols, null, $alias, [], $allSiblingIds, $matchedIds);
+                } elseif (count($matchedIds) > 1) {
+                    $logAliasDecision('ambiguous_alias_match', $tabName, $cols, null, $alias, [], $allSiblingIds, $matchedIds);
+                } else {
+                    $logAliasDecision('no_eligible_candidate_for_alias', $tabName, $cols, null, $alias, [], $allSiblingIds, []);
+                }
+            }
+        }
+
+        // ── Warning: detect ambiguous surname groups with different amo_deal_id ─
+        foreach ($projectsBySurname as $surnameNorm => $pIds) {
+            if (count($pIds) < 2) continue;
+            $uniqueDeals = array_unique(array_filter(
+                array_map(fn ($pid) => ($projectsById[$pid] ?? null)?->amo_deal_id, $pIds)
+            ));
+            if (count($uniqueDeals) > 1) {
+                Log::warning('sheets:sync-installers:ambiguous_match', [
+                    'reason'       => 'ambiguous_client_group',
+                    'command'      => 'sheets:sync-installers',
+                    'surname_norm' => $surnameNorm,
+                    'candidates'   => array_map(fn ($pid) => [
+                        'project_id'    => $pid,
+                        'amo_deal_id'   => ($projectsById[$pid] ?? null)?->amo_deal_id,
+                        'amo_deal_name' => ($projectsById[$pid] ?? null)?->amo_deal_name,
+                        'client_name'   => ($projectsById[$pid] ?? null)?->client_name,
+                    ], $pIds),
+                ]);
+            }
+        }
+
         // ── Phase 1: Search every project across ALL tabs ─────────────────────
         // projectMatches[project_id][tabName] = ['workDays' => [...], 'effectiveClientName' => ...]
         $projectMatches         = [];
@@ -336,38 +571,249 @@ class GoogleSheetsSyncInstallers extends Command
             $keywords       = $kw['keywords'];
             $normalizedKws  = $kw['normalized'];
 
+            // Projects with the same surname but different amo_deal_id require alias-aware matching.
+            $ambiguousSiblingIds = $project->amo_deal_id !== null ? array_values(array_filter(
+                $projectsBySurname[$clientNameNorm] ?? [],
+                fn ($pid) => $pid !== $project->id
+                    && ($projectsById[$pid] ?? null)?->amo_deal_id !== null
+                    && ($projectsById[$pid] ?? null)?->amo_deal_id !== $project->amo_deal_id
+            )) : [];
+            $eligibleAliasCandidateIds = array_values($projectsBySurname[$clientNameNorm] ?? []);
+            $allAliasCandidateIds = array_values($allProjectsBySurname[$clientNameNorm] ?? []);
+
             foreach ($dataRowsPerTab as $tabName => $dataRows) {
                 if (empty($dataRows)) continue;
 
                 // ── 1. Collect all matching rows in this tab ──────────────────
+                // $inMatchSection: true while inside a consecutive matched-client block.
+                // A non-matching named row resets the flag so blank rows after it
+                // are NOT appended to the previous client's block (blank-row leak fix).
                 $allMatchingRows = [];
+                $inMatchSection  = false;
                 foreach ($dataRows as $cols) {
                     $colC = trim((string) ($cols[2] ?? ''));
                     if (in_array($this->normalizeUkr($colC), $skipWords, true)) continue;
                     if ($colC === '') {
-                        if (!empty($allMatchingRows)) $allMatchingRows[] = $cols;
+                        if ($inMatchSection && $this->rowHasContinuationContext($cols)) {
+                            $allMatchingRows[] = $cols;
+                        }
                         continue;
                     }
-                    if ($this->colCMatchesClient($colC, $clientNameNorm, $projectGivenNameNorm, $requiresGivenName, $keywords, $normalizedKws)) {
+
+                    $colCMatches = $this->colCMatchesClient(
+                        $colC, $clientNameNorm, $projectGivenNameNorm,
+                        $requiresGivenName, $keywords, $normalizedKws
+                    );
+
+                    // Alias fallback: when requiresGivenName=true but the sheet cell uses
+                    // a parenthetical alias instead of a given name (e.g. "Полегенько(Дім)"),
+                    // allow surname-only match so alias-aware filtering can route the row.
+                    // No-alias fallback: when cell has only the surname with no alias and no
+                    // given name (e.g. "Милокостий"), also allow — settlement disambiguation
+                    // will route the row to the correct project.
+                    if (!$colCMatches && $requiresGivenName && !empty($ambiguousSiblingIds)) {
+                        $aliasInCell = $this->extractParentheticalAlias($colC);
+                        if ($aliasInCell !== null) {
+                            $sheetSurname = $this->normalizeClientTokens($colC)[0] ?? '';
+                            if ($sheetSurname === $clientNameNorm) {
+                                $colCMatches = true;
+                            }
+                        } elseif ($this->normalizeClientSurname($colC) === $clientNameNorm) {
+                            $colCMatches = true;
+                        }
+                    }
+
+                    if ($colCMatches) {
+                        $inMatchSection = true;
                         $allMatchingRows[] = $cols;
+                    } else {
+                        if ($inMatchSection && !empty($allMatchingRows) && !empty($ambiguousSiblingIds)) {
+                            Log::warning('sheets:sync-installers:blank_row_leak_prevented', [
+                                'command'        => 'sheets:sync-installers',
+                                'sheet_tab'      => $tabName,
+                                'project_id'     => $project->id,
+                                'amo_deal_id'    => $project->amo_deal_id,
+                                'intruder_col_c' => $colC,
+                                'rows_protected' => count($allMatchingRows),
+                            ]);
+                        }
+                        $inMatchSection = false;
                     }
                 }
 
                 // Remove trailing empty-C rows
-                while (!empty($allMatchingRows) && trim((string) (end($allMatchingRows)[2] ?? '')) === '') {
+                while (
+                    !empty($allMatchingRows)
+                    && trim((string) (end($allMatchingRows)[2] ?? '')) === ''
+                    && !$this->rowHasContinuationContext(end($allMatchingRows))
+                ) {
                     array_pop($allMatchingRows);
                 }
 
                 if (empty($allMatchingRows)) continue;
 
-                // ── 2. Settlement disambiguation (per tab) ────────────────────
-                // DEBUG
-                if ($project->id === 1068 && $tabName === 'Шевченко') {
-                    $this->line("DEBUG #1068+Шевченко matchRows=" . count($allMatchingRows));
-                    foreach ($allMatchingRows as $ri => $c) {
-                        $this->line("  row$ri: B=" . ($c[1]??'') . " C=" . ($c[2]??'') . " D=" . ($c[3]??''));
+                // ── 1b. Alias-aware filtering (deal-aware matching) ───────────
+                // If sheet col-C contains "(alias)", alias ownership is stronger
+                // than surname/settlement/lower-id matching. Check all siblings,
+                // including non-writable rows, before allowing a write.
+                if (!empty($allAliasCandidateIds)) {
+                    $filteredRows = [];
+                    $keepBlankContinuation = false;
+
+                    foreach ($allMatchingRows as $cols) {
+                        $colC  = trim((string) ($cols[2] ?? ''));
+                        if ($colC === '') {
+                            if ($keepBlankContinuation && $this->rowHasContinuationContext($cols)) {
+                                $filteredRows[] = $cols;
+                            }
+                            continue;
+                        }
+
+                        $alias = $this->extractParentheticalAlias($colC);
+                        $eligibleIdentityCandidateIds = $identityCandidateIds($colC, $eligibleAliasCandidateIds);
+                        $allIdentityCandidateIds = $identityCandidateIds($colC, $allAliasCandidateIds);
+
+                        if (empty($eligibleIdentityCandidateIds) && empty($allIdentityCandidateIds)) {
+                            $keepBlankContinuation = false;
+                            $logAliasDecision(
+                                'no_candidate_project',
+                                $tabName,
+                                $cols,
+                                $project,
+                                $alias ?? '',
+                                [],
+                                [],
+                                []
+                            );
+                            continue;
+                        }
+
+                        if (count($eligibleIdentityCandidateIds) === 1 && count($allIdentityCandidateIds) === 1) {
+                            $matchedId = (int) $eligibleIdentityCandidateIds[0];
+                            if ($matchedId === (int) $project->id) {
+                                if ($alias !== null && !$this->aliasMatchesAmoName($alias, (string) ($project->amo_deal_name ?? ''))) {
+                                    $logAliasDecision(
+                                        'alias_not_found_but_identity_unique',
+                                        $tabName,
+                                        $cols,
+                                        $project,
+                                        $alias,
+                                        $eligibleIdentityCandidateIds,
+                                        $allIdentityCandidateIds,
+                                        [$matchedId]
+                                    );
+                                }
+
+                                $keepBlankContinuation = true;
+                                $filteredRows[] = $cols;
+                                continue;
+                            }
+
+                            $keepBlankContinuation = false;
+                            continue;
+                        }
+
+                        if ($alias === null) {
+                            $settlement = trim((string) ($cols[3] ?? ''));
+                            if ($settlement !== '' && $currentSettlement !== null) {
+                                // Let the existing settlement pass decide only when this project
+                                // already has a concrete settlement suffix. Do not assign a new
+                                // settlement to one of several sibling deals by order/lower id.
+                                $filteredRows[] = $cols;
+                                $keepBlankContinuation = true;
+                            } else {
+                                $keepBlankContinuation = false;
+                                Log::warning('sheets:sync-installers:ambiguous_match', [
+                                    'reason' => 'ambiguous_identity_without_alias',
+                                    'command' => 'sheets:sync-installers',
+                                    'sheet_tab' => $tabName,
+                                    'date' => $this->normalizeDate(trim((string) ($cols[1] ?? ''))),
+                                    'raw_col_c' => $colC,
+                                    'eligible_candidates' => $formatAliasCandidates($eligibleIdentityCandidateIds),
+                                    'all_sibling_candidates' => $formatAliasCandidates($allIdentityCandidateIds),
+                                ]);
+                            }
+                            continue;
+                        }
+
+                        $allAliasMatches = $aliasMatchingIds($alias, $allIdentityCandidateIds);
+
+                        if (count($allAliasMatches) > 1) {
+                            $keepBlankContinuation = false;
+                            $logAliasDecision(
+                                'ambiguous_alias_match',
+                                $tabName,
+                                $cols,
+                                $project,
+                                $alias,
+                                $eligibleIdentityCandidateIds,
+                                $allIdentityCandidateIds,
+                                $allAliasMatches
+                            );
+                            continue;
+                        }
+
+                        if (count($allAliasMatches) === 1) {
+                            $matchedId = (int) $allAliasMatches[0];
+                            if ($matchedId === (int) $project->id) {
+                                // Alias confirmed for this writable project.
+                                $keepBlankContinuation = true;
+                                $filteredRows[] = $cols;
+                                continue;
+                            }
+
+                            $keepBlankContinuation = false;
+                            $reason = isset($projectsById[$matchedId])
+                                ? 'belongs_to_sibling'
+                                : 'alias_matches_noneligible_project';
+
+                            $logAliasDecision(
+                                $reason,
+                                $tabName,
+                                $cols,
+                                $project,
+                                $alias,
+                                $eligibleIdentityCandidateIds,
+                                $allIdentityCandidateIds,
+                                [$matchedId]
+                            );
+                            continue;
+                        }
+
+                        $keepBlankContinuation = false;
+                        if (empty($eligibleIdentityCandidateIds)) {
+                            $logAliasDecision(
+                                'no_eligible_candidate_for_alias',
+                                $tabName,
+                                $cols,
+                                $project,
+                                $alias,
+                                $eligibleIdentityCandidateIds,
+                                $allIdentityCandidateIds,
+                                []
+                            );
+                            continue;
+                        }
+
+                        // Alias resolved nowhere — log and skip (don't guess)
+                        $logAliasDecision(
+                            'alias_not_found_in_amo_deal_name',
+                            $tabName,
+                            $cols,
+                            $project,
+                            $alias,
+                            $eligibleIdentityCandidateIds,
+                            $allIdentityCandidateIds,
+                            []
+                        );
                     }
+
+                    $allMatchingRows = $filteredRows;
                 }
+
+                if (empty($allMatchingRows)) continue;
+
+                // ── 2. Settlement disambiguation (per tab) ────────────────────
                 $groupKey     = mb_strtolower($matchingClientName) . '|' . $tabName;
                 $isDuplicated = count($duplicateGroupsPerTab[$tabName][$groupKey] ?? []) > 1;
                 $effectiveClientName = $matchingClientName;
@@ -466,8 +912,31 @@ class GoogleSheetsSyncInstallers extends Command
                 }
                 if ($bestBlock === null) continue;
 
+                // ── 4b. Collect work days from ALL future blocks ──────────────
+                // bestBlock drives panel_work_start_date; allFutureWorkDays drives
+                // schedule entries so multi-block clients (e.g. Синюк has бетонування
+                // on 11-12 May AND installation on 18-19 May) get all dates stored.
+                $allFutureWorkDays = [];
+                foreach ($blocks as $b) {
+                    foreach ($b as $bCols) {
+                        $rawDate = trim((string) ($bCols[1] ?? ''));
+                        if ($rawDate === '') continue;
+                        $date = $this->normalizeDate($rawDate);
+                        if (!$date || $date < $today) continue;
+                        $allFutureWorkDays[] = [
+                            'date'        => $date,
+                            'description' => trim((string) ($bCols[4] ?? '')),
+                            'notes'       => trim((string) ($bCols[6] ?? '')),
+                        ];
+                    }
+                }
+
                 // Remove trailing empty-C rows from best block
-                while (!empty($bestBlock) && trim((string) (end($bestBlock)[2] ?? '')) === '') {
+                while (
+                    !empty($bestBlock)
+                    && trim((string) (end($bestBlock)[2] ?? '')) === ''
+                    && !$this->rowHasContinuationContext(end($bestBlock))
+                ) {
                     array_pop($bestBlock);
                 }
                 if (empty($bestBlock)) continue;
@@ -495,8 +964,40 @@ class GoogleSheetsSyncInstallers extends Command
                 // ── 6. Record match for this tab ──────────────────────────────
                 $projectMatches[$project->id][$tabName] = [
                     'workDays'            => $workDays,
+                    'allFutureWorkDays'   => $allFutureWorkDays,
                     'effectiveClientName' => $effectiveClientName,
                 ];
+
+                // ── Warning: ambiguous client name (no alias to disambiguate) ──
+                // Only fires when siblings with different amo_deal_id exist AND the
+                // remaining matched rows have no parenthetical alias — meaning alias
+                // filtering had nothing to work with and the match is still uncertain.
+                if (!empty($ambiguousSiblingIds)) {
+                    $hasAliasInMatchedRows = false;
+                    foreach ($allMatchingRows as $mc) {
+                        if ($this->extractParentheticalAlias(trim((string) ($mc[2] ?? ''))) !== null) {
+                            $hasAliasInMatchedRows = true;
+                            break;
+                        }
+                    }
+                    if (!$hasAliasInMatchedRows) {
+                        Log::warning('sheets:sync-installers:ambiguous_match', [
+                            'reason'               => 'ambiguous_client_name',
+                            'command'              => 'sheets:sync-installers',
+                            'sheet_tab'            => $tabName,
+                            'matched_project_id'   => (int) $project->id,
+                            'matched_amo_deal_id'  => $project->amo_deal_id,
+                            'matched_amo_deal_name'=> $project->amo_deal_name,
+                            'client_name_norm'     => $clientNameNorm,
+                            'ambiguous_siblings'   => array_map(fn ($sid) => [
+                                'project_id'    => $sid,
+                                'amo_deal_id'   => ($projectsById[$sid] ?? null)?->amo_deal_id,
+                                'amo_deal_name' => ($projectsById[$sid] ?? null)?->amo_deal_name,
+                                'client_name'   => ($projectsById[$sid] ?? null)?->client_name,
+                            ], $ambiguousSiblingIds),
+                        ]);
+                    }
+                }
             }
         }
 
@@ -603,12 +1104,37 @@ class GoogleSheetsSyncInstallers extends Command
             foreach ($matches as $tabName => $match) {
                 $clientKey = mb_strtolower(trim($match['effectiveClientName']));
 
-                foreach ($match['workDays'] as $wd) {
+                foreach ($match['allFutureWorkDays'] as $wd) {
                     $key = "{$clientKey}|installation_team|{$tabName}|{$wd['date']}";
 
-                    // Lower-id project wins on deduplication
-                    if (isset($scheduleRows[$key]) && $scheduleRows[$key]['project_id'] < $project->id) {
-                        continue;
+                    // Deduplication: two projects colliding on the same schedule key.
+                    if (isset($scheduleRows[$key])) {
+                        $existingPid = $scheduleRows[$key]['project_id'];
+                        $existing    = $projectsById[$existingPid] ?? null;
+
+                        if ($existing && ($existing->amo_deal_id ?? null) !== ($project->amo_deal_id ?? null)) {
+                            // Different AMO deals on the same slot — alias filtering should have
+                            // prevented this. If it didn't, block both rather than guess.
+                            unset($scheduleRows[$key]);
+                            Log::warning('sheets:sync-installers:ambiguous_match', [
+                                'reason'                => 'lower_id_wins_blocked_due_to_alias',
+                                'command'               => 'sheets:sync-installers',
+                                'sheet_tab'             => $tabName,
+                                'work_date'             => $wd['date'],
+                                'project_a_id'          => $existingPid,
+                                'project_a_amo_deal_id' => $existing->amo_deal_id,
+                                'project_a_amo_name'    => $existing->amo_deal_name,
+                                'project_b_id'          => (int) $project->id,
+                                'project_b_amo_deal_id' => $project->amo_deal_id,
+                                'project_b_amo_name'    => $project->amo_deal_name,
+                            ]);
+                            continue;
+                        }
+
+                        // Same amo_deal_id (or no amo info) — lower id wins
+                        if ($existingPid < $project->id) {
+                            continue;
+                        }
                     }
 
                     $description = $wd['description'];
@@ -635,22 +1161,31 @@ class GoogleSheetsSyncInstallers extends Command
             $teamValues = array_values(array_unique(
                 array_map(fn ($r) => $r['assignment_value'], $scheduleRows)
             ));
+            $scheduleNotifier = app(ScheduleChangeNotificationService::class);
+            $oldSchedule = $scheduleNotifier->collectOldSchedule('installation_team', $teamValues, $today);
+            $newSchedule = $scheduleNotifier->collectNewSchedule($scheduleRows, 'installation_team', $today);
 
             DB::table('project_schedule_entries')
                 ->where('assignment_field', 'installation_team')
                 ->whereIn('assignment_value', $teamValues)
+                ->where('source', 'google_sheet')
+                ->where('work_date', '>=', $today)
                 ->delete();
 
             DB::table('project_schedule_entries')->insertOrIgnore(array_values($scheduleRows));
+            $scheduleNotifications = $scheduleNotifier->notifyChangedSchedules('installation_team', $oldSchedule, $newSchedule);
+        } else {
+            $scheduleNotifications = 0;
         }
 
         Log::info('sheets:sync-installers done', [
             'projects_checked' => $projectsChecked,
             'projects_updated' => $projectsUpdated,
             'schedule_entries' => count($scheduleRows),
+            'schedule_notifications' => $scheduleNotifications,
         ]);
 
-        $this->info("Done. Checked: {$projectsChecked}, updated: {$projectsUpdated}, schedule entries: " . count($scheduleRows));
+        $this->info("Done. Checked: {$projectsChecked}, updated: {$projectsUpdated}, schedule entries: " . count($scheduleRows) . ", schedule notifications: {$scheduleNotifications}");
 
         return self::SUCCESS;
     }

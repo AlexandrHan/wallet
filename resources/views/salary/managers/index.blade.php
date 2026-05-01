@@ -7,7 +7,7 @@
 
 @section('content')
 <main class="">
-  <a href="/salary" class="card" style="margin-bottom:15px; display:block; text-decoration:none; color:inherit;">
+  <a href="{{ auth()->user()?->role === 'owner' ? '/salary' : '/salary/managers' }}" class="card" style="margin-bottom:15px; display:block; text-decoration:none; color:inherit;">
     <div style="font-weight:800; font-size:18px; text-align:center;">
       📈 Зарплата відділу продажів
     </div>

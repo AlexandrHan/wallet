@@ -41,9 +41,13 @@ function renderWallets() {
 
   visible.forEach(w => {
     const writable = canWriteWallet(w.owner);
+    const isNtvHouseholdWallet = w.name === 'КЕШ НТВ (госп. витрати)';
 
     const card = document.createElement('div');
     card.className = 'card' + (writable ? '' : ' ro');
+    if (isNtvHouseholdWallet) {
+      card.classList.add('wallet-card--ntv-household');
+    }
     card.addEventListener('click', () => loadEntries(w.id));
 
     const bal = Number(w.balance || 0);

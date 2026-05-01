@@ -2,7 +2,7 @@
   $current = '/'.trim(request()->path(), '/'); // '/', '/finance', '/stock/...'
 
   $activeWallet = ($current === '/');
-  $activeSales  = str_starts_with($current, '/finance');
+  $activeSales  = str_starts_with($current, '/finance') || str_starts_with($current, '/sales');
   $activeStock  = str_starts_with($current, '/solar-glass') || str_starts_with($current, '/equipment-orders');
 
   $tabs = [
@@ -48,18 +48,25 @@
           💱 Обмінник
         </button>
 
-        <a class="tg-menu__item" style="margin-bottom:15px;" href="/finance">🧾 Сторінка продажів</a>
+        <details class="tg-acc">
+          <summary class="tg-acc__title">📈 Відділ продажу</summary>
+          <div class="tg-acc__body">
+            <a class="tg-menu__item" href="/finance">🧾 Сторінка продажів</a>
+            <a class="tg-menu__item" href="/sales/amo-ntv-report">📋 АМО звіт</a>
+          </div>
+        </details>
 
         <details class="tg-acc">
           <summary class="tg-acc__title">📦 Склад</summary>
           <div class="tg-acc__body">
             <a class="tg-menu__item" href="/solar-glass">☀️ Solar Glass</a>
-            <a class="tg-menu__item" href="/equipment-orders">🛒 Замовлення обладнання</a>
+            <a class="tg-menu__item" href="/equipment-orders">📦 Потреба в обладнанні</a>
+            <a class="tg-menu__item" href="/equipment-purchase-orders">🛒 Замовлення обладнання</a>
             <a class="tg-menu__item" href="/projects/delivered">🚚 Доставлено на об'єкт</a>
           </div>
         </details>
 
-        <a class="tg-menu__item" style="margin-bottom:15px;" href="/salary/my">💰 Зарплатня</a>
+        <a class="tg-menu__item" style="margin-bottom:15px;" href="/salary/managers">💰 Зарплатня</a>
 
         <a class="tg-menu__item" href="/profile">👤 Профіль</a>
 

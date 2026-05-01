@@ -22,9 +22,11 @@ Schedule::command('amocrm:sync-deals')
     ->everyThirtyMinutes()
     ->withoutOverlapping();
 
-// Зміщено на хв:02 і хв:32 щоб не конкурувати з sync-deals за SQLite lock
+// Зміщено на хв:15 і хв:45 щоб не конкурувати з sync-deals (:00/:30) за SQLite lock.
+// sync-deals займає >2 хв, тому попереднього зсуву :02 не вистачало.
+// Основний захист — WAL mode + busy_timeout=10000 в AppServiceProvider.
 Schedule::command('amocrm:sync-complectation-projects')
-    ->cron('2,32 * * * *')
+    ->cron('15,45 * * * *')
     ->withoutOverlapping();
 
 Schedule::command('zippy:sync-stock')
@@ -44,6 +46,11 @@ Schedule::command('sheets:sync-installers')
 // 🗑 Очищення даних про недоліки старших 3 місяців
 Schedule::command('quality:prune-deficiencies')
     ->dailyAt('03:00');
+
+// 🗑 Очищення підозрілих дій старших 2 місяців
+Schedule::command('suspicious-actions:prune')
+    ->dailyAt('03:10')
+    ->withoutOverlapping();
 
 // 🔔 Перевірка залишку Сонячного кабелю — щодня о 10:00 (пн-пт)
 // Рахуємо SUM по всіх позиціях категорії (item_name містить "кабел" + "соняч")

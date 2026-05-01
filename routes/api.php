@@ -1374,12 +1374,13 @@ Route::middleware(['web', 'auth'])->get('/wallets', function () {
     $user  = auth()->user();
     $query = DB::table('wallets')->where('is_active', 1);
 
-    // manager / worker бачать лише свої гаманці (не бухгалтерські)
-    if (in_array($user->role, ['manager', 'worker']) && $user->actor) {
+    // manager / worker / ntv бачать лише свої гаманці (не бухгалтерські)
+    if (in_array($user->role, ['manager', 'worker', 'ntv']) && $user->actor) {
         $query->where('owner', $user->actor);
     }
 
     $wallets = $query
+        ->orderByRaw('CASE WHEN id = 57 THEN 0 ELSE 1 END')
         ->orderBy('owner')
         ->orderBy('currency')
         ->orderBy('name')

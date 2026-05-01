@@ -192,8 +192,7 @@
     };
   }
 
-  if (typeof window.openStaffCash !== 'function') {
-    window.openStaffCash = async function () {
+  window.openStaffCash = async function () {
       const list = document.getElementById('staffCashList');
       if (!list) return;
 
@@ -312,13 +311,10 @@
         setStaffModalVisible(true);
       }
     };
-  }
 
-  if (typeof window.closeStaffCash !== 'function') {
-    window.closeStaffCash = function () {
-      setStaffModalVisible(false);
-    };
-  }
+  window.closeStaffCash = function () {
+    setStaffModalVisible(false);
+  };
 
   if (typeof window.openStaffWallet !== 'function') {
     window.openStaffWallet = function (walletId) {

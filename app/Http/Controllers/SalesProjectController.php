@@ -4,10 +4,12 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use App\Models\SalesProject;
 use App\Models\CashTransfer;
+use App\Services\NotificationService;
 
 class SalesProjectController extends Controller
 {
@@ -180,6 +182,226 @@ class SalesProjectController extends Controller
         }
 
         DB::table('project_change_logs')->insert($rows);
+    }
+
+    /** Normalize a date value to Y-m-d for comparison, or null. */
+    private function normalizeDateForCompare(?string $value): ?string
+    {
+        if (!$value) return null;
+        try {
+            return \Carbon\Carbon::parse($value)->format('Y-m-d');
+        } catch (\Throwable) {
+            return $value;
+        }
+    }
+
+    private function amoResponsibleToLocalUserMap(): array
+    {
+        return [
+            9296522  => 17, // Volodymyr
+            9888062  => 14, // Inha
+            12498694 => 15, // Natalia
+            12890150 => 17, // Volodymyr
+            6838192  => 2,  // Kolisnyk
+            11148522 => 1,  // Hlushchenko
+        ];
+    }
+
+    private function resolveScheduleChangeLeadManagerId(SalesProject $project): ?int
+    {
+        $rawLeadId = $project->lead_manager_user_id
+            ? (int) $project->lead_manager_user_id
+            : null;
+
+        if ($rawLeadId) {
+            $localUser = DB::table('users')
+                ->where('id', $rawLeadId)
+                ->whereIn('role', ['owner', 'ntv', 'manager'])
+                ->first(['id']);
+
+            if ($localUser) {
+                return (int) $localUser->id;
+            }
+
+            $mapped = $this->amoResponsibleToLocalUserMap()[$rawLeadId] ?? null;
+            if ($mapped) {
+                Log::info('schedule_change_notification:amo_id_translated', [
+                    'project_id'    => $project->id,
+                    'source'        => 'sales_projects.lead_manager_user_id',
+                    'amo_user_id'   => $rawLeadId,
+                    'local_user_id' => $mapped,
+                ]);
+
+                return (int) $mapped;
+            }
+        }
+
+        if (!$project->amo_deal_id || !Schema::hasTable('amo_complectation_projects')) {
+            return null;
+        }
+
+        $amoResponsible = DB::table('amo_complectation_projects')
+            ->where('amo_deal_id', (int) $project->amo_deal_id)
+            ->orderByDesc('updated_at')
+            ->first(['responsible_user_id', 'responsible_name']);
+
+        $amoResponsibleId = (int) ($amoResponsible->responsible_user_id ?? 0);
+        if ($amoResponsibleId <= 0) {
+            return null;
+        }
+
+        $mapped = $this->amoResponsibleToLocalUserMap()[$amoResponsibleId] ?? null;
+        if (!$mapped) {
+            Log::warning('schedule_change_notification:amo_user_no_local_account', [
+                'project_id'       => $project->id,
+                'amo_deal_id'      => $project->amo_deal_id,
+                'amo_user_id'      => $amoResponsibleId,
+                'responsible_name' => $amoResponsible->responsible_name ?? null,
+                'client_name'      => $project->client_name,
+            ]);
+
+            return null;
+        }
+
+        Log::info('schedule_change_notification:amo_id_translated', [
+            'project_id'    => $project->id,
+            'source'        => 'amo_complectation_projects.responsible_user_id',
+            'amo_user_id'   => $amoResponsibleId,
+            'local_user_id' => $mapped,
+        ]);
+
+        return (int) $mapped;
+    }
+
+    /**
+     * Send schedule-change notifications to lead manager + all NTV users.
+     *
+     * Triggered only from updateConstruction() — never from sync commands.
+     * Fires when panel_work_start_date or electric_work_start_date actually changed.
+     */
+    private function sendScheduleChangeNotifications(
+        SalesProject $project,
+        array        $before,
+        array        $data
+    ): void {
+        $panelDateChanged = array_key_exists('panel_work_start_date', $data)
+            && $this->normalizeDateForCompare($data['panel_work_start_date'])
+               !== $this->normalizeDateForCompare($before['panel_work_start_date'] ?? null);
+
+        $electricDateChanged = array_key_exists('electric_work_start_date', $data)
+            && $this->normalizeDateForCompare($data['electric_work_start_date'])
+               !== $this->normalizeDateForCompare($before['electric_work_start_date'] ?? null);
+
+        if (!$panelDateChanged && !$electricDateChanged) {
+            return;
+        }
+
+        // ── Build recipient list (lead manager + NTV, deduplicated) ──────────
+        $recipientIds = [];
+        $leadManagerId = $this->resolveScheduleChangeLeadManagerId($project);
+        if ($leadManagerId) {
+            $recipientIds[] = $leadManagerId;
+        } else {
+            Log::warning('schedule_change_notification:no_lead_manager', [
+                'project_id'  => $project->id,
+                'amo_deal_id' => $project->amo_deal_id,
+                'client_name' => $project->client_name,
+            ]);
+        }
+
+        $ntvIds = DB::table('users')
+            ->where('role', 'ntv')
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        if (empty($ntvIds)) {
+            Log::warning('schedule_change_notification:no_ntv_users', [
+                'project_id' => $project->id,
+            ]);
+        }
+
+        foreach ($ntvIds as $ntvId) {
+            if (!in_array($ntvId, $recipientIds, true)) {
+                $recipientIds[] = $ntvId;
+            }
+        }
+
+        if (empty($recipientIds)) {
+            Log::warning('schedule_change_notification:no_recipients', [
+                'project_id' => $project->id,
+            ]);
+            return;
+        }
+
+        // ── AMO context suffix ───────────────────────────────────────────────
+        $amoParts = array_filter([
+            $project->amo_deal_name ?: null,
+            $project->amo_deal_id   ? 'AMO #' . $project->amo_deal_id : null,
+        ]);
+        $amoContext = $amoParts ? "\n" . implode(' · ', $amoParts) : '';
+
+        $notifService = new NotificationService();
+
+        // ── Installation notification ────────────────────────────────────────
+        if ($panelDateChanged) {
+            $oldDate = $this->normalizeHistoryValue('panel_work_start_date', $before['panel_work_start_date'] ?? null);
+            $newDate = $this->normalizeHistoryValue('panel_work_start_date', $data['panel_work_start_date']);
+            $team    = trim((string) ($data['installation_team'] ?? $before['installation_team'] ?? ''));
+
+            $title   = 'Зміна дати монтажу ФЕМ';
+            $message = "Змінено дату монтажних робіт по проєкту: {$project->client_name}.\n"
+                . "Було: {$oldDate}.\n"
+                . "Стало: {$newDate}.\n"
+                . ($team ? "Бригада: {$team}.\n" : '')
+                . "Потрібно зателефонувати замовнику і попередити про зміну дати проведення монтажних робіт."
+                . $amoContext;
+
+            foreach ($recipientIds as $uid) {
+                $notifService->send($uid, $title, $message, 'system', ['project_id' => $project->id]);
+            }
+
+            Log::info('schedule_change_notification:sent', [
+                'type'        => 'installation',
+                'project_id'  => $project->id,
+                'client_name' => $project->client_name,
+                'old_date'    => $oldDate,
+                'new_date'    => $newDate,
+                'team'        => $team,
+                'recipients'  => $recipientIds,
+                'reason'      => 'panel_work_start_date changed via ERP UI',
+            ]);
+        }
+
+        // ── Electrician notification ─────────────────────────────────────────
+        if ($electricDateChanged) {
+            $oldDate     = $this->normalizeHistoryValue('electric_work_start_date', $before['electric_work_start_date'] ?? null);
+            $newDate     = $this->normalizeHistoryValue('electric_work_start_date', $data['electric_work_start_date']);
+            $electrician = trim((string) ($data['electrician'] ?? $before['electrician'] ?? ''));
+
+            $title   = 'Зміна дати електромонтажу';
+            $message = "Змінено дату електромонтажних робіт по проєкту: {$project->client_name}.\n"
+                . "Було: {$oldDate}.\n"
+                . "Стало: {$newDate}.\n"
+                . ($electrician ? "Електрик: {$electrician}.\n" : '')
+                . "Потрібно зателефонувати замовнику і попередити про зміну дати проведення монтажних робіт."
+                . $amoContext;
+
+            foreach ($recipientIds as $uid) {
+                $notifService->send($uid, $title, $message, 'system', ['project_id' => $project->id]);
+            }
+
+            Log::info('schedule_change_notification:sent', [
+                'type'        => 'electrician',
+                'project_id'  => $project->id,
+                'client_name' => $project->client_name,
+                'old_date'    => $oldDate,
+                'new_date'    => $newDate,
+                'electrician' => $electrician,
+                'recipients'  => $recipientIds,
+                'reason'      => 'electric_work_start_date changed via ERP UI',
+            ]);
+        }
     }
 
     private function toProjectAmount(float $amount, string $advanceCurrency, string $projectCurrency, ?float $exchangeRate): float
@@ -494,6 +716,8 @@ class SalesProjectController extends Controller
             'installation_team_task_note' => Schema::hasColumn('sales_projects', 'installation_team_task_note'),
             'construction_status'      => Schema::hasColumn('sales_projects', 'construction_status'),
             'installation_completed_at'=> Schema::hasColumn('sales_projects', 'installation_completed_at'),
+            'electric_check_status'    => Schema::hasColumn('sales_projects', 'electric_check_status'),
+            'panel_check_status'       => Schema::hasColumn('sales_projects', 'panel_check_status'),
         ];
 
         $projects = $projects->map(function ($project) use ($userNames, $amoComplectationByProjectId, $transfersByProjectId, $amoStatusByProjectId, $qcByProject, $attachmentsByProject, $scheduleEntriesByProject, $col, $walletOwnerById, $workerMatchValue) {
@@ -576,6 +800,10 @@ class SalesProjectController extends Controller
             return [
                 'id' => $project->id,
                 'client_name' => $project->client_name,
+                'amo_deal_id' => $project->amo_deal_id ? (int) $project->amo_deal_id : null,
+                'pipeline_id' => $project->pipeline_id ? (int) $project->pipeline_id : null,
+                'amo_deal_name' => $project->amo_deal_name,
+                'amo_status_id' => $project->amo_status_id ? (int) $project->amo_status_id : null,
                 'created_by' => (int) $project->created_by,
                 'lead_manager_user_id' => $project->lead_manager_user_id ? (int) $project->lead_manager_user_id : null,
                 'total_amount' => (float)$project->total_amount,
@@ -618,6 +846,8 @@ class SalesProjectController extends Controller
                 'installation_team_task_note' => $col['installation_team_task_note'] ? $project->installation_team_task_note : null,
                 'construction_status' => $col['construction_status'] ? $project->construction_status : null,
                 'installation_completed_at' => $col['installation_completed_at'] ? $project->installation_completed_at : null,
+                'electric_check_status' => $col['electric_check_status'] ? $project->electric_check_status : null,
+                'panel_check_status' => $col['panel_check_status'] ? $project->panel_check_status : null,
                 'extra_works' => $project->extra_works,
                 'defects_note' => $project->defects_note,
                 'defects_photo_url' => $project->defects_photo_path
@@ -888,7 +1118,7 @@ class SalesProjectController extends Controller
         }
 
         $data = $request->validate([
-            'target_owner' => 'required|in:hlushchenko,kolisnyk,accountant',
+            'target_owner' => 'required|in:hlushchenko,kolisnyk,accountant,ntv',
         ]);
 
         $project = SalesProject::find($id);
@@ -910,7 +1140,12 @@ class SalesProjectController extends Controller
     public function forwardToOwner(Request $request, $id)
     {
         $u = auth()->user();
-        if (!$u || $u->role !== 'accountant') {
+        if (!$u || !in_array($u->role, ['accountant', 'ntv'], true)) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
+        $collectorActor = (string) ($u->actor ?? '');
+        if (!in_array($collectorActor, ['accountant', 'ntv'], true)) {
             return response()->json(['error' => 'Forbidden'], 403);
         }
 
@@ -926,7 +1161,7 @@ class SalesProjectController extends Controller
         $acceptedTransfers = DB::table('cash_transfers')
             ->where('project_id', $project->id)
             ->where('status', 'accepted')
-            ->where('target_owner', 'accountant')
+            ->where('target_owner', $collectorActor)
             ->orderBy('id')
             ->get();
 
@@ -934,16 +1169,16 @@ class SalesProjectController extends Controller
             return response()->json(['error' => 'Не знайдено прийнятого авансу'], 422);
         }
 
-        DB::transaction(function () use ($acceptedTransfers, $project, $data, $u) {
+        DB::transaction(function () use ($acceptedTransfers, $project, $data, $u, $collectorActor) {
             foreach ($acceptedTransfers as $accepted) {
                 $fromWallet = DB::table('wallets')
-                    ->where('owner', 'accountant')
+                    ->where('owner', $collectorActor)
                     ->where('currency', $accepted->currency)
                     ->where('name', 'like', '%(' . $accepted->currency . ')')
                     ->first();
 
                 if (!$fromWallet) {
-                    throw new \RuntimeException('Гаманець бухгалтера не знайдено');
+                    throw new \RuntimeException('Гаманець отримувача не знайдено');
                 }
 
                 $alreadyPending = DB::table('cash_transfers')
@@ -1212,6 +1447,16 @@ class SalesProjectController extends Controller
         }
 
         $this->logProjectHistory($project, $historyEntries);
+
+        // ── Schedule-change notifications (manual ERP update only) ───────────
+        try {
+            $this->sendScheduleChangeNotifications($project, $before, $data);
+        } catch (\Throwable $e) {
+            Log::error('schedule_change_notification:exception', [
+                'project_id' => $project->id,
+                'error'      => $e->getMessage(),
+            ]);
+        }
 
         return response()->json([
             'ok' => true,

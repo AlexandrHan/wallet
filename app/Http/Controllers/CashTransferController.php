@@ -48,10 +48,10 @@ class CashTransferController extends Controller
         // 🟢 Якщо це аванс проекту
         if ($transfer->project_id) {
 
-            if (!in_array($user->role, ['owner', 'accountant'], true)) {
+            if (!in_array($user->role, ['owner', 'accountant', 'ntv'], true)) {
                 return response()->json(['error' => 'Forbidden'], 403);
             }
-            if ($transfer->target_owner && $transfer->target_owner !== $user->actor) {
+            if (!$transfer->target_owner || $transfer->target_owner !== $user->actor) {
                 return response()->json(['error' => 'Forbidden'], 403);
             }
 

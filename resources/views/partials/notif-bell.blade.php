@@ -15,7 +15,7 @@
            background:#021709ef; border:1px solid rgba(255,255,255,0.08); border-radius:16px;
            box-shadow:0 12px 40px rgba(0,0,0,0.7); z-index:9999; overflow:hidden;
            flex-direction:column; display:none; color:#e8eaf0;">
-    <div style="padding:13px 16px 10px; display:flex; align-items:center; justify-content:space-between;
+    <div class="notif-panel-header" style="padding:13px 16px 10px; display:flex; align-items:center; justify-content:space-between;
                 flex-shrink:0; border-bottom:1px solid rgba(255,255,255,0.06);">
       <span style="font-weight:700; font-size:15px; letter-spacing:-0.2px;">Сповіщення</span>
       <button id="notifMarkAll"
@@ -23,8 +23,14 @@
                opacity:.7; color:white; padding:4px 10px; border-radius:8px; transition:background .15s;">
         Всі прочитані
       </button>
+      <button id="notifClose" aria-label="Закрити сповіщення"
+        style="background:rgba(255,255,255,0.08); border:none; cursor:pointer; color:white;
+               width:28px; height:28px; border-radius:999px; font-size:18px; line-height:1;
+               display:inline-flex; align-items:center; justify-content:center;">
+        ×
+      </button>
     </div>
-    <div id="notifList" style="overflow-y:auto; flex:1; min-height:60px;"></div>
+    <div id="notifList" style="overflow-y:auto; overscroll-behavior:contain; flex:1; min-height:60px;"></div>
     <div style="padding:9px 14px; flex-shrink:0; border-top:1px solid rgba(255,255,255,0.06); text-align:center;">
       <a href="{{ route('messages.index') }}"
          style="font-size:12px; opacity:.5; color:#e8eaf0; text-decoration:none; display:inline-flex; align-items:center; gap:5px;">
@@ -42,16 +48,48 @@
 .notif-item .notif-title { font-size:13px; font-weight:600; }
 .notif-item .notif-msg { font-size:12px; opacity:.6; margin-top:2px; line-height:1.4; }
 .notif-item .notif-time { font-size:10px; opacity:.35; margin-top:3px; }
+.notif-panel-header { position:relative; }
+.notif-panel-header > span { min-width:120px; }
+#notifMarkAll { position:absolute; left:50%; transform:translateX(-50%); }
+#notifClose:hover,
+#notifMarkAll:hover { background:rgba(255,255,255,0.14) !important; opacity:1 !important; }
+body.notifications-open { overflow:hidden; }
+#notifPanel {
+  overscroll-behavior:contain;
+  touch-action:auto;
+}
+#notifList {
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;
+}
+@media (min-width: 601px) {
+  #notifPanel {
+    position: fixed !important;
+    top: 72px !important;
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    width: min(980px, calc(100vw - 32px)) !important;
+    max-height: calc(100vh - 96px) !important;
+  }
+}
 @media (max-width: 600px) {
   #notifPanel {
     position: fixed !important;
-    top: auto !important;
-    left: 50% !important;
-    right: auto !important;
-    transform: translateX(-50%);
-    width: calc(100vw - 24px) !important;
-    max-width: 400px;
-    margin-top: 60px;
+    inset: 0 !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    transform: none !important;
+    width: 100vw !important;
+    max-width: none !important;
+    max-height: none !important;
+    height: 100dvh !important;
+    margin: 0 !important;
+    padding-top: 10dvh !important;
+    box-sizing: border-box !important;
+    border-radius: 0 !important;
   }
 }
 </style>
@@ -63,6 +101,7 @@
   const panel      = document.getElementById('notifPanel');
   const list       = document.getElementById('notifList');
   const markAllBtn = document.getElementById('notifMarkAll');
+  const closeBtn   = document.getElementById('notifClose');
   const csrf       = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
   const ICONS      = { finance:'💰', salary:'💸', project:'🏗', system:'⚙️', message:'💬', stock:'📦', salary_alert:'💸', finance_alert:'💰', project_alert:'🏗', stock_alert:'📦' };
 
@@ -139,18 +178,39 @@
     } catch {}
   });
 
+  function openPanel() {
+    isOpen = true;
+    panel.style.display = 'flex';
+    document.body.classList.add('notifications-open');
+    loadPanel();
+  }
+
+  function closePanel() {
+    isOpen = false;
+    panel.style.display = 'none';
+    document.body.classList.remove('notifications-open');
+  }
+
   bell.addEventListener('click', e => {
     e.stopPropagation();
-    isOpen = !isOpen;
-    panel.style.display = isOpen ? 'flex' : 'none';
-    if (isOpen) loadPanel();
+    isOpen ? closePanel() : openPanel();
+  });
+
+  closeBtn?.addEventListener('click', e => {
+    e.stopPropagation();
+    closePanel();
   });
 
   document.addEventListener('click', e => {
     if (isOpen && !panel.contains(e.target) && e.target !== bell) {
-      isOpen = false; panel.style.display = 'none';
+      closePanel();
     }
   });
+
+  panel.addEventListener('wheel', e => e.stopPropagation(), { passive:true });
+  panel.addEventListener('touchmove', e => e.stopPropagation(), { passive:true });
+  list.addEventListener('wheel', e => e.stopPropagation(), { passive:true });
+  list.addEventListener('touchmove', e => e.stopPropagation(), { passive:true });
 
   fetchCount();
   // Polling кожні 15с — тільки badge + панель, БЕЗ звуку (звук тільки від WebSocket)

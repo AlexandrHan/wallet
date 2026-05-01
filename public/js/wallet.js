@@ -520,17 +520,19 @@ async function loadWallets() {
 
 function updateCashSubmitButtonVisibility() {
   if (!cashSubmitBtn) return;
-  if (AUTH_USER.role !== 'accountant') {
+  if (!['accountant', 'ntv'].includes(AUTH_USER.role)) {
     cashSubmitBtn.classList.add('hidden');
     return;
   }
+
+  const collectorActor = String(AUTH_USER.actor || '');
 
   const hasPositiveServiceCash = state.wallets.some((wallet) => {
     const owner = String(wallet?.owner || '');
     const name = String(wallet?.name || '');
     const balance = Number(wallet?.balance || 0);
 
-    if (owner !== 'accountant') return false;
+    if (owner !== collectorActor) return false;
     if (!(name.includes('(USD)') || name.includes('(UAH)') || name.includes('(EUR)'))) return false;
 
     return balance > 0;
@@ -855,9 +857,10 @@ visible.forEach(w => {
   const writable = canWriteWallet(w.owner);
   const bal = Number(w.balance || 0);
   const balCls = bal >= 0 ? 'pos' : 'neg';
+  const isNtvHouseholdWallet = w.name === 'КЕШ НТВ (госп. витрати)';
 
   const card = document.createElement('div');
-  card.className = `card account-card account-card-ui account-cash ${writable ? '' : 'ro'}`;
+  card.className = `card account-card account-card-ui account-cash ${writable ? '' : 'ro'} ${isNtvHouseholdWallet ? 'wallet-card--ntv-household' : ''}`;
   card.dataset.accountId = w.id;
   card.onclick = () => loadEntries(w.id);
 
@@ -1009,7 +1012,7 @@ async function acceptAllCashPending() {
 }
 
 function openCashSubmitModal() {
-  if (AUTH_USER.role !== 'accountant' || !cashSubmitModal) return;
+  if (!['accountant', 'ntv'].includes(AUTH_USER.role) || !cashSubmitModal) return;
   cashSubmitModal.classList.remove('hidden');
 }
 
@@ -1018,7 +1021,7 @@ function closeCashSubmitModal() {
 }
 
 async function submitCashToOwner(targetOwner) {
-  if (AUTH_USER.role !== 'accountant') return;
+  if (!['accountant', 'ntv'].includes(AUTH_USER.role)) return;
   if (!checkOnline()) return;
 
   try {
@@ -3303,65 +3306,10 @@ function updateExchange(source = 'from'){
 //////////////////////////////////////////////////////////////////////////////////////
 // КЕШ співробітників — МОДАЛКА
 //////////////////////////////////////////////////////////////////////////////////////
-// ВІДКРИТТЯ МОДАЛКИ
-// ВІДКРИТТЯ МОДАЛКИ
-window.openStaffCash = function () {
-  
 
-  const OWNER_ACTORS = ['hlushchenko', 'kolisnyk']; // власники (виключаємо)
-
-  // ✅ всі кеш-рахунки, де owner заданий і це НЕ власники
-  const staffWallets = state.wallets.filter(w => {
-    const owner = w.owner;
-    if (!owner) return false;
-    if (OWNER_ACTORS.includes(owner)) return false;
-    if ((w.type || 'cash') !== 'cash') return false; // на всяк: тільки cash
-    return true;
-  });
-
-  const ROLE_LABELS = {
-    accountant: 'Соловей',
-    foreman: 'Оніпко',
-    ntv: 'НТВ',
-    serviceman_1: 'Савенков',
-    serviceman_2: 'Малінін',
-  };
-
-  const list = document.getElementById('staffCashList');
-
-  list.innerHTML = staffWallets.map(w => {
-    const label = ROLE_LABELS[w.owner] || w.owner;
-
-    return `
-      <div class="rate-card" onclick="openStaffWallet(${w.id})">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <div class="rate-title">${w.name}</div>
-          <div class="staff-badge">${label}</div>
-        </div>
-
-        <div style="margin-top:6px;font-size:16px;font-weight:700;">
-          ${Number(w.balance).toFixed(2)} ${w.currency}
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  document.getElementById('staffCashModal').classList.remove('hidden');
-  document.body.classList.add('modal-open');
-};
-
-
-
-// ЗАКРИТТЯ
-window.closeStaffCash = function(){
-  document.getElementById('staffCashModal').classList.add('hidden');
-  document.body.classList.remove('modal-open');
-}
-
-
-// ВІДКРИТТЯ РАХУНКУ
+// ВІДКРИТТЯ РАХУНКУ (головна: відкриває гаманець інлайн)
 window.openStaffWallet = async function(walletId){
-  closeStaffCash();
+  window.closeStaffCash?.();
   await loadEntries(walletId);
 }
 

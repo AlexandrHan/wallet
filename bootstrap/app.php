@@ -23,6 +23,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'wallets.access' => \App\Http\Middleware\WalletsAccess::class,
             'only.sunfix.manager' => \App\Http\Middleware\OnlySunfixManager::class,
             'only.owner.or.sunfix.manager' => \App\Http\Middleware\OnlyOwnerOrSunfixManager::class,
+            'only.owner.or.ntv' => \App\Http\Middleware\OnlyOwnerOrNtv::class,
             'automation.debug' => \App\Http\Middleware\AutomationDebug::class,
 
         ]);

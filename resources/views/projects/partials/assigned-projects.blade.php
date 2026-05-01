@@ -483,6 +483,12 @@ document.addEventListener('DOMContentLoaded', async function () {
     const telegramUrl = normalizeExternalUrl(project.telegram_group_link);
     const mapsUrl = normalizeExternalUrl(project.geo_location_link);
     const phoneHref = normalizePhoneHref(project.phone_number);
+    const amoIdentity = [
+      project.amo_deal_name,
+      MATCH_FIELD !== 'installation_team' && project.amo_deal_id ? `AMO #${project.amo_deal_id}` : ''
+    ]
+      .filter(Boolean)
+      .join(' · ');
 
     card.className = 'card project-card';
     card.dataset.cardKey = cardKey || `project-${project.id}`;
@@ -504,6 +510,10 @@ document.addEventListener('DOMContentLoaded', async function () {
             ${scheduledDateLabel ? `📅 ${esc(scheduledDateLabel)}` : esc(project.created_at || '')} ${isClosed ? '• ✅ Закритий' : ''}
           </div>
         </div>
+        ${amoIdentity ? `
+        <div class="project-header-row project-header-sub" style="margin-top:3px;">
+          <div style="font-size:11px; opacity:.68;">${esc(amoIdentity)}</div>
+        </div>` : ''}
         <div class="project-header-row project-header-sub">
           <div>${esc(project.electrician || 'Електрик не вказаний')}</div>
           <div class="project-header-meta" style="font-size:12px; opacity:.78;">
@@ -513,6 +523,11 @@ document.addEventListener('DOMContentLoaded', async function () {
         ${project.mounting_system ? `
         <div class="project-header-row project-header-sub" style="margin-top:2px;">
           <div style="font-size:11px; opacity:.7;">🔩 ${esc(project.mounting_system)}</div>
+        </div>` : ''}
+        ${(project.panel_check_status === 'done' || project.electric_check_status === 'done') ? `
+        <div class="project-header-row project-header-sub" style="margin-top:4px; gap:6px; flex-wrap:wrap;">
+          ${project.electric_check_status === 'done' ? `<span style="font-size:11px; font-weight:700; color:#111; background:#facc15; border-radius:6px; padding:2px 8px; line-height:1.6;">⚡ Електрик завершив</span>` : ''}
+          ${project.panel_check_status === 'done' ? `<span style="font-size:11px; font-weight:700; color:#111; background:#4ade80; border-radius:6px; padding:2px 8px; line-height:1.6;">✅ Монтажники завершили</span>` : ''}
         </div>` : ''}
       </div>
 
@@ -976,11 +991,23 @@ document.addEventListener('DOMContentLoaded', async function () {
       if (normalizedKeys.size === 0) {
         // Check if all dates are in the past → overdue (not yet completed by worker)
         const todayStr = days[0].key;
-        const allInPast = explicitDates.length > 0
+        const allExplicitDatesInPast = explicitDates.length > 0
           && explicitDates.every(rawDate => {
             const d = parseProjectDate(rawDate);
             return d && d.toISOString().slice(0, 10) < todayStr;
           });
+        const lastFallbackDate = startDate ? new Date(startDate) : null;
+        if (lastFallbackDate) {
+          lastFallbackDate.setDate(startDate.getDate() + duration - 1);
+        }
+        const allFallbackDatesInPast = explicitDates.length === 0
+          && lastFallbackDate
+          && lastFallbackDate.toISOString().slice(0, 10) < todayStr;
+        const allInPast = allExplicitDatesInPast || allFallbackDatesInPast;
+
+        if (MATCH_FIELD === 'electrician' && allInPast) {
+          return;
+        }
 
         if (allInPast && !project.installation_completed_at) {
           // Pin overdue project to today with a flag for lime highlight

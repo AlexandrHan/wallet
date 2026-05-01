@@ -81,7 +81,7 @@ class CashDeskController extends Controller
     public function pendingList(Request $request)
     {
         $user = auth()->user();
-        if (!$user || !in_array($user->role, ['owner', 'accountant'], true)) {
+        if (!$user || !in_array($user->role, ['owner', 'accountant', 'ntv'], true)) {
             return response()->json(['error' => 'Forbidden'], 403);
         }
 
@@ -103,7 +103,7 @@ class CashDeskController extends Controller
     public function pendingSummary(Request $request)
     {
         $user = auth()->user();
-        if (!$user || !in_array($user->role, ['owner', 'accountant'], true)) {
+        if (!$user || !in_array($user->role, ['owner', 'accountant', 'ntv'], true)) {
             return response()->json(['error' => 'Forbidden'], 403);
         }
 
@@ -130,7 +130,12 @@ class CashDeskController extends Controller
     public function submit(Request $request)
     {
         $user = auth()->user();
-        if (!$user || $user->role !== 'accountant') {
+        if (!$user || !in_array($user->role, ['accountant', 'ntv'], true)) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
+        $collectorActor = (string) ($user->actor ?? '');
+        if (!in_array($collectorActor, ['accountant', 'ntv'], true)) {
             return response()->json(['error' => 'Forbidden'], 403);
         }
 
@@ -139,7 +144,7 @@ class CashDeskController extends Controller
         ]);
 
         $wallets = DB::table('wallets')
-            ->where('owner', 'accountant')
+            ->where('owner', $collectorActor)
             ->where(function ($query) {
                 $query->where('name', 'like', '%(USD)%')
                     ->orWhere('name', 'like', '%(UAH)%')

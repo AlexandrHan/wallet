@@ -8,7 +8,7 @@
 <main class="projects-main">
 
   <div class="projects-title-card">
-    <div class="projects-title">📦 Замовлення обладнання</div>
+    <div class="projects-title">📦 Склад vs проєкти</div>
     <div style="font-size:12px; opacity:.6; margin-top:2px;">Склад vs активні проекти</div>
   </div>
 

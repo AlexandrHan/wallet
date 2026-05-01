@@ -140,6 +140,7 @@ return [
         // Заплановане будівництво → Монтаж → Електрична частина →
         // Здача проекту → Остаточна оплата (49782427).
         'finance_stage_ids' => array_map('intval', array_filter(explode(',', env('AMO_FINANCE_STAGE_IDS', '38556547,69586234,38556550,69593822,69593826,69593830,69593834,49782427')))),
+        'ntv_report_stage_ids' => array_map('intval', array_filter(explode(',', env('AMO_NTV_REPORT_STAGE_IDS', '38556547,69586234,38556550,69593822,69593826,69593830,69593834,41906428,41906431,49782427')))),
         'salary_pipelines' => [
             4071382 => [
                 'label' => 'Проекти',
@@ -149,7 +150,8 @@ return [
             7013646 => [
                 'label' => 'Роздріб',
                 'type' => 'retail',
-                'currency' => 'UAH',
+                'currency' => 'USD',
+                'finance_stage_ids' => [72798042, 72798046], // Контроль оплати, відвантаження
             ],
         ],
     ],

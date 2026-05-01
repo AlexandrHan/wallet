@@ -658,6 +658,9 @@ async function loadConstructionProjects() {
     const teamOptionsHtml = teamValues.map(opt => `
       <option value="${esc(opt.name)}" data-option-id="${opt.id ?? ''}" ${String(p.installation_team || '') === String(opt.name) ? 'selected' : ''}>${esc(opt.name)}</option>
     `).join('');
+    const amoIdentityHtml = (p.amo_deal_name || p.amo_deal_id)
+      ? `<div style="font-size:11px; opacity:.62; margin-top:3px;">${esc([p.amo_deal_name, p.amo_deal_id ? `AMO #${p.amo_deal_id}` : ''].filter(Boolean).join(' · '))}</div>`
+      : '';
 
     const card = document.createElement('div');
     card.className = 'card project-card';
@@ -667,7 +670,10 @@ async function loadConstructionProjects() {
     card.innerHTML = `
       <div class="project-header">
         <div class="project-header-row">
-          <div class="project-header-name" data-project-preview="client">${esc(p.client_name)}</div>
+          <div>
+            <div class="project-header-name" data-project-preview="client">${esc(p.client_name)}</div>
+            ${amoIdentityHtml}
+          </div>
           <div class="project-header-meta">
             ${esc(p.created_at)} ${isClosed ? '• ✅ Закритий' : ''}
           </div>
@@ -681,6 +687,11 @@ async function loadConstructionProjects() {
         ${p.mounting_system ? `
         <div class="project-header-row project-header-sub" style="margin-top:2px;">
           <div style="font-size:11px; opacity:.7;">🔩 ${esc(p.mounting_system)}</div>
+        </div>` : ''}
+        ${(p.panel_check_status === 'done' || p.electric_check_status === 'done') ? `
+        <div class="project-header-row project-header-sub" style="margin-top:4px; gap:6px; flex-wrap:wrap;">
+          ${p.electric_check_status === 'done' ? `<span style="font-size:11px; font-weight:700; color:#111; background:#facc15; border-radius:6px; padding:2px 8px; line-height:1.6;">⚡ Електрик завершив</span>` : ''}
+          ${p.panel_check_status === 'done' ? `<span style="font-size:11px; font-weight:700; color:#111; background:#4ade80; border-radius:6px; padding:2px 8px; line-height:1.6;">✅ Монтажники завершили</span>` : ''}
         </div>` : ''}
       </div>
 

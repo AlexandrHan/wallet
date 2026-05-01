@@ -15,6 +15,7 @@ use App\Http\Controllers\CashTransferController;
 use App\Http\Controllers\SalaryRuleController;
 use App\Http\Controllers\ServiceRequestController;
 use App\Http\Controllers\StockController;
+use App\Http\Controllers\AmoNtvReportController;
 use App\Models\AutomationLog;
 use App\Services\AutomationService;
 
@@ -176,7 +177,7 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         ->middleware('only.owner')
         ->name('salary.settings');
     Route::view('/salary/managers', 'salary.managers.index')
-        ->middleware('only.owner')
+        ->middleware('only.owner.or.ntv')
         ->name('salary.managers');
     Route::view('/salary/fixed/show', 'salary.fixed.show')
         ->middleware('only.owner')
@@ -520,7 +521,8 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         Route::post('/salary/fixed-employee/penalties', [SalaryRuleController::class, 'saveFixedEmployeePenalties'])->middleware('only.owner');
         Route::get('/salary/foreman/my', [SalaryRuleController::class, 'myForemanFixedSalaryData']);
         Route::get('/salary/my', [SalaryRuleController::class, 'mySalaryData']);
-        Route::get('/salary/managers-data', [SalaryRuleController::class, 'managerPayoutData'])->middleware('only.owner');
+        Route::get('/salary/my-data', [SalaryRuleController::class, 'mySalaryPersonalData']);
+        Route::get('/salary/managers-data', [SalaryRuleController::class, 'managerPayoutData'])->middleware('only.owner.or.ntv');
         Route::get('/salary/summary', [SalaryRuleController::class, 'summary'])->middleware('only.owner');
         Route::get('/salary/projects', [\App\Http\Controllers\SalesProjectController::class, 'salaryProjects']);
         Route::get('/service-requests', [ServiceRequestController::class, 'index']);
@@ -1459,6 +1461,11 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         return view('finance.finance');
     });
 
+    Route::get('/sales/amo-ntv-report', [AmoNtvReportController::class, 'index'])
+        ->name('sales.amo-ntv-report');
+    Route::get('/api/sales/amo-ntv-report', [AmoNtvReportController::class, 'data'])
+        ->name('api.sales.amo-ntv-report');
+
     Route::middleware(['auth'])->prefix('api/fem')->group(function () {
         Route::get('/containers', [FemDebtController::class, 'index']);                 // manager/owner/accountant
         Route::post('/containers', [FemDebtController::class, 'storeContainer']);      // manager only (контролер вже перевіряє)
@@ -1702,6 +1709,9 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         Route::post('/api/projects/{id}/orphan-approve',
             [\App\Http\Controllers\QualityCheckController::class, 'approveOrphan']);
 
+        Route::post('/api/projects/{id}/orphan-cancel',
+            [\App\Http\Controllers\QualityCheckController::class, 'cancelOrphan']);
+
         Route::post('/api/quality-checks/{id}/save-deficiencies',
             [\App\Http\Controllers\QualityCheckController::class, 'saveDeficiencies']);
 
@@ -1771,6 +1781,147 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         $user = auth()->user();
         if (!$user || !in_array($user->role, ['owner', 'ntv', 'manager', 'accountant'], true)) abort(403);
         return view('projects.equipment-orders');
+    });
+
+    Route::middleware(['auth'])->get('/equipment-purchase-orders', function () {
+        $user = auth()->user();
+        if (!$user || !in_array($user->role, ['owner', 'ntv'], true)) abort(403);
+
+        $activeStageIds = [38556547, 69586234, 38556550, 69593822, 69593826, 69593830, 69593834];
+
+        $allNormRules = \Illuminate\Support\Facades\DB::table('battery_norm_rules')
+            ->orderByDesc('sort_order')->orderBy('id')->get()->groupBy('type');
+        $normRulesBattery  = $allNormRules->get('battery',  collect());
+        $normRulesInverter = $allNormRules->get('inverter', collect());
+
+        $applyRules = function(string $s, $rules): ?string {
+            foreach ($rules as $rule) {
+                $matched = $rule->is_regex
+                    ? preg_match('/' . $rule->match_text . '/iu', $s)
+                    : stripos($s, $rule->match_text) !== false;
+                if ($matched) return $rule->output_name;
+            }
+            return null;
+        };
+
+        $normalizeBatteryName = function(string $raw) use ($normRulesBattery, $applyRules): string {
+            $s = preg_replace('/[\s,\-\/]+\d+\s*шт[^а-яіїє]*$/ui', '', trim($raw));
+            $s = preg_replace('/[,\/]\s*\d+\s*$/', '', $s);
+            $s = trim($s) ?: trim($raw);
+            return $applyRules($s, $normRulesBattery) ?? $s;
+        };
+
+        $normalizeInverterName = function(string $raw) use ($normRulesInverter, $applyRules): string {
+            $s = trim($raw);
+            $fromDb = $applyRules($s, $normRulesInverter);
+            if ($fromDb !== null) return $fromDb;
+            return \App\Services\InverterNormalizerService::normalize($s) ?? $s;
+        };
+
+        $isEmpty = function ($v): bool {
+            $s = trim((string) $v);
+            if ($s === '') {
+                return true;
+            }
+
+            return !preg_match('/[\p{L}\p{N}]/u', $s);
+        };
+
+        $allProjects = \Illuminate\Support\Facades\DB::table('amocrm_deal_map as m')
+            ->join('sales_projects as p', 'p.id', '=', 'm.wallet_project_id')
+            ->whereIn('m.amo_status_id', $activeStageIds)
+            ->whereNotIn('p.status', ['cancelled', 'completed'])
+            ->select(
+                'p.id', 'p.inverter', 'p.battery_name', 'p.battery_qty', 'p.delivered_inverter',
+                \Illuminate\Support\Facades\DB::raw(
+                    "COALESCE(p.panel_work_start_date, p.electric_work_start_date, DATE(p.created_at)) as project_date"
+                )
+            )
+            ->orderBy('project_date')
+            ->get();
+
+        $stockInverterMap = [];
+        \Illuminate\Support\Facades\DB::table('solarglass_stock')
+            ->where(function ($q) { $q->where('item_name', 'like', 'Інвертор%')->orWhere('item_name', 'like', 'інвертор%'); })
+            ->get(['item_name', 'qty'])
+            ->each(function ($r) use (&$stockInverterMap, $normalizeInverterName) {
+                $key = $normalizeInverterName(trim($r->item_name));
+                $stockInverterMap[$key] = ($stockInverterMap[$key] ?? 0) + (int)$r->qty;
+            });
+
+        $stockBatteryMap = [];
+        \Illuminate\Support\Facades\DB::table('solarglass_stock')
+            ->where('item_name', 'like', 'АКБ%')
+            ->get(['item_name', 'qty'])
+            ->each(function ($r) use (&$stockBatteryMap, $normalizeBatteryName) {
+                $key = $normalizeBatteryName(trim($r->item_name));
+                $stockBatteryMap[$key] = ($stockBatteryMap[$key] ?? 0) + (int)$r->qty;
+            });
+
+        $invProjectsByModel = [];
+        $batProjectsByModel = [];
+
+        foreach ($allProjects as $p) {
+            $delivered = (int)($p->delivered_inverter ?? 0) === 1;
+
+            if (!$isEmpty($p->inverter) && !$delivered) {
+                $model = $normalizeInverterName(trim($p->inverter));
+                $invProjectsByModel[$model][] = $p->project_date;
+            }
+
+            if (!$isEmpty($p->battery_name) && !$delivered) {
+                $model = $normalizeBatteryName(trim($p->battery_name));
+                $qty = max(1, (int)($p->battery_qty ?? 1));
+                $batProjectsByModel[$model][] = ['date' => $p->project_date, 'qty' => $qty];
+            }
+        }
+
+        $inverterRows = [];
+        foreach (array_unique(array_merge(array_keys($invProjectsByModel), array_keys($stockInverterMap))) as $model) {
+            $stock    = $stockInverterMap[$model] ?? 0;
+            $dates    = $invProjectsByModel[$model] ?? [];
+            $needed   = count($dates);
+            $shortage = max(0, $needed - $stock);
+            if ($shortage === 0) continue;
+
+            $remaining = $stock;
+            $firstDate = null;
+            foreach ($dates as $date) {
+                $remaining--;
+                if ($remaining < 0 && $firstDate === null) $firstDate = $date;
+            }
+            $inverterRows[] = ['name' => $model, 'shortage' => $shortage, 'first_date' => $firstDate];
+        }
+        usort($inverterRows, fn($a, $b) => ($a['first_date'] ?? '9999-99-99') <=> ($b['first_date'] ?? '9999-99-99'));
+
+        $batteryRows = [];
+        foreach (array_unique(array_merge(array_keys($batProjectsByModel), array_keys($stockBatteryMap))) as $model) {
+            $stock    = $stockBatteryMap[$model] ?? 0;
+            $projList = $batProjectsByModel[$model] ?? [];
+            $needed   = array_sum(array_column($projList, 'qty'));
+            $shortage = max(0, $needed - $stock);
+            if ($shortage === 0) continue;
+
+            $remaining = $stock;
+            $firstDate = null;
+            foreach ($projList as $proj) {
+                $remaining -= $proj['qty'];
+                if ($remaining < 0 && $firstDate === null) $firstDate = $proj['date'];
+            }
+            $batteryRows[] = ['name' => $model, 'shortage' => $shortage, 'first_date' => $firstDate];
+        }
+        usort($batteryRows, fn($a, $b) => ($a['first_date'] ?? '9999-99-99') <=> ($b['first_date'] ?? '9999-99-99'));
+
+        $additionalRows = [
+            ['name' => 'Сонячний кабель', 'unit' => 'м',
+             'stock' => (int) \Illuminate\Support\Facades\DB::table('solarglass_stock')
+                ->where('item_name', 'like', '%Кабел%')->where('item_name', 'like', '%оняч%')->sum('qty')],
+            ['name' => 'Профіль монтажний', 'unit' => 'шт',
+             'stock' => (int) \Illuminate\Support\Facades\DB::table('solarglass_stock')
+                ->where('item_name', 'like', 'Профіль монтажний%')->sum('qty')],
+        ];
+
+        return view('projects.equipment-purchase-orders', compact('inverterRows', 'batteryRows', 'additionalRows'));
     });
 
     // Доставлено на об'єкт — активні проекти з вже доставленим обладнанням
@@ -2064,7 +2215,14 @@ Route::middleware(['auth', 'only.reclamations', 'only.sunfix.manager'])->group(f
         $batterySummary = [];
         $panelSummary = [];
 
-        $isEmpty = fn($v) => empty($v) || trim($v) === '-' || trim($v) === '—';
+        $isEmpty = function ($v): bool {
+            $s = trim((string) $v);
+            if ($s === '') {
+                return true;
+            }
+
+            return !preg_match('/[\p{L}\p{N}]/u', $s);
+        };
 
         foreach ($projects as $p) {
             $inverterDelivered = (int)($p->delivered_inverter ?? 0) === 1;

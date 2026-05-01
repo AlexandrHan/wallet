@@ -1159,6 +1159,12 @@ html{
   border: 1px dashed rgba(255,255,255,0.15);
 }
 
+.wallet-card--ntv-household{
+  background: linear-gradient(135deg, #3a3d42, #25282d) !important;
+  border: 1px solid rgba(255,255,255,0.14) !important;
+  box-shadow: 0 14px 36px rgba(0,0,0,0.28) !important;
+}
+
 .staff-badge{
   font-size:11px;
   padding:4px 8px;

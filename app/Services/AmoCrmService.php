@@ -132,9 +132,32 @@ class AmoCrmService
             'with' => 'contacts,users',
         ];
 
-        foreach (array_values($financeStageIds) as $i => $statusId) {
+        $i = 0;
+        foreach (array_values($financeStageIds) as $statusId) {
             $query['filter[statuses][' . $i . '][pipeline_id]'] = $pipelineId;
             $query['filter[statuses][' . $i . '][status_id]'] = $statusId;
+            $i++;
+        }
+
+        foreach ($this->ntvReportStageIds() as $statusId) {
+            if (in_array($statusId, $financeStageIds, true)) {
+                continue;
+            }
+
+            $query['filter[statuses][' . $i . '][pipeline_id]'] = $pipelineId;
+            $query['filter[statuses][' . $i . '][status_id]'] = $statusId;
+            $i++;
+        }
+
+        // Also fetch finance stages from salary pipelines (e.g. retail pipeline)
+        foreach ($this->salaryPipelines() as $salaryPipelineId => $meta) {
+            foreach ((array) ($meta['finance_stage_ids'] ?? []) as $statusId) {
+                if ((int) $statusId > 0) {
+                    $query['filter[statuses][' . $i . '][pipeline_id]'] = $salaryPipelineId;
+                    $query['filter[statuses][' . $i . '][status_id]'] = (int) $statusId;
+                    $i++;
+                }
+            }
         }
 
         $response = $this->apiRequest('GET', '/leads', ['query' => $query]);
@@ -194,6 +217,16 @@ class AmoCrmService
     {
         $ids = array_filter(
             (array) config('services.amocrm.finance_stage_ids', []),
+            fn ($id) => is_numeric($id) && (int) $id > 0
+        );
+
+        return array_values(array_unique(array_map('intval', $ids)));
+    }
+
+    private function ntvReportStageIds(): array
+    {
+        $ids = array_filter(
+            (array) config('services.amocrm.ntv_report_stage_ids', []),
             fn ($id) => is_numeric($id) && (int) $id > 0
         );
 
@@ -401,6 +434,24 @@ class AmoCrmService
     public function syncComplectationDeals(array $deals, bool $allowWonStatus = false): array
     {
         $financeStageIds = $this->financeStageIds();
+
+        // Include finance stage IDs from salary pipelines (e.g. retail pipeline stages)
+        foreach ($this->salaryPipelines() as $meta) {
+            foreach ((array) ($meta['finance_stage_ids'] ?? []) as $id) {
+                if ((int) $id > 0) {
+                    $financeStageIds[] = (int) $id;
+                }
+            }
+        }
+        $financeStageIds = array_values(array_unique($financeStageIds));
+
+        foreach ($this->ntvReportStageIds() as $id) {
+            if ((int) $id > 0) {
+                $financeStageIds[] = (int) $id;
+            }
+        }
+        $financeStageIds = array_values(array_unique($financeStageIds));
+
         $wonStatusId = (int) config('services.amocrm.won_status_id', 142);
         $created = 0;
         $updated = 0;
@@ -642,8 +693,9 @@ class AmoCrmService
         $responsibleName = $this->getAmoUserName($responsibleUserId);
 
         $dealStatusId = (int) ($lead['status_id'] ?? 0);
+        $identityPayload = $this->salesProjectAmoIdentityPayload($lead);
 
-        DB::transaction(function () use ($amoDealId, $clientName, $lead, $totalAmount, $projectPayload, $responsibleUserId, $responsibleName, $dealStatusId, $onlyUpdate, &$created, &$updated, &$budgetNotification) {
+        DB::transaction(function () use ($amoDealId, $clientName, $lead, $totalAmount, $projectPayload, $identityPayload, $responsibleUserId, $responsibleName, $dealStatusId, $onlyUpdate, &$created, &$updated, &$budgetNotification) {
             $row = AmoComplectationProject::query()
                 ->where('amo_deal_id', $amoDealId)
                 ->lockForUpdate()
@@ -672,7 +724,7 @@ class AmoCrmService
                     'currency' => $currency,
                     'created_by' => $this->systemUserId(),
                     'source_layer' => 'finance',
-                ], $managerFields, $projectPayload));
+                ], $identityPayload, $managerFields, $projectPayload));
 
                 $created++;
             } else {
@@ -683,7 +735,7 @@ class AmoCrmService
                 $project->update(array_merge([
                     'client_name' => mb_substr($clientName, 0, 255),
                     'total_amount' => $newAmount,
-                ], $managerFields, $this->applyAppWinsFilter($projectPayload, $project)));
+                ], $identityPayload, $managerFields, $this->applyAppWinsFilter($projectPayload, $project)));
 
                 if ($oldAmount > 0.01 && abs($newAmount - $oldAmount) >= 0.01) {
                     $budgetNotification = [
@@ -763,6 +815,33 @@ class AmoCrmService
         }
 
         return Carbon::createFromTimestamp((int) $closedAt)->toDateTimeString();
+    }
+
+    private function salesProjectAmoIdentityPayload(array $lead): array
+    {
+        $payload = [];
+
+        if ($this->hasSalesProjectColumn('amo_deal_id')) {
+            $amoDealId = (int) ($lead['id'] ?? 0);
+            $payload['amo_deal_id'] = $amoDealId > 0 ? $amoDealId : null;
+        }
+
+        if ($this->hasSalesProjectColumn('pipeline_id')) {
+            $pipelineId = (int) ($lead['pipeline_id'] ?? 0);
+            $payload['pipeline_id'] = $pipelineId > 0 ? $pipelineId : null;
+        }
+
+        if ($this->hasSalesProjectColumn('amo_deal_name')) {
+            $name = trim((string) ($lead['name'] ?? ''));
+            $payload['amo_deal_name'] = $name !== '' ? mb_substr($name, 0, 255) : null;
+        }
+
+        if ($this->hasSalesProjectColumn('amo_status_id')) {
+            $statusId = (int) ($lead['status_id'] ?? 0);
+            $payload['amo_status_id'] = $statusId > 0 ? $statusId : null;
+        }
+
+        return $payload;
     }
 
     private function extractComplectationProjectFields(array $lead): array
@@ -986,8 +1065,9 @@ class AmoCrmService
 
         $responsibleUserId = (int) ($lead['responsible_user_id'] ?? 0);
         $responsibleName = $this->getAmoUserName($responsibleUserId);
+        $identityPayload = $this->salesProjectAmoIdentityPayload($lead);
 
-        return DB::transaction(function () use ($amoDealId, $lead, $clientName, $responsibleName) {
+        return DB::transaction(function () use ($amoDealId, $lead, $clientName, $responsibleName, $identityPayload) {
             $map = AmoCrmDealMap::query()
                 ->where('amo_deal_id', $amoDealId)
                 ->lockForUpdate()
@@ -1022,7 +1102,7 @@ class AmoCrmService
                     'currency' => $currency,
                     'created_by' => $this->systemUserId(),
                     'source_layer' => 'projects',
-                ], $techFields));
+                ], $identityPayload, $techFields));
 
                 // New amoCRM-created project must start with no advances/transfers.
                 // This also protects against SQLite id reuse inheriting old transfers.
@@ -1053,11 +1133,25 @@ class AmoCrmService
             $isWon  = $leadStatusId > 0 && $leadStatusId === $wonStatusId;
             $isLost = $leadStatusId > 0 && $leadStatusId === $lostStatusId;
 
+            // Once a row is project-layer it must never be downgraded to finance-layer by a stage change.
+            $newSourceLayer = ($project->source_layer === 'projects')
+                ? 'projects'
+                : ($isProjectCreateStage ? 'projects' : 'finance');
+
+            if ($project->source_layer === 'projects' && !$isProjectCreateStage) {
+                Log::info('amocrm:syncLead:source_layer_preserved', [
+                    'project_id'    => $project->id,
+                    'amo_deal_id'   => $amoDealId,
+                    'amo_status_id' => $leadStatusId,
+                    'reason'        => 'deal moved out of project stages but source_layer kept as projects',
+                ]);
+            }
+
             $updatePayload = array_merge([
                 'client_name' => mb_substr($clientName, 0, 255),
                 'total_amount' => round($totalAmount, 2),
-                'source_layer' => $isProjectCreateStage ? 'projects' : 'finance',
-            ], $this->applyAppWinsFilter($techFields, $project));
+                'source_layer' => $newSourceLayer,
+            ], $identityPayload, $this->applyAppWinsFilter($techFields, $project));
 
             // Re-activate project if it was cancelled/completed but deal moved back to an active stage
             if (!$isWon && !$isLost && in_array($project->status, ['completed', 'cancelled']) && $isProjectCreateStage) {

@@ -264,9 +264,8 @@ class InverterNormalizerService
         // ── Hybrid sub-models ──────────────────────────────────────────────────
         $hybridSubmodel = null;
         if (!$gridSubmodel && !$isUltra) {
-            if      (preg_match('/\bNEO\b/iu',             $clean)) $hybridSubmodel = 'NEO';
-            elseif  (preg_match('/(?:aelio|аліо|alio)/iu', $clean)) $hybridSubmodel = 'Aelio';
-            elseif  (preg_match('/\bLITE\b/iu',            $clean)) $hybridSubmodel = 'Lite'; // LITE + LV = Hybrid
+            if (preg_match('/(?:aelio|аліо|alio)/iu', $clean)) $hybridSubmodel = 'Aelio';
+            // NEO and Lite are stripped — both normalize to plain "Hybrid"
         }
 
         // ── Voltage flags (aliases for readability below) ──────────────────────

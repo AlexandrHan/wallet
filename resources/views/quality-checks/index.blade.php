@@ -292,6 +292,36 @@ function renderCheck(c) {
 
   const isElectric  = c.check_type === 'electric';
   const workerLabel = isService ? 'електрика' : (isElectric ? 'електрика' : 'монтажника');
+  const submitterType = isService
+    ? {
+        label: '⚡ Електрик',
+        name: c.electrician || c.submitted_by || 'не вказано',
+        bg: 'rgba(34,211,238,.14)',
+        color: '#7ec8e3',
+      }
+    : (isElectric
+      ? {
+          label: '⚡ Електрик',
+          name: c.electrician || c.submitted_by || 'не вказано',
+          bg: 'rgba(34,211,238,.14)',
+          color: '#7ec8e3',
+        }
+      : {
+          label: '🔩 Монтажна бригада',
+          name: c.installation_team || c.submitted_by || 'не вказано',
+          bg: 'rgba(100,200,100,.14)',
+          color: '#7ec87e',
+        });
+  const submitterBadgeHtml = `
+    <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:6px 0 10px;">
+      <span style="display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:800;
+        padding:4px 10px; border-radius:999px; background:${submitterType.bg}; color:${submitterType.color};
+        border:1px solid rgba(255,255,255,.08);">
+        ${submitterType.label}: ${esc(submitterType.name)}
+      </span>
+      ${c.check_type ? '' : `<span style="display:inline-flex; font-size:12px; font-weight:700; padding:4px 10px;
+        border-radius:999px; background:rgba(255,255,255,.08); color:#ccc;">❔ Тип не визначено</span>`}
+    </div>`;
 
   if (status === 'has_deficiencies') {
     borderStyle     = 'border:2px solid #e53e3e;';
@@ -361,6 +391,7 @@ function renderCheck(c) {
   return `
     <div class="card" style="margin-bottom:14px; ${borderStyle}" data-check-id="${c.id}" data-check-status="${esc(status)}">
       <div style="font-weight:700; font-size:16px; margin-bottom:4px;">${esc(c.client_name)}</div>
+      ${submitterBadgeHtml}
       ${infoHtml}
       <div style="font-size:12px; opacity:.55; margin-bottom:14px;">
         Подав: ${esc(c.submitted_by)} — ${new Date(c.created_at).toLocaleDateString('uk-UA')}
@@ -689,6 +720,35 @@ async function cancelCheck(id, btn) {
   }
 }
 
+async function cancelOrphan(projectId, btn) {
+  btn.disabled = true;
+  btn.textContent = '...';
+
+  const card = btn.closest('[data-check-id]');
+
+  try {
+    const r = await fetch(`/api/projects/${projectId}/orphan-cancel`, {
+      method: 'POST',
+      headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content },
+    });
+    const data = await r.json();
+
+    if (r.ok && data.ok) {
+      card.style.opacity = '.4';
+      card.style.pointerEvents = 'none';
+      setTimeout(() => { card.remove(); ['electric','panel','service'].forEach(updateSectionBadge); }, 800);
+    } else {
+      alert(data.error || 'Помилка');
+      btn.disabled = false;
+      btn.textContent = '✕ Скасувати';
+    }
+  } catch (e) {
+    alert('Помилка з\'єднання');
+    btn.disabled = false;
+    btn.textContent = '✕ Скасувати';
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   loadChecks();
   setInterval(() => loadChecks().catch(() => {}), 10000);
@@ -724,7 +784,7 @@ document.addEventListener('click', function (e) {
 
   const cancelBtn = e.target.closest('.qc-cancel-btn');
   if (cancelBtn) {
-    const id = parseInt(cancelBtn.dataset.id);
+    const rawId = cancelBtn.dataset.id;
     const card = cancelBtn.closest('[data-check-id]');
     const sectionEl = card?.closest('[id^="qcSection_"]');
     const sectionKey = sectionEl?.id?.replace('qcSection_', '') || '';
@@ -737,7 +797,13 @@ document.addEventListener('click', function (e) {
       confirmText = 'Скасувати відправку монтажу на перевірку? Монтажник зможе відправити повторно.';
     }
     if (confirm(confirmText)) {
-      cancelCheck(id, cancelBtn);
+      const isOrphan = String(rawId).startsWith('orphan-');
+      if (isOrphan) {
+        const projectId = parseInt(String(rawId).replace(/^orphan-[ep]-/, ''));
+        cancelOrphan(projectId, cancelBtn);
+      } else {
+        cancelCheck(parseInt(rawId), cancelBtn);
+      }
     }
     return;
   }

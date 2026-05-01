@@ -41,7 +41,7 @@
       <summary class="tg-acc__title">📦 Склад</summary>
       <div class="tg-acc__body">
         <a class="tg-menu__item" href="/solar-glass">☀️ Solar Glass</a>
-        <a class="tg-menu__item" href="/equipment-orders">🛒 Замовлення обладнання</a>
+        <a class="tg-menu__item" href="/equipment-orders">📦 Потреба в обладнанні</a>
         <a class="tg-menu__item" href="/projects/delivered">🚚 Доставлено на об'єкт</a>
       </div>
     </details>

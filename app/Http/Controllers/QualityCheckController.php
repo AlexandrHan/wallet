@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\QualityCheck;
 use App\Models\QualityPhoto;
 use App\Models\SalaryAccrual;
+use App\Services\SalaryAccrualEligibilityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -111,6 +112,68 @@ class QualityCheckController extends Controller
         return ['amount' => 0, 'currency' => $rule->currency ?? 'USD', 'details' => ''];
     }
 
+    private function hasApprovedProjectQualityCheck(int $projectId, string $checkType, bool $allowLegacyNullType = false): bool
+    {
+        return app(SalaryAccrualEligibilityService::class)
+            ->hasApprovedProjectQualityCheck($projectId, $checkType, $allowLegacyNullType);
+    }
+
+    private function hasPanelQualityApproval(object $project): bool
+    {
+        return app(SalaryAccrualEligibilityService::class)->hasPanelQualityApproval($project);
+    }
+
+    private function hasElectricQualityApproval(object $project): bool
+    {
+        return app(SalaryAccrualEligibilityService::class)->hasElectricQualityApproval($project);
+    }
+
+    private function hasActiveProjectQualityCheck(int $projectId): bool
+    {
+        return DB::table('quality_checks')
+            ->where('project_id', $projectId)
+            ->whereNull('service_request_id')
+            ->whereIn('status', ['pending', 'has_deficiencies', 'deficiencies_fixed'])
+            ->exists();
+    }
+
+    private function clearStaleWaitingQualityStatusIfResolved(int $projectId): void
+    {
+        $project = DB::table('sales_projects')->where('id', $projectId)->first();
+        if (!$project) {
+            return;
+        }
+
+        if (!in_array((string) ($project->construction_status ?? ''), ['waiting_quality_check', 'deficiencies_fixed'], true)) {
+            return;
+        }
+
+        if ($this->hasActiveProjectQualityCheck($projectId)) {
+            return;
+        }
+
+        DB::table('sales_projects')->where('id', $projectId)->update([
+            'construction_status' => null,
+            'updated_at' => now(),
+        ]);
+
+        Log::info('project_waiting_quality_status_cleared_without_active_check', [
+            'project_id' => $projectId,
+            'previous_construction_status' => $project->construction_status ?? null,
+        ]);
+    }
+
+    private function applySalaryAccrualEligibility($query, string $salaryAlias = 'sa', string $projectAlias = 'sp')
+    {
+        return app(SalaryAccrualEligibilityService::class)
+            ->applyToQuery($query, $salaryAlias, $projectAlias);
+    }
+
+    private function pendingEligibleSalaryAccrualsForUser(int $userId)
+    {
+        return app(SalaryAccrualEligibilityService::class)->pendingForUser($userId);
+    }
+
     /**
      * Accrue salary only for the electrician assigned to the project.
      * Used when an electrician submits their own quality check.
@@ -124,6 +187,16 @@ class QualityCheckController extends Controller
 
         $electricianName = trim((string) ($project->electrician ?? ''));
         if (!$electricianName || $electricianName === 'Без монтажних робіт') return false;
+
+        if (!$this->hasElectricQualityApproval($project)) {
+            Log::warning('salary_accrual_blocked_without_electric_quality', [
+                'project_id' => $projectId,
+                'client_name' => $project->client_name ?? null,
+                'electrician' => $electricianName,
+                'electric_check_status' => $project->electric_check_status ?? null,
+            ]);
+            return false;
+        }
 
         $rule = DB::table('salary_rules')
             ->where('staff_group', 'electrician')
@@ -211,6 +284,38 @@ class QualityCheckController extends Controller
         }
 
         foreach ($workers as $w) {
+            if ($w['staff_group'] === 'installation_team' && !$this->hasPanelQualityApproval($project)) {
+                Log::warning('salary_accrual_blocked_without_panel_quality', [
+                    'project_id' => $projectId,
+                    'client_name' => $project->client_name ?? null,
+                    'installation_team' => $w['staff_name'],
+                    'panel_check_status' => $project->panel_check_status ?? null,
+                    'source' => 'accrueForProject',
+                ]);
+                continue;
+            }
+
+            if ($w['staff_group'] === 'electrician') {
+                if (!$this->hasElectricQualityApproval($project)) {
+                    Log::warning('salary_accrual_blocked_without_electric_quality', [
+                        'project_id' => $projectId,
+                        'client_name' => $project->client_name ?? null,
+                        'electrician' => $w['staff_name'],
+                        'electric_check_status' => $project->electric_check_status ?? null,
+                        'source' => 'accrueForProject',
+                    ]);
+                    continue;
+                }
+
+                $electricianRule = DB::table('salary_rules')
+                    ->where('staff_group', 'electrician')
+                    ->where('staff_name', $w['staff_name'])
+                    ->first();
+                if (!$electricianRule || $electricianRule->mode === 'fixed') {
+                    continue;
+                }
+            }
+
             // Skip if already accrued for this project+user
             $exists = DB::table('salary_accruals')
                 ->where('project_id', $projectId)
@@ -246,6 +351,16 @@ class QualityCheckController extends Controller
 
         $team = trim((string) ($project->installation_team ?? ''));
         if (!$team || $team === 'Без монтажних робіт') return;
+
+        if (!$this->hasPanelQualityApproval($project)) {
+            Log::warning('salary_accrual_blocked_without_panel_quality', [
+                'project_id' => $projectId,
+                'client_name' => $project->client_name ?? null,
+                'installation_team' => $team,
+                'panel_check_status' => $project->panel_check_status ?? null,
+            ]);
+            return;
+        }
 
         $rule = DB::table('salary_rules')
             ->where('staff_group', 'installation_team')
@@ -298,9 +413,9 @@ class QualityCheckController extends Controller
         $panelDone    = !$hasInstaller   || $project->panel_check_status   === 'done';
 
         if ($electricDone && $panelDone) {
-            DB::table('sales_projects')->where('id', $projectId)->update([
-                'construction_status' => 'salary_pending',
-                'updated_at'          => now(),
+            Log::info('project_salary_pending_status_not_changed_role_specific', [
+                'project_id' => $projectId,
+                'reason' => 'quality statuses are role-specific; construction_status is not used as salary_pending',
             ]);
         }
     }
@@ -770,6 +885,7 @@ class QualityCheckController extends Controller
                 ]);
 
                 $this->checkAndFinalize($check->project_id);
+                $this->clearStaleWaitingQualityStatusIfResolved($check->project_id);
                 return;
             }
 
@@ -783,6 +899,7 @@ class QualityCheckController extends Controller
             $this->accrueForInstallationTeam($check->project_id);
 
             $this->checkAndFinalize($check->project_id);
+            $this->clearStaleWaitingQualityStatusIfResolved($check->project_id);
         });
 
         // Notify owner when a foreman (not owner) approves quality check
@@ -840,15 +957,43 @@ class QualityCheckController extends Controller
             return response()->json(['error' => 'Проект не в статусі очікування'], 422);
         }
 
-        DB::transaction(function () use ($id) {
-            // Accrue salary for both worker types (each method skips if already accrued)
-            $this->accrueForInstallationTeam($id);
-            $this->accrueForElectrician($id);
+        $hasElectrician = trim((string) ($project->electrician ?? '')) !== ''
+            && trim((string) ($project->electrician ?? '')) !== 'Без монтажних робіт';
+        $hasInstaller = trim((string) ($project->installation_team ?? '')) !== ''
+            && trim((string) ($project->installation_team ?? '')) !== 'Без монтажних робіт';
 
-            DB::table('sales_projects')->where('id', $id)->update([
-                'construction_status' => 'salary_paid',
-                'updated_at'          => now(),
+        $panelNeedsApproval = $hasInstaller && $project->panel_check_status !== 'done';
+        $electricNeedsApproval = $hasElectrician && $project->electric_check_status !== 'done';
+
+        if ($panelNeedsApproval === $electricNeedsApproval) {
+            Log::warning('orphan_approve_blocked_unknown_work_type', [
+                'project_id' => $id,
+                'client_name' => $project->client_name ?? null,
+                'installation_team' => $project->installation_team ?? null,
+                'electrician' => $project->electrician ?? null,
+                'panel_check_status' => $project->panel_check_status ?? null,
+                'electric_check_status' => $project->electric_check_status ?? null,
             ]);
+
+            return response()->json(['error' => 'Неможливо однозначно визначити тип перевірки'], 422);
+        }
+
+        DB::transaction(function () use ($id, $panelNeedsApproval, $electricNeedsApproval) {
+            if ($panelNeedsApproval) {
+                DB::table('sales_projects')->where('id', $id)->update([
+                    'panel_check_status' => 'done',
+                    'updated_at' => now(),
+                ]);
+                $this->accrueForInstallationTeam($id);
+            }
+
+            if ($electricNeedsApproval) {
+                DB::table('sales_projects')->where('id', $id)->update([
+                    'electric_check_status' => 'done',
+                    'updated_at' => now(),
+                ]);
+                $this->accrueForElectrician($id);
+            }
         });
 
         return response()->json(['ok' => true]);
@@ -910,6 +1055,32 @@ class QualityCheckController extends Controller
                 DB::table('sales_projects')->where('id', $check->project_id)->update($projectUpdate);
             }
         });
+
+        return response()->json(['ok' => true]);
+    }
+
+    /**
+     * POST /api/projects/{id}/orphan-cancel
+     * Foreman/owner cancels an orphan project (no quality_checks record) → reverts to no status
+     */
+    public function cancelOrphan(Request $request, int $id): JsonResponse
+    {
+        $user = auth()->user();
+        if (!$this->isForeman($user)) {
+            return response()->json(['error' => 'Немає доступу'], 403);
+        }
+
+        $project = DB::table('sales_projects')->where('id', $id)->first();
+        if (!$project) {
+            return response()->json(['error' => 'Проект не знайдено'], 404);
+        }
+
+        DB::table('sales_projects')->where('id', $id)->update([
+            'construction_status'       => null,
+            'installation_completed_at' => null,
+            'installation_completed_by' => null,
+            'updated_at'               => now(),
+        ]);
 
         return response()->json(['ok' => true]);
     }
@@ -1157,7 +1328,7 @@ class QualityCheckController extends Controller
             return response()->json(['error' => 'Немає доступу'], 403);
         }
 
-        $rows = DB::table('salary_accruals as sa')
+        $rowsQuery = DB::table('salary_accruals as sa')
             ->join('users as u', 'u.id', '=', 'sa.user_id')
             ->leftJoin('sales_projects as sp', 'sp.id', '=', 'sa.project_id')
             ->where('sa.status', 'pending')
@@ -1177,7 +1348,9 @@ class QualityCheckController extends Controller
                 'sp.extra_works',
             ])
             ->orderBy('u.name')
-            ->orderBy('sa.created_at')
+            ->orderBy('sa.created_at');
+
+        $rows = $this->applySalaryAccrualEligibility($rowsQuery)
             ->get()
             ->map(function ($row) {
                 $row->is_penalty = (float) $row->amount < 0;
@@ -1327,10 +1500,7 @@ class QualityCheckController extends Controller
             return response()->json(['error' => 'Користувача не знайдено'], 404);
         }
 
-        $pending = DB::table('salary_accruals')
-            ->where('user_id', $userId)
-            ->where('status', 'pending')
-            ->get();
+        $pending = $this->pendingEligibleSalaryAccrualsForUser($userId);
 
         if ($pending->isEmpty()) {
             return response()->json(['error' => 'Немає нарахувань до виплати'], 422);
@@ -1400,19 +1570,11 @@ class QualityCheckController extends Controller
                 ]);
             }
 
-            $projectIds = $pending->pluck('project_id')->unique()->all();
-            foreach ($projectIds as $pid) {
-                $stillPending = DB::table('salary_accruals')
-                    ->where('project_id', $pid)
-                    ->where('status', 'pending')
-                    ->exists();
-                if (!$stillPending) {
-                    DB::table('sales_projects')->where('id', $pid)->update([
-                        'construction_status' => 'salary_paid',
-                        'updated_at'          => now(),
-                    ]);
-                }
-            }
+            Log::info('project_salary_paid_status_not_changed_role_specific', [
+                'user_id' => $userId,
+                'project_ids' => $pending->pluck('project_id')->filter()->unique()->values()->all(),
+                'reason' => 'salary payout is role-specific; construction_status is not updated by paySalary',
+            ]);
         });
 
         return response()->json(['ok' => true]);
@@ -1586,19 +1748,11 @@ class QualityCheckController extends Controller
             ]);
         }
 
-        // ── Update project statuses ────────────────────────────────────────────
-        foreach ($projectIds as $pid) {
-            $stillPending = DB::table('salary_accruals')
-                ->where('project_id', $pid)
-                ->where('status', 'pending')
-                ->exists();
-            if (!$stillPending) {
-                DB::table('sales_projects')->where('id', $pid)->update([
-                    'construction_status' => 'salary_paid',
-                    'updated_at'          => $now,
-                ]);
-            }
-        }
+        Log::info('project_salary_paid_status_not_changed_role_specific', [
+            'user_id' => $userId,
+            'project_ids' => collect($projectIds)->filter()->values()->all(),
+            'reason' => 'salary payout is role-specific; construction_status is not updated by paySalaryMultiCurrency',
+        ]);
 
         return response()->json([
             'ok'       => true,
